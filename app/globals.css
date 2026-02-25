@@ -222,3 +222,50 @@
 .animate-page-enter {
   animation: page-enter 0.3s ease-out forwards;
 }
+
+/* Navbar slide-down */
+@keyframes nav-down {
+  from {
+    opacity: 0;
+    transform: translateY(-16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-nav {
+  opacity: 0;
+  animation: nav-down 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* Hero stagger entrance */
+@keyframes hero-up {
+  from {
+    opacity: 0;
+    filter: blur(6px);
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(0);
+  }
+}
+
+.animate-hero {
+  opacity: 0;
+  animation: hero-up 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.delay-0 { animation-delay: 0ms; }
+.delay-1 { animation-delay: 100ms; }
+.delay-2 { animation-delay: 200ms; }
+.delay-3 { animation-delay: 300ms; }
+.delay-4 { animation-delay: 400ms; }
+.delay-5 { animation-delay: 500ms; }
+.delay-6 { animation-delay: 600ms; }
+.delay-7 { animation-delay: 700ms; }
+.delay-8 { animation-delay: 800ms; }
+.delay-9 { animation-delay: 900ms; }

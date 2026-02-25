@@ -22,7 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 
 const navItems = [
-  { href: "/", icon: LayoutDashboard, label: "Overview" },
+  { href: "/dashboard", icon: LayoutDashboard, label: "Overview" },
   { href: "/leads", icon: Users, label: "Leads" },
   { href: "/alerts", icon: Bell, label: "Alerts", badge: 5 },
   { href: "/reports", icon: FileBarChart, label: "Reports" },
@@ -75,8 +75,8 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
         )}
         {navItems.map((item) => {
           const isActive =
-            item.href === "/"
-              ? pathname === "/"
+            item.href === "/dashboard"
+              ? pathname === "/dashboard"
               : pathname.startsWith(item.href);
           return (
             <Link

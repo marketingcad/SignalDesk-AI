@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifySession, SESSION_COOKIE_NAME } from "@/lib/auth";
 
-const protectedRoutes = ["/", "/leads", "/alerts", "/reports", "/settings"];
+const protectedRoutes = ["/dashboard", "/leads", "/alerts", "/reports", "/settings"];
 const authRoutes = ["/login", "/signup"];
 
 export default async function proxy(request: NextRequest) {
@@ -11,8 +11,7 @@ export default async function proxy(request: NextRequest) {
   const session = sessionCookie ? await verifySession(sessionCookie) : null;
 
   const isProtectedRoute = protectedRoutes.some(
-    (route) =>
-      pathname === route || (route !== "/" && pathname.startsWith(route))
+    (route) => pathname === route || pathname.startsWith(route)
   );
   const isAuthRoute = authRoutes.some((route) => pathname.startsWith(route));
 
@@ -23,7 +22,7 @@ export default async function proxy(request: NextRequest) {
   }
 
   if (isAuthRoute && session) {
-    return NextResponse.redirect(new URL("/", request.url));
+    return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
   return NextResponse.next();
