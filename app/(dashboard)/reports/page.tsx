@@ -1,0 +1,288 @@
+"use client";
+
+import { useState } from "react";
+import { Header, ActionButton } from "@/components/header";
+import { IntentBadge } from "@/components/intent-badge";
+import { PlatformBadge } from "@/components/platform-badge";
+import { Card } from "@/components/ui/card";
+import { dailyReports } from "@/lib/mock-data";
+import { cn, getPlatformColor } from "@/lib/utils";
+import type { Platform } from "@/lib/types";
+import {
+  Download,
+  Calendar,
+  TrendingUp,
+  TrendingDown,
+  ChevronDown,
+  ChevronRight,
+  FileBarChart,
+  Flame,
+  AlertTriangle,
+  MinusCircle,
+} from "lucide-react";
+
+export default function ReportsPage() {
+  const [expandedDate, setExpandedDate] = useState<string | null>(
+    dailyReports[0]?.date ?? null
+  );
+
+  return (
+    <>
+      <Header
+        title="Reports"
+        subtitle="Daily lead detection summaries"
+        actions={
+          <ActionButton icon={Download} variant="secondary">
+            Export CSV
+          </ActionButton>
+        }
+      />
+      <div className="p-6 space-y-4">
+        {/* Summary Stats for This Week */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
+          <WeekStat
+            label="This Week"
+            value={dailyReports.reduce((s, r) => s + r.totalLeads, 0)}
+            sub="total leads"
+            icon={FileBarChart}
+            color="#6366f1"
+          />
+          <WeekStat
+            label="High Intent"
+            value={dailyReports.reduce((s, r) => s + r.highIntent, 0)}
+            sub="leads"
+            icon={Flame}
+            color="#34d399"
+          />
+          <WeekStat
+            label="Medium Intent"
+            value={dailyReports.reduce((s, r) => s + r.mediumIntent, 0)}
+            sub="leads"
+            icon={AlertTriangle}
+            color="#f59e0b"
+          />
+          <WeekStat
+            label="Low Intent"
+            value={dailyReports.reduce((s, r) => s + r.lowIntent, 0)}
+            sub="leads"
+            icon={MinusCircle}
+            color="#71717a"
+          />
+        </div>
+
+        {/* Daily Reports */}
+        <div className="space-y-3">
+          {dailyReports.map((report) => {
+            const isExpanded = expandedDate === report.date;
+            const dateObj = new Date(report.date + "T00:00:00");
+            const dayLabel = new Intl.DateTimeFormat("en-US", {
+              weekday: "long",
+              month: "short",
+              day: "numeric",
+            }).format(dateObj);
+            const prevReport = dailyReports.find(
+              (r) =>
+                new Date(r.date + "T00:00:00").getTime() ===
+                dateObj.getTime() - 86400000
+            );
+            const change = prevReport
+              ? ((report.totalLeads - prevReport.totalLeads) /
+                  prevReport.totalLeads) *
+                100
+              : 0;
+
+            return (
+              <Card
+                key={report.date}
+                className="border-border bg-card overflow-hidden transition-all p-0"
+              >
+                {/* Report Header */}
+                <button
+                  onClick={() =>
+                    setExpandedDate(isExpanded ? null : report.date)
+                  }
+                  className="flex w-full items-center gap-4 px-5 py-4 transition-colors hover:bg-accent/30"
+                >
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
+                    <Calendar className="h-5 w-5 text-muted-foreground" />
+                  </div>
+                  <div className="flex-1 text-left">
+                    <p className="text-sm font-semibold text-foreground">
+                      {dayLabel}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {report.totalLeads} leads detected
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-6">
+                    <div className="hidden sm:flex items-center gap-4">
+                      <MiniStat
+                        label="High"
+                        value={report.highIntent}
+                        color="text-emerald-400"
+                      />
+                      <MiniStat
+                        label="Medium"
+                        value={report.mediumIntent}
+                        color="text-amber-400"
+                      />
+                      <MiniStat
+                        label="Low"
+                        value={report.lowIntent}
+                        color="text-zinc-400"
+                      />
+                    </div>
+                    {prevReport && (
+                      <div className="flex items-center gap-1">
+                        {change >= 0 ? (
+                          <TrendingUp className="h-3.5 w-3.5 text-emerald-400" />
+                        ) : (
+                          <TrendingDown className="h-3.5 w-3.5 text-rose-400" />
+                        )}
+                        <span
+                          className={cn(
+                            "text-xs font-medium",
+                            change >= 0 ? "text-emerald-400" : "text-rose-400"
+                          )}
+                        >
+                          {change >= 0 ? "+" : ""}
+                          {change.toFixed(0)}%
+                        </span>
+                      </div>
+                    )}
+                    {isExpanded ? (
+                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                    )}
+                  </div>
+                </button>
+
+                {/* Expanded Content */}
+                {isExpanded && (
+                  <div className="border-t border-border px-5 py-5 animate-fade-in">
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                      {/* Platform Breakdown */}
+                      <div>
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+                          Platform Breakdown
+                        </p>
+                        <div className="space-y-3">
+                          {(
+                            Object.entries(report.platforms) as [
+                              Platform,
+                              number,
+                            ][]
+                          ).map(([platform, count]) => (
+                            <div
+                              key={platform}
+                              className="flex items-center gap-3"
+                            >
+                              <PlatformBadge platform={platform} size="sm" />
+                              <div className="flex-1">
+                                <div className="h-2 w-full rounded-full bg-muted">
+                                  <div
+                                    className="h-2 rounded-full transition-all"
+                                    style={{
+                                      width: `${
+                                        (count / report.totalLeads) * 100
+                                      }%`,
+                                      background:
+                                        getPlatformColor(platform),
+                                    }}
+                                  />
+                                </div>
+                              </div>
+                              <span className="text-sm font-semibold text-foreground w-8 text-right">
+                                {count}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Top Leads */}
+                      <div>
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+                          Top Leads
+                        </p>
+                        <div className="space-y-2">
+                          {report.topLeads.map((lead) => (
+                            <div
+                              key={lead.id}
+                              className="flex items-center gap-3 rounded-lg border border-border bg-accent/30 px-3 py-2.5"
+                            >
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-foreground truncate">
+                                  {lead.username}
+                                </p>
+                                <p className="text-xs text-muted-foreground truncate">
+                                  {lead.text.slice(0, 80)}...
+                                </p>
+                              </div>
+                              <IntentBadge
+                                score={lead.intentScore}
+                                size="sm"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </Card>
+            );
+          })}
+        </div>
+      </div>
+    </>
+  );
+}
+
+function WeekStat({
+  label,
+  value,
+  sub,
+  icon: Icon,
+  color,
+}: {
+  label: string;
+  value: number;
+  sub: string;
+  icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
+  color: string;
+}) {
+  return (
+    <Card className="border-border bg-card p-4">
+      <div className="flex items-center gap-2 mb-2">
+        <div
+          className="flex h-7 w-7 items-center justify-center rounded-md"
+          style={{ background: `${color}15` }}
+        >
+          <Icon className="h-3.5 w-3.5" style={{ color }} />
+        </div>
+        <span className="text-xs font-medium text-muted-foreground">{label}</span>
+      </div>
+      <p className="text-2xl font-bold text-foreground">{value}</p>
+      <p className="text-xs text-muted-foreground">{sub}</p>
+    </Card>
+  );
+}
+
+function MiniStat({
+  label,
+  value,
+  color,
+}: {
+  label: string;
+  value: number;
+  color: string;
+}) {
+  return (
+    <div className="text-center">
+      <p className={cn("text-sm font-bold", color)}>{value}</p>
+      <p className="text-[10px] text-muted-foreground">{label}</p>
+    </div>
+  );
+}
