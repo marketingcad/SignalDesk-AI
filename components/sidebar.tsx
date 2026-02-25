@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   Users,
@@ -12,6 +12,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Zap,
+  LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { platformConfigs } from "@/lib/mock-data";
@@ -35,6 +36,13 @@ interface SidebarProps {
 
 export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
+
+  async function handleLogout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.push("/login");
+    router.refresh();
+  }
 
   return (
     <aside
@@ -128,6 +136,22 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
           </div>
         </div>
       )}
+
+      {/* Sign Out */}
+      <div className="px-3 pb-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleLogout}
+          className={cn(
+            "w-full text-muted-foreground hover:text-destructive hover:bg-destructive/10",
+            collapsed ? "justify-center" : "justify-start gap-3"
+          )}
+        >
+          <LogOut className="h-[18px] w-[18px] shrink-0" />
+          {!collapsed && <span className="animate-fade-in">Sign out</span>}
+        </Button>
+      </div>
 
       {/* Collapse Toggle */}
       <div className="border-t border-sidebar-border p-3">
