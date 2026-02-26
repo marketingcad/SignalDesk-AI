@@ -22,6 +22,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import { AuthTransition } from "@/components/auth-transition";
 
 interface UserData {
   id: string;
@@ -47,6 +48,7 @@ export function UserAvatarMenu() {
   const [user, setUser] = useState<UserData | null>(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [showLogoutTransition, setShowLogoutTransition] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const fetchUser = useCallback(async () => {
@@ -80,14 +82,21 @@ export function UserAvatarMenu() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [dropdownOpen]);
 
-  async function handleLogout() {
+  const handleLogoutComplete = useCallback(async () => {
     await fetch("/api/auth/logout", { method: "POST" });
     router.push("/login");
     router.refresh();
+  }, [router]);
+
+  function handleLogout() {
+    setShowLogoutTransition(true);
   }
 
   return (
     <>
+      {showLogoutTransition && (
+        <AuthTransition type="logout" onComplete={handleLogoutComplete} />
+      )}
       <div className="relative" ref={dropdownRef}>
         {/* Avatar Button */}
         <button

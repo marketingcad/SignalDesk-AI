@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useCallback } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -21,6 +22,7 @@ import { timeAgo } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { AuthTransition } from "@/components/auth-transition";
 
 const navItems = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Overview" },
@@ -39,14 +41,23 @@ interface SidebarProps {
 export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const [showLogoutTransition, setShowLogoutTransition] = useState(false);
 
-  async function handleLogout() {
+  const handleLogoutComplete = useCallback(async () => {
     await fetch("/api/auth/logout", { method: "POST" });
     router.push("/login");
     router.refresh();
+  }, [router]);
+
+  function handleLogout() {
+    setShowLogoutTransition(true);
   }
 
   return (
+    <>
+    {showLogoutTransition && (
+      <AuthTransition type="logout" onComplete={handleLogoutComplete} />
+    )}
     <aside
       className={cn(
         "fixed left-0 top-0 z-40 flex h-screen flex-col border-r border-sidebar-border bg-sidebar transition-all duration-300",
@@ -171,5 +182,6 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
         </Button>
       </div>
     </aside>
+    </>
   );
 }

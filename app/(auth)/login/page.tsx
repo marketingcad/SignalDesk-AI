@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useState, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Zap, Loader2, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import Link from 'next/link';
+import { AuthTransition } from "@/components/auth-transition";
 
 export default function LoginPage() {
   return (
@@ -31,6 +32,12 @@ function LoginForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showTransition, setShowTransition] = useState(false);
+
+  const handleTransitionComplete = useCallback(() => {
+    router.push(callbackUrl);
+    router.refresh();
+  }, [router, callbackUrl]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -51,8 +58,7 @@ function LoginForm() {
         return;
       }
 
-      router.push(callbackUrl);
-      router.refresh();
+      setShowTransition(true);
     } catch {
       setError("Something went wrong. Please try again.");
     } finally {
@@ -61,6 +67,10 @@ function LoginForm() {
   }
 
   return (
+    <>
+    {showTransition && (
+      <AuthTransition type="login" onComplete={handleTransitionComplete} />
+    )}
     <Card className="border-border bg-card">
       <CardHeader className="text-center">
         <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-primary">
@@ -125,5 +135,6 @@ function LoginForm() {
         </p>
       </CardContent>
     </Card>
+    </>
   );
 }
