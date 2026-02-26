@@ -317,7 +317,7 @@ function ProfileModal({
                     {user ? getInitials(user.email, fullName || user.full_name) : "?"}
                   </AvatarFallback>
                 </Avatar>
-                <span className="absolute bottom-1 right-1 block h-4 w-4 rounded-full bg-emerald-500 ring-2 ring-card" />
+                <span className="absolute -bottom-1 -right-2 block h-4 w-4 rounded-full bg-emerald-500 ring-2 ring-card" />
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
