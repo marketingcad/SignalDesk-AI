@@ -2,7 +2,7 @@
 
 import { Suspense, useState, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Zap, Loader2, ArrowLeft } from "lucide-react";
+import { Zap, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -12,7 +12,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import Link from 'next/link';
 import { AuthTransition } from "@/components/auth-transition";
 
 export default function LoginPage() {
@@ -125,11 +124,6 @@ function LoginForm() {
             Sign In
           </Button>
         </form>
-        <div className="pt-3.5">
-           <Link href="/" className="block text-center text-sm  mt-2 hover:text-primary transition-colors">
-               <ArrowLeft className="inline mr-2" />   Back to Home
-        </Link>
-        </div>
         <p className="mt-6 text-center text-sm text-muted-foreground">
           Contact your administrator if you need an account.
         </p>

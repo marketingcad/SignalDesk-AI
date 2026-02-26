@@ -2,6 +2,10 @@
 
 import { useState, useEffect } from "react";
 import { useTheme } from "next-themes";
+import Link from "next/link";
+import { Zap, ArrowLeft } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/theme-toggle";
 import FloatingLines from "@/components/FloatingLines";
 
 export default function AuthLayout({
@@ -16,7 +20,30 @@ export default function AuthLayout({
   useEffect(() => setMounted(true), []);
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background p-4">
+    <div className="relative flex min-h-screen flex-col overflow-hidden bg-background">
+      {/* ── Fixed Navbar ── */}
+      <nav className="animate-nav fixed top-0 left-0 right-0 z-30 flex items-center justify-between px-6 py-4 md:px-12 lg:px-20">
+        <Link href="/" className="flex items-center gap-2.5">
+          <div className="flex size-9 items-center justify-center rounded-lg bg-primary">
+            <Zap className="size-5 text-primary-foreground" />
+          </div>
+          <span className="text-lg font-semibold tracking-tight">
+            Signal<span className="text-primary">Desk</span>
+            <span className="ml-2">AI</span>
+          </span>
+        </Link>
+
+        <div className="flex items-center gap-3">
+          <ThemeToggle />
+          <Link href="/">
+            <Button variant="outline" size="sm" className="gap-1.5">
+              <ArrowLeft className="size-3.5" />
+              Home
+            </Button>
+          </Link>
+        </div>
+      </nav>
+
       {/* Background animation */}
       {mounted && (
         <div className="pointer-events-none absolute inset-0 z-0">
@@ -44,7 +71,11 @@ export default function AuthLayout({
           />
         </div>
       )}
-      <div className="relative z-10 w-full max-w-md">{children}</div>
+
+      {/* Content — centered with top padding to clear the fixed navbar */}
+      <div className="relative z-10 flex flex-1 items-center justify-center p-4 pt-20">
+        <div className="w-full max-w-md">{children}</div>
+      </div>
     </div>
   );
 }
