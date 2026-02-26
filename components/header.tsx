@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { UserAvatarMenu } from "@/components/user-avatar-menu";
 
 interface HeaderProps {
   title: string;
@@ -39,6 +40,8 @@ export function Header({ title, subtitle, actions }: HeaderProps) {
         </Button>
         {/* Theme Toggle */}
         <ThemeToggle />
+        {/* User Avatar */}
+        <UserAvatarMenu />
         {/* Actions */}
         {actions}
       </div>
