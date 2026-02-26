@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Header, ActionButton } from "@/components/header";
+import { useState, useEffect, useRef } from "react";
+import { Header } from "@/components/header";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,10 +14,13 @@ import {
   Users,
   Mail,
   Calendar,
-  X,
+  Search,
   Eye,
   EyeOff,
+  ChevronDown,
+  CheckCircle2,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface User {
   id: string;
@@ -32,6 +35,7 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
   const [search, setSearch] = useState("");
+  const formRef = useRef<HTMLDivElement>(null);
 
   // Add user form state
   const [newEmail, setNewEmail] = useState("");
@@ -64,6 +68,27 @@ export default function UsersPage() {
     fetchUsers();
   }, []);
 
+  function toggleAddForm() {
+    const next = !showAddForm;
+    setShowAddForm(next);
+    setAddError("");
+    setAddSuccess("");
+    if (next) {
+      setTimeout(() => {
+        formRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }, 100);
+    }
+  }
+
+  function resetForm() {
+    setNewEmail("");
+    setNewPassword("");
+    setNewFullName("");
+    setShowPassword(false);
+    setAddError("");
+    setAddSuccess("");
+  }
+
   async function handleAddUser(e: React.FormEvent) {
     e.preventDefault();
     setAddError("");
@@ -89,10 +114,8 @@ export default function UsersPage() {
       }
 
       setAddSuccess("User created successfully");
-      setNewEmail("");
-      setNewPassword("");
-      setNewFullName("");
-      setShowPassword(false);
+      resetForm();
+      setAddSuccess("User created successfully");
       fetchUsers();
 
       setTimeout(() => {
@@ -160,134 +183,9 @@ export default function UsersPage() {
       <Header
         title="User Management"
         subtitle="Add and manage team members"
-        actions={
-          <ActionButton icon={UserPlus} onClick={() => setShowAddForm(true)}>
-            Add User
-          </ActionButton>
-        }
       />
       <div className="p-6 space-y-6 max-w-7xl mx-auto">
-        {/* Add User Modal */}
-        {showAddForm && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-            <Card className="w-full max-w-md mx-4 p-0 overflow-hidden">
-              <div className="flex items-center justify-between border-b border-border px-5 py-4">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
-                    <UserPlus className="h-4 w-4 text-primary" />
-                  </div>
-                  <div>
-                    <h2 className="text-sm font-semibold text-foreground">
-                      Add New User
-                    </h2>
-                    <p className="text-xs text-muted-foreground">
-                      Create an account for a team member
-                    </p>
-                  </div>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => {
-                    setShowAddForm(false);
-                    setAddError("");
-                    setAddSuccess("");
-                  }}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-              <form onSubmit={handleAddUser} className="p-5 space-y-4">
-                {addError && (
-                  <div className="rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                    {addError}
-                  </div>
-                )}
-                {addSuccess && (
-                  <div className="rounded-lg border border-emerald-500/50 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-500">
-                    {addSuccess}
-                  </div>
-                )}
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground">
-                    Full Name
-                  </label>
-                  <Input
-                    type="text"
-                    placeholder="John Doe"
-                    value={newFullName}
-                    onChange={(e) => setNewFullName(e.target.value)}
-                    autoComplete="off"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground">
-                    Email <span className="text-destructive">*</span>
-                  </label>
-                  <Input
-                    type="email"
-                    placeholder="user@company.com"
-                    value={newEmail}
-                    onChange={(e) => setNewEmail(e.target.value)}
-                    required
-                    autoComplete="off"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground">
-                    Password <span className="text-destructive">*</span>
-                  </label>
-                  <div className="relative">
-                    <Input
-                      type={showPassword ? "text" : "password"}
-                      placeholder="Min. 8 characters"
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      required
-                      minLength={8}
-                      autoComplete="new-password"
-                      className="pr-10"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                    >
-                      {showPassword ? (
-                        <EyeOff className="h-4 w-4" />
-                      ) : (
-                        <Eye className="h-4 w-4" />
-                      )}
-                    </button>
-                  </div>
-                </div>
-                <div className="flex gap-3 pt-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="flex-1"
-                    onClick={() => {
-                      setShowAddForm(false);
-                      setAddError("");
-                      setAddSuccess("");
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                  <Button type="submit" className="flex-1" disabled={addLoading}>
-                    {addLoading && (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    )}
-                    Create User
-                  </Button>
-                </div>
-              </form>
-            </Card>
-          </div>
-        )}
-
-        {/* Stats */}
+        {/* Stats Row */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <Card className="flex items-center gap-4 p-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
@@ -317,14 +215,140 @@ export default function UsersPage() {
             </div>
             <div>
               <p className="text-2xl font-bold text-foreground">
-                {users.length > 0
-                  ? formatDate(users[0].created_at)
-                  : "-"}
+                {users.length > 0 ? formatDate(users[0].created_at) : "-"}
               </p>
               <p className="text-xs text-muted-foreground">Latest Added</p>
             </div>
           </Card>
         </div>
+
+        {/* Add User Inline Card */}
+        <Card className="overflow-hidden p-0" ref={formRef}>
+          <button
+            type="button"
+            onClick={toggleAddForm}
+            className="flex w-full items-center justify-between px-5 py-4 text-left hover:bg-accent/30 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <div className={cn(
+                "flex h-8 w-8 items-center justify-center rounded-lg transition-colors",
+                showAddForm ? "bg-primary text-primary-foreground" : "bg-primary/10"
+              )}>
+                <UserPlus className={cn("h-4 w-4", !showAddForm && "text-primary")} />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-foreground">
+                  Add New User
+                </h2>
+                <p className="text-xs text-muted-foreground">
+                  Create an account for a new team member
+                </p>
+              </div>
+            </div>
+            <ChevronDown
+              className={cn(
+                "h-4 w-4 text-muted-foreground transition-transform duration-200",
+                showAddForm && "rotate-180"
+              )}
+            />
+          </button>
+
+          {showAddForm && (
+            <div className="border-t border-border px-5 py-5 animate-fade-in">
+              <form onSubmit={handleAddUser} className="space-y-4">
+                {addError && (
+                  <div className="rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                    {addError}
+                  </div>
+                )}
+                {addSuccess && (
+                  <div className="flex items-center gap-2 rounded-lg border border-emerald-500/50 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-500">
+                    <CheckCircle2 className="h-4 w-4 shrink-0" />
+                    {addSuccess}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">
+                      Full Name
+                    </label>
+                    <Input
+                      type="text"
+                      placeholder="John Doe"
+                      value={newFullName}
+                      onChange={(e) => setNewFullName(e.target.value)}
+                      autoComplete="off"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">
+                      Email <span className="text-destructive">*</span>
+                    </label>
+                    <Input
+                      type="email"
+                      placeholder="user@company.com"
+                      value={newEmail}
+                      onChange={(e) => setNewEmail(e.target.value)}
+                      required
+                      autoComplete="off"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">
+                      Password <span className="text-destructive">*</span>
+                    </label>
+                    <div className="relative">
+                      <Input
+                        type={showPassword ? "text" : "password"}
+                        placeholder="Min. 8 characters"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        required
+                        minLength={8}
+                        autoComplete="new-password"
+                        className="pr-10"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      >
+                        {showPassword ? (
+                          <EyeOff className="h-4 w-4" />
+                        ) : (
+                          <Eye className="h-4 w-4" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-3 pt-1">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      resetForm();
+                      setShowAddForm(false);
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button type="submit" size="sm" className="gap-2" disabled={addLoading}>
+                    {addLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <UserPlus className="h-4 w-4" />
+                    )}
+                    Create User
+                  </Button>
+                </div>
+              </form>
+            </div>
+          )}
+        </Card>
 
         {/* Users List */}
         <Card className="overflow-hidden p-0">
@@ -343,13 +367,16 @@ export default function UsersPage() {
                 </p>
               </div>
             </div>
-            <Input
-              type="text"
-              placeholder="Search users..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-64"
-            />
+            <div className="relative w-64">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                type="text"
+                placeholder="Search users..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-9"
+              />
+            </div>
           </div>
 
           <div className="divide-y divide-border">
@@ -364,7 +391,7 @@ export default function UsersPage() {
                 <p className="text-xs mt-1">
                   {search
                     ? "Try a different search term"
-                    : "Add your first team member"}
+                    : "Add your first team member above"}
                 </p>
               </div>
             ) : (
@@ -395,7 +422,7 @@ export default function UsersPage() {
                   <div className="flex items-center gap-4">
                     <Badge
                       variant="secondary"
-                      className="text-xs font-medium"
+                      className="text-xs font-medium hidden sm:inline-flex"
                     >
                       Joined {formatDate(user.created_at)}
                     </Badge>
