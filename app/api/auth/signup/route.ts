@@ -1,15 +1,34 @@
 import { NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import bcrypt from "bcryptjs";
 import { supabase } from "@/lib/supabase";
 import {
-  createSession,
+  verifySession,
   SESSION_COOKIE_NAME,
-  SESSION_COOKIE_OPTIONS,
 } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
   try {
-    const { email, password } = await request.json();
+    // Require authenticated session (admin only)
+    const cookieStore = await cookies();
+    const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
+
+    if (!token) {
+      return NextResponse.json(
+        { error: "Not authenticated" },
+        { status: 401 }
+      );
+    }
+
+    const session = await verifySession(token);
+    if (!session) {
+      return NextResponse.json(
+        { error: "Invalid session" },
+        { status: 401 }
+      );
+    }
+
+    const { email, password, full_name } = await request.json();
 
     if (!email || !password) {
       return NextResponse.json(
@@ -52,29 +71,25 @@ export async function POST(request: NextRequest) {
 
     const { data: newUser, error: insertError } = await supabase
       .from("users")
-      .insert({ email: normalizedEmail, password_hash: passwordHash })
-      .select("id, email")
+      .insert({
+        email: normalizedEmail,
+        password_hash: passwordHash,
+        full_name: full_name?.trim() || null,
+      })
+      .select("id, email, full_name")
       .single();
 
     if (insertError || !newUser) {
-      console.error("Signup insert error:", insertError);
+      console.error("User creation error:", insertError);
       return NextResponse.json(
-        { error: "Failed to create account" },
+        { error: "Failed to create user" },
         { status: 500 }
       );
     }
 
-    const token = await createSession({
-      userId: newUser.id,
-      email: newUser.email,
-    });
-
-    const response = NextResponse.json({ success: true }, { status: 201 });
-    response.cookies.set(SESSION_COOKIE_NAME, token, SESSION_COOKIE_OPTIONS);
-
-    return response;
+    return NextResponse.json({ success: true, user: newUser }, { status: 201 });
   } catch (error) {
-    console.error("Signup error:", error);
+    console.error("Create user error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
