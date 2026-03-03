@@ -1,0 +1,58 @@
+{
+  "manifest_version": 3,
+  "name": "SignalDesk AI",
+  "version": "0.1.0",
+  "description": "Detects virtual assistant hiring signals across social platforms",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://*.vercel.app/api/*",
+    "http://localhost:3000/api/*"
+  ],
+  "background": {
+    "service_worker": "src/background/service-worker.ts",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.facebook.com/groups/*"],
+      "js": ["src/content-scripts/facebook.ts"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.linkedin.com/feed/*",
+        "https://www.linkedin.com/groups/*"
+      ],
+      "js": ["src/content-scripts/linkedin.ts"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://www.reddit.com/r/*"],
+      "js": ["src/content-scripts/reddit.ts"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://x.com/home",
+        "https://x.com/search*"
+      ],
+      "js": ["src/content-scripts/x.ts"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "src/popup/index.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  }
+}

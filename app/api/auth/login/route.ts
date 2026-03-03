@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
       email: user.email,
     });
 
-    const response = NextResponse.json({ success: true });
+    const response = NextResponse.json({ success: true, token });
     response.cookies.set(SESSION_COOKIE_NAME, token, SESSION_COOKIE_OPTIONS);
 
     return response;

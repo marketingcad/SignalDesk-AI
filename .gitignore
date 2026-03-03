@@ -42,3 +42,7 @@ next-env.d.ts
 
 # separate devvit project
 /signaldeskai
+
+# chrome extension build output
+/extension/dist
+/extension/node_modules

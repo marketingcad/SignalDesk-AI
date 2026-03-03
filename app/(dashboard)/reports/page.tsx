@@ -1,13 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Header, ActionButton } from "@/components/header";
 import { IntentBadge } from "@/components/intent-badge";
 import { PlatformBadge } from "@/components/platform-badge";
 import { Card } from "@/components/ui/card";
-import { dailyReports } from "@/lib/mock-data";
+import { dailyReports as mockReports } from "@/lib/mock-data";
 import { cn, getPlatformColor } from "@/lib/utils";
-import type { Platform } from "@/lib/types";
+import type { Platform, DailyReport } from "@/lib/types";
 import {
   Download,
   Calendar,
@@ -22,9 +22,49 @@ import {
 } from "lucide-react";
 
 export default function ReportsPage() {
+  const [dailyReports, setDailyReports] = useState<DailyReport[]>(mockReports);
   const [expandedDate, setExpandedDate] = useState<string | null>(
     dailyReports[0]?.date ?? null
   );
+
+  useEffect(() => {
+    fetch("/api/leads?limit=500")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!data?.leads?.length) return;
+        // Group leads by day into DailyReport format
+        const byDay: Record<string, DailyReport> = {};
+        for (const lead of data.leads) {
+          const day = new Date(lead.createdAt).toISOString().slice(0, 10);
+          if (!byDay[day]) {
+            byDay[day] = {
+              date: day,
+              totalLeads: 0,
+              highIntent: 0,
+              mediumIntent: 0,
+              lowIntent: 0,
+              platforms: { Facebook: 0, LinkedIn: 0, Reddit: 0, X: 0 },
+              topLeads: [],
+            };
+          }
+          const r = byDay[day];
+          r.totalLeads++;
+          if (lead.intentLevel === "High") r.highIntent++;
+          else if (lead.intentLevel === "Medium") r.mediumIntent++;
+          else r.lowIntent++;
+          r.platforms[lead.platform as Platform]++;
+          if (r.topLeads.length < 3) r.topLeads.push(lead);
+        }
+        const reports = Object.values(byDay).sort(
+          (a, b) => b.date.localeCompare(a.date)
+        );
+        if (reports.length > 0) {
+          setDailyReports(reports);
+          setExpandedDate(reports[0].date);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   return (
     <>

@@ -2,10 +2,16 @@
 
 import { useState, useEffect } from "react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
-import { platformBreakdown } from "@/lib/mock-data";
+import { platformBreakdown as mockBreakdown } from "@/lib/mock-data";
 import { getPlatformColor } from "@/lib/utils";
 
-function CustomTooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload: { platform: string; count: number; percentage: number } }> }) {
+interface PlatformData {
+  platform: string;
+  count: number;
+  percentage: number;
+}
+
+function CustomTooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload: PlatformData }> }) {
   if (!active || !payload?.[0]) return null;
   const data = payload[0].payload;
   return (
@@ -20,7 +26,32 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: Array<
 
 export function PlatformChart() {
   const [mounted, setMounted] = useState(false);
+  const [platformBreakdown, setPlatformBreakdown] = useState<PlatformData[]>(mockBreakdown);
+
   useEffect(() => setMounted(true), []);
+
+  useEffect(() => {
+    fetch("/api/leads?limit=500")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!data?.leads?.length) return;
+        const counts: Record<string, number> = { Facebook: 0, LinkedIn: 0, Reddit: 0, X: 0 };
+        for (const lead of data.leads) {
+          if (counts[lead.platform] !== undefined) counts[lead.platform]++;
+        }
+        const total = Object.values(counts).reduce((a, b) => a + b, 0);
+        if (total > 0) {
+          setPlatformBreakdown(
+            Object.entries(counts).map(([platform, count]) => ({
+              platform,
+              count,
+              percentage: Math.round((count / total) * 100),
+            }))
+          );
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   return (
     <div className="flex items-center gap-6">

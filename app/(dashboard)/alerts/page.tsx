@@ -1,13 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Header } from "@/components/header";
 import { IntentBadge } from "@/components/intent-badge";
 import { PlatformBadge } from "@/components/platform-badge";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { alerts as allAlerts } from "@/lib/mock-data";
+import { alerts as mockAlerts } from "@/lib/mock-data";
 import { timeAgo, cn } from "@/lib/utils";
+import type { Alert, Lead } from "@/lib/types";
 import {
   Bell,
   BellOff,
@@ -17,7 +18,30 @@ import {
 } from "lucide-react";
 
 export default function AlertsPage() {
-  const [alerts, setAlerts] = useState(allAlerts);
+  const [alerts, setAlerts] = useState<Alert[]>(mockAlerts);
+
+  useEffect(() => {
+    fetch("/api/alerts?limit=30")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((leads: Lead[] | null) => {
+        if (leads && leads.length > 0) {
+          setAlerts(
+            leads.map((lead) => ({
+              id: lead.id,
+              leadId: lead.id,
+              platform: lead.platform,
+              intentScore: lead.intentScore,
+              snippet: lead.text?.slice(0, 140) ?? "",
+              username: lead.username,
+              source: lead.source,
+              createdAt: new Date(lead.createdAt),
+              read: false,
+            }))
+          );
+        }
+      })
+      .catch(() => {});
+  }, []);
   const [filter, setFilter] = useState<"all" | "unread">("all");
 
   const displayed = filter === "unread" ? alerts.filter((a) => !a.read) : alerts;

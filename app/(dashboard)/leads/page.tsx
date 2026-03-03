@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Header, ActionButton } from "@/components/header";
 import { IntentBadge } from "@/components/intent-badge";
 import { PlatformBadge } from "@/components/platform-badge";
@@ -8,9 +8,9 @@ import { StatusBadge } from "@/components/status-badge";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { leads as allLeads } from "@/lib/mock-data";
+import { leads as mockLeads } from "@/lib/mock-data";
 import { timeAgo, cn } from "@/lib/utils";
-import type { Platform, IntentLevel, LeadStatus } from "@/lib/types";
+import type { Lead, Platform, IntentLevel, LeadStatus } from "@/lib/types";
 import {
   Search,
   Download,
@@ -31,21 +31,44 @@ export default function LeadsPage() {
   const [intentFilter, setIntentFilter] = useState<FilterIntent>("All");
   const [statusFilter, setStatusFilter] = useState<FilterStatus>("All");
   const [expandedLead, setExpandedLead] = useState<string | null>(null);
+  const [filteredLeads, setFilteredLeads] = useState<Lead[]>(mockLeads);
 
-  const filteredLeads = allLeads.filter((lead) => {
-    if (platformFilter !== "All" && lead.platform !== platformFilter) return false;
-    if (intentFilter !== "All" && lead.intentLevel !== intentFilter) return false;
-    if (statusFilter !== "All" && lead.status !== statusFilter) return false;
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      return (
-        lead.username.toLowerCase().includes(q) ||
-        lead.text.toLowerCase().includes(q) ||
-        lead.source.toLowerCase().includes(q)
-      );
-    }
-    return true;
-  });
+  const fetchLeads = useCallback(() => {
+    const params = new URLSearchParams();
+    if (platformFilter !== "All") params.set("platform", platformFilter);
+    if (intentFilter !== "All") params.set("intentLevel", intentFilter);
+    if (statusFilter !== "All") params.set("status", statusFilter);
+    if (searchQuery) params.set("search", searchQuery);
+    params.set("limit", "50");
+
+    fetch(`/api/leads?${params}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.leads?.length >= 0) setFilteredLeads(data.leads);
+      })
+      .catch(() => {
+        // Fallback to client-side filtering of mock data
+        const filtered = mockLeads.filter((lead) => {
+          if (platformFilter !== "All" && lead.platform !== platformFilter) return false;
+          if (intentFilter !== "All" && lead.intentLevel !== intentFilter) return false;
+          if (statusFilter !== "All" && lead.status !== statusFilter) return false;
+          if (searchQuery) {
+            const q = searchQuery.toLowerCase();
+            return (
+              lead.username.toLowerCase().includes(q) ||
+              lead.text.toLowerCase().includes(q) ||
+              lead.source.toLowerCase().includes(q)
+            );
+          }
+          return true;
+        });
+        setFilteredLeads(filtered);
+      });
+  }, [platformFilter, intentFilter, statusFilter, searchQuery]);
+
+  useEffect(() => {
+    fetchLeads();
+  }, [fetchLeads]);
 
   return (
     <>

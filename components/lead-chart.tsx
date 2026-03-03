@@ -9,7 +9,8 @@ import {
   CartesianGrid,
   Tooltip,
 } from "recharts";
-import { chartData } from "@/lib/mock-data";
+import { chartData as mockChartData } from "@/lib/mock-data";
+import type { ChartDataPoint } from "@/lib/types";
 
 function CustomTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ value: number; dataKey: string }>; label?: string }) {
   if (!active || !payload) return null;
@@ -30,6 +31,16 @@ function CustomTooltip({ active, payload, label }: { active?: boolean; payload?:
 export function LeadChart() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
+  const [chartData, setChartData] = useState<ChartDataPoint[]>(mockChartData);
+
+  useEffect(() => {
+    fetch("/api/dashboard/chart?days=7")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && data.length > 0) setChartData(data);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const el = containerRef.current;

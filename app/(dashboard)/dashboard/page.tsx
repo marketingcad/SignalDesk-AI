@@ -8,8 +8,14 @@ import { StatusBadge } from "@/components/status-badge";
 import { LeadChart } from "@/components/lead-chart";
 import { PlatformChart } from "@/components/platform-chart";
 import { Card } from "@/components/ui/card";
-import { dashboardStats, leads, alerts } from "@/lib/mock-data";
+import {
+  dashboardStats as mockStats,
+  leads as mockLeads,
+  alerts as mockAlerts,
+} from "@/lib/mock-data";
+import { useApi } from "@/lib/use-api";
 import { timeAgo } from "@/lib/utils";
+import type { Lead, Alert, DashboardStats } from "@/lib/types";
 import {
   Users,
   Flame,
@@ -20,8 +26,35 @@ import {
 } from "lucide-react";
 
 export default function DashboardPage() {
-  const recentLeads = leads.filter((l) => l.intentLevel === "High").slice(0, 5);
-  const recentAlerts = alerts.filter((a) => !a.read).slice(0, 4);
+  const { data: stats } = useApi<DashboardStats>(
+    "/api/dashboard/stats",
+    mockStats
+  );
+  const { data: leadsResponse } = useApi<{ leads: Lead[]; count: number }>(
+    "/api/leads?intentLevel=High&limit=5",
+    { leads: mockLeads.filter((l) => l.intentLevel === "High").slice(0, 5), count: 5 }
+  );
+  const { data: alertLeads } = useApi<Lead[]>(
+    "/api/alerts?limit=4",
+    mockAlerts.map((a) => ({
+      ...mockLeads.find((l) => l.id === a.leadId)!,
+      id: a.id,
+    }))
+  );
+
+  const dashboardStats = stats;
+  const recentLeads = leadsResponse.leads?.slice(0, 5) ?? [];
+  const recentAlerts = (alertLeads ?? []).slice(0, 4).map((lead) => ({
+    id: lead.id,
+    leadId: lead.id,
+    platform: lead.platform,
+    intentScore: lead.intentScore,
+    snippet: lead.text?.slice(0, 140) ?? "",
+    username: lead.username,
+    source: lead.source,
+    createdAt: lead.createdAt,
+    read: false,
+  }));
 
   return (
     <>
