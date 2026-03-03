@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import type { PlatformToggles, Stats } from "../types";
+import type { PlatformToggles, Stats, AutoMonitorConfig, MonitoredUrl, Platform } from "../types";
 
 const PLATFORMS: (keyof PlatformToggles)[] = ["Facebook", "LinkedIn", "Reddit", "X"];
 
@@ -19,18 +19,39 @@ export function App() {
   const [loginError, setLoginError] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [autoConfig, setAutoConfig] = useState<AutoMonitorConfig | null>(null);
+  const [autoRunning, setAutoRunning] = useState(false);
+  const [autoTabCount, setAutoTabCount] = useState(0);
+  const [newUrlInput, setNewUrlInput] = useState("");
+  const [urlInputError, setUrlInputError] = useState("");
 
   useEffect(() => {
     chrome.storage.local.get(
-      ["authToken", "stats", "platformToggles", "apiUrl"],
+      ["authToken", "stats", "platformToggles", "apiUrl", "autoMonitorConfig"],
       (result) => {
         setAuthToken(result.authToken || null);
         setStats(result.stats || { totalSent: 0, byPlatform: {}, lastSentAt: null, errors: 0 });
         setToggles(result.platformToggles || { Facebook: true, LinkedIn: true, Reddit: true, X: false });
         setApiUrl(result.apiUrl || "http://localhost:3000");
+        setAutoConfig(result.autoMonitorConfig || {
+          urls: [],
+          intervalMinutes: 2,
+          isRunning: false,
+          scrollDurationMs: 105_000,
+          scrollStepPx: 500,
+          scrollIntervalMs: 2_000,
+        });
         setLoading(false);
       }
     );
+
+    // Get auto-monitor running status from service worker
+    chrome.runtime.sendMessage({ type: "GET_AUTO_MONITOR_STATUS" }, (res) => {
+      if (res) {
+        setAutoRunning(res.isRunning || false);
+        setAutoTabCount(res.tabCount || 0);
+      }
+    });
   }, []);
 
   async function handleLogin() {
@@ -68,6 +89,106 @@ export function App() {
   async function handleApiUrlChange(url: string) {
     setApiUrl(url);
     await chrome.storage.local.set({ apiUrl: url });
+  }
+
+  // --- Auto-Monitor helpers ---
+
+  function inferPlatform(url: string): Platform | null {
+    if (url.includes("facebook.com")) return "Facebook";
+    if (url.includes("linkedin.com")) return "LinkedIn";
+    if (url.includes("reddit.com")) return "Reddit";
+    if (url.includes("x.com") || url.includes("twitter.com")) return "X";
+    return null;
+  }
+
+  function inferLabel(url: string): string {
+    try {
+      const u = new URL(url);
+      const path = u.pathname.replace(/\/$/, "");
+      const parts = path.split("/").filter(Boolean);
+      if (parts.length >= 2) return parts.slice(-1)[0];
+      return u.hostname;
+    } catch {
+      return url.slice(0, 30);
+    }
+  }
+
+  async function handleAddUrl() {
+    setUrlInputError("");
+    const trimmed = newUrlInput.trim();
+    if (!trimmed) return;
+
+    try {
+      new URL(trimmed);
+    } catch {
+      setUrlInputError("Enter a valid URL");
+      return;
+    }
+
+    const platform = inferPlatform(trimmed);
+    if (!platform) {
+      setUrlInputError("URL must be from Facebook, LinkedIn, Reddit, or X");
+      return;
+    }
+
+    if (!autoConfig) return;
+
+    const newEntry: MonitoredUrl = {
+      id: crypto.randomUUID(),
+      url: trimmed,
+      platform,
+      label: inferLabel(trimmed),
+      enabled: true,
+    };
+
+    const updated = { ...autoConfig, urls: [...autoConfig.urls, newEntry] };
+    await chrome.storage.local.set({ autoMonitorConfig: updated });
+    setAutoConfig(updated);
+    setNewUrlInput("");
+  }
+
+  async function handleRemoveUrl(id: string) {
+    if (!autoConfig) return;
+    const updated = { ...autoConfig, urls: autoConfig.urls.filter((u) => u.id !== id) };
+    await chrome.storage.local.set({ autoMonitorConfig: updated });
+    setAutoConfig(updated);
+  }
+
+  async function handleToggleUrl(id: string) {
+    if (!autoConfig) return;
+    const updated = {
+      ...autoConfig,
+      urls: autoConfig.urls.map((u) => (u.id === id ? { ...u, enabled: !u.enabled } : u)),
+    };
+    await chrome.storage.local.set({ autoMonitorConfig: updated });
+    setAutoConfig(updated);
+  }
+
+  async function handleIntervalChange(min: number) {
+    if (!autoConfig) return;
+    const clamped = Math.max(1, Math.min(60, min));
+    const updated = { ...autoConfig, intervalMinutes: clamped };
+    await chrome.storage.local.set({ autoMonitorConfig: updated });
+    setAutoConfig(updated);
+  }
+
+  async function handleAutoStartStop() {
+    if (autoRunning) {
+      chrome.runtime.sendMessage({ type: "STOP_AUTO_MONITOR" }, (res) => {
+        if (res?.ok) {
+          setAutoRunning(false);
+          setAutoTabCount(0);
+        }
+      });
+    } else {
+      chrome.runtime.sendMessage({ type: "START_AUTO_MONITOR" }, (res) => {
+        if (res?.ok) {
+          setAutoRunning(true);
+          const enabledCount = autoConfig?.urls.filter((u) => u.enabled).length || 0;
+          setAutoTabCount(enabledCount);
+        }
+      });
+    }
   }
 
   if (loading) {
@@ -203,6 +324,114 @@ export function App() {
             </div>
           ))}
       </div>
+
+      {/* Auto-Monitor */}
+      {autoConfig && (
+        <div style={styles.card}>
+          <div style={styles.cardTitle}>Auto-Monitor</div>
+
+          {/* URL input */}
+          <div style={{ display: "flex", gap: 6 }}>
+            <input
+              style={{ ...styles.input, flex: 1, fontSize: 12, padding: "6px 10px" }}
+              type="url"
+              value={newUrlInput}
+              onChange={(e) => { setNewUrlInput(e.target.value); setUrlInputError(""); }}
+              placeholder="https://www.facebook.com/groups/..."
+              onKeyDown={(e) => e.key === "Enter" && handleAddUrl()}
+            />
+            <button
+              style={{ ...styles.button, padding: "6px 12px", fontSize: 12 }}
+              onClick={handleAddUrl}
+            >
+              Add
+            </button>
+          </div>
+          {urlInputError && <div style={{ ...styles.error, fontSize: 11 }}>{urlInputError}</div>}
+
+          {/* URL list */}
+          {autoConfig.urls.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              {autoConfig.urls.map((entry) => (
+                <div key={entry.id} style={styles.urlRow}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flex: 1, overflow: "hidden" }}>
+                    <div
+                      style={{
+                        ...styles.platformDot,
+                        backgroundColor: entry.enabled
+                          ? PLATFORM_COLORS[entry.platform]
+                          : "#52525b",
+                        flexShrink: 0,
+                      }}
+                    />
+                    <span style={{ fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {entry.label}
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    <button
+                      style={{
+                        ...styles.toggle,
+                        width: 32,
+                        height: 16,
+                        backgroundColor: entry.enabled ? "#6366f1" : "#3f3f46",
+                      }}
+                      onClick={() => handleToggleUrl(entry.id)}
+                    >
+                      <div
+                        style={{
+                          ...styles.toggleKnob,
+                          width: 12,
+                          height: 12,
+                          transform: entry.enabled ? "translateX(14px)" : "translateX(2px)",
+                        }}
+                      />
+                    </button>
+                    <button
+                      style={styles.removeBtn}
+                      onClick={() => handleRemoveUrl(entry.id)}
+                      title="Remove URL"
+                    >
+                      x
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Interval config */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span style={{ fontSize: 12, color: "#a1a1aa" }}>Refresh every</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <input
+                style={{ ...styles.input, width: 48, textAlign: "center", fontSize: 12, padding: "4px 6px" }}
+                type="number"
+                min={1}
+                max={60}
+                value={autoConfig.intervalMinutes}
+                onChange={(e) => handleIntervalChange(Number(e.target.value))}
+              />
+              <span style={{ fontSize: 12, color: "#71717a" }}>min</span>
+            </div>
+          </div>
+
+          {/* Start / Stop button */}
+          <button
+            style={{
+              ...styles.button,
+              backgroundColor: autoRunning ? "#ef4444" : "#22c55e",
+              opacity: autoConfig.urls.filter((u) => u.enabled).length === 0 && !autoRunning ? 0.5 : 1,
+            }}
+            onClick={handleAutoStartStop}
+            disabled={autoConfig.urls.filter((u) => u.enabled).length === 0 && !autoRunning}
+          >
+            {autoRunning
+              ? `Stop Monitoring (${autoTabCount} tab${autoTabCount !== 1 ? "s" : ""})`
+              : "Start Auto-Monitor"}
+          </button>
+        </div>
+      )}
 
       <button style={styles.logoutButton} onClick={handleLogout}>
         Sign Out
@@ -382,5 +611,26 @@ const styles: Record<string, React.CSSProperties> = {
     color: "#a1a1aa",
     fontSize: 12,
     cursor: "pointer",
+  },
+  urlRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "4px 0",
+    gap: 6,
+  },
+  removeBtn: {
+    width: 18,
+    height: 18,
+    borderRadius: 4,
+    border: "none",
+    backgroundColor: "#3f3f46",
+    color: "#a1a1aa",
+    fontSize: 11,
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    lineHeight: 1,
   },
 };

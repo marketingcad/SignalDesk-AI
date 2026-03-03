@@ -4,7 +4,9 @@
   "version": "0.1.0",
   "description": "Detects virtual assistant hiring signals across social platforms",
   "permissions": [
-    "storage"
+    "storage",
+    "alarms",
+    "tabs"
   ],
   "host_permissions": [
     "https://*.vercel.app/api/*",

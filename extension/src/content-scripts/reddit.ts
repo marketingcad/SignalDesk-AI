@@ -1,7 +1,8 @@
 import { createPlatformObserver, type PlatformAdapter } from "../shared/observer-factory";
 import { passesPreFilter } from "../shared/pre-filter";
 import { getCleanText, parseEngagement } from "../shared/dom-utils";
-import type { ExtractedPost } from "../types";
+import { startAutoScroll, stopAutoScroll } from "../shared/auto-scroll";
+import type { ExtractedPost, StartAutoScrollMessage } from "../types";
 
 const PLATFORM = "Reddit" as const;
 
@@ -116,3 +117,17 @@ async function init() {
 }
 
 init();
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message.type === "START_AUTO_SCROLL") {
+    startAutoScroll(message as StartAutoScrollMessage);
+    sendResponse({ ok: true });
+    return false;
+  }
+  if (message.type === "STOP_AUTO_SCROLL") {
+    stopAutoScroll();
+    sendResponse({ ok: true });
+    return false;
+  }
+  return false;
+});
