@@ -35,3 +35,23 @@ export const SESSION_COOKIE_OPTIONS = {
   path: "/",
   maxAge: 60 * 60 * 24 * 7,
 };
+
+export async function createResetToken(email: string): Promise<string> {
+  return new SignJWT({ email, type: "password-reset" })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("1h")
+    .sign(secret);
+}
+
+export async function verifyResetToken(
+  token: string
+): Promise<{ email: string } | null> {
+  try {
+    const { payload } = await jwtVerify(token, secret);
+    if (payload.type !== "password-reset") return null;
+    return { email: payload.email as string };
+  } catch {
+    return null;
+  }
+}

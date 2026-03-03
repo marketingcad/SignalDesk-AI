@@ -1,9 +1,8 @@
 "use client";
 
-import { Suspense, useState, useCallback } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useState } from "react";
 import Link from "next/link";
-import { Zap, Loader2 } from "lucide-react";
+import { Zap, Loader2, ArrowLeft, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -13,31 +12,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { AuthTransition } from "@/components/auth-transition";
 
-export default function LoginPage() {
-  return (
-    <Suspense>
-      <LoginForm />
-    </Suspense>
-  );
-}
-
-function LoginForm() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get("callbackUrl") || "/dashboard";
-
+export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [showTransition, setShowTransition] = useState(false);
-
-  const handleTransitionComplete = useCallback(() => {
-    router.push(callbackUrl);
-    router.refresh();
-  }, [router, callbackUrl]);
+  const [sent, setSent] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -45,20 +25,20 @@ function LoginForm() {
     setLoading(true);
 
     try {
-      const res = await fetch("/api/auth/login", {
+      const res = await fetch("/api/auth/forgot-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email }),
       });
 
       const data = await res.json();
 
       if (!res.ok) {
-        setError(data.error || "Login failed");
+        setError(data.error || "Something went wrong");
         return;
       }
 
-      setShowTransition(true);
+      setSent(true);
     } catch {
       setError("Something went wrong. Please try again.");
     } finally {
@@ -66,18 +46,42 @@ function LoginForm() {
     }
   }
 
+  if (sent) {
+    return (
+      <Card className="border-border bg-card">
+        <CardHeader className="text-center">
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-primary">
+            <Mail className="h-6 w-6 text-primary-foreground" />
+          </div>
+          <CardTitle className="text-2xl">Check your email</CardTitle>
+          <CardDescription>
+            If an account exists for <strong>{email}</strong>, we&apos;ve sent a
+            password reset link. Please check your inbox and spam folder.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Link href="/login">
+            <Button variant="outline" className="w-full gap-2">
+              <ArrowLeft className="h-4 w-4" />
+              Back to Sign In
+            </Button>
+          </Link>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
-    <>
-    {showTransition && (
-      <AuthTransition type="login" onComplete={handleTransitionComplete} />
-    )}
     <Card className="border-border bg-card">
       <CardHeader className="text-center">
         <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-primary">
           <Zap className="h-6 w-6 text-primary-foreground" />
         </div>
-        <CardTitle className="text-2xl">Welcome back</CardTitle>
-        <CardDescription>Sign in to your SignalDesk AI account</CardDescription>
+        <CardTitle className="text-2xl">Forgot password?</CardTitle>
+        <CardDescription>
+          Enter your email address and we&apos;ll send you a link to reset your
+          password.
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -103,41 +107,20 @@ function LoginForm() {
               autoComplete="email"
             />
           </div>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label
-                htmlFor="password"
-                className="text-sm font-medium text-foreground"
-              >
-                Password
-              </label>
-              <Link
-                href="/forgot-password"
-                className="text-sm text-primary underline-offset-4 hover:underline"
-              >
-                Forgot password?
-              </Link>
-            </div>
-            <Input
-              id="password"
-              type="password"
-              placeholder="Enter your password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              autoComplete="current-password"
-            />
-          </div>
           <Button type="submit" className="w-full" disabled={loading}>
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Sign In
+            Send Reset Link
           </Button>
         </form>
         <p className="mt-6 text-center text-sm text-muted-foreground">
-          Contact your administrator if you need an account.
+          <Link
+            href="/login"
+            className="text-primary underline-offset-4 hover:underline"
+          >
+            Back to Sign In
+          </Link>
         </p>
       </CardContent>
     </Card>
-    </>
   );
 }

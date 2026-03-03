@@ -75,3 +75,38 @@ export interface ChartDataPoint {
   leads: number;
   highIntent: number;
 }
+
+// ---------------------------------------------------------------------------
+// Facebook Webhook
+// ---------------------------------------------------------------------------
+
+export type PostClassification = "HIRING_VA" | "SEEKING_WORK";
+
+export interface FacebookPostLog {
+  id: string;
+  group_id: string;
+  post_id: string;
+  author_name: string;
+  message: string | null;
+  classification: PostClassification;
+  created_time: string | null;
+  notified: boolean;
+  created_at: string;
+}
+
+// ---------------------------------------------------------------------------
+// Reddit Monitor
+// ---------------------------------------------------------------------------
+
+export interface RedditPostLog {
+  id: string;
+  reddit_post_id: string;
+  subreddit: string;
+  author: string;
+  title: string | null;
+  body: string | null;
+  classification: PostClassification;
+  created_utc: string | null;
+  notified: boolean;
+  created_at: string;
+}
