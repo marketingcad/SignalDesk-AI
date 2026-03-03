@@ -95,8 +95,23 @@ async function init() {
   console.log("[SignalDesk] Reddit content script active");
 
   createPlatformObserver(adapter, (post) => {
-    if (!passesPreFilter(post.text)) return;
-    chrome.runtime.sendMessage({ type: "POST_DETECTED", payload: post });
+    if (!passesPreFilter(post.text)) {
+      console.log(`[SignalDesk] [Reddit] Post FILTERED OUT: "${post.text.slice(0, 80)}..."`);
+      return;
+    }
+
+    console.log(`[SignalDesk] [Reddit] Sending to background: ${post.username} — "${post.text.slice(0, 100)}..."`);
+
+    chrome.runtime.sendMessage(
+      { type: "POST_DETECTED", payload: post },
+      (response) => {
+        if (chrome.runtime.lastError) {
+          console.error(`[SignalDesk] [Reddit] sendMessage error:`, chrome.runtime.lastError.message);
+        } else {
+          console.log(`[SignalDesk] [Reddit] Background response:`, response);
+        }
+      }
+    );
   });
 }
 

@@ -55,19 +55,137 @@ interface DiscordPayload {
   created_time: string;
 }
 
+/** Extended payload from the Chrome extension pipeline with scoring details */
+export interface DiscordLeadAlert {
+  author_name: string;
+  message: string;
+  url: string;
+  platform: string;
+  source: string;
+  score: number;
+  level: string;
+  category: string;
+  matchedKeywords: string[];
+  created_time: string;
+}
+
+const PLATFORM_EMOJI: Record<string, string> = {
+  Facebook: "📘",
+  LinkedIn: "💼",
+  Reddit: "🟠",
+  X: "𝕏",
+};
+
+const LEVEL_COLOR: Record<string, number> = {
+  High: 0x22c55e,    // green
+  Medium: 0xf59e0b,  // amber
+  Low: 0x71717a,     // zinc
+};
+
+/**
+ * Rich Discord embed notification for leads detected by the Chrome extension.
+ * Includes intent score, platform, category, matched keywords, and direct link.
+ */
+export async function sendDiscordLeadAlert(
+  payload: DiscordLeadAlert
+): Promise<void> {
+  const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
+  if (!webhookUrl) {
+    console.warn("[discord] DISCORD_WEBHOOK_URL is not configured — skipping notification");
+    return;
+  }
+
+  const platformEmoji = PLATFORM_EMOJI[payload.platform] || "📌";
+  const embedColor = LEVEL_COLOR[payload.level] || 0x6366f1;
+
+  const embed = {
+    title: `${platformEmoji} New ${payload.level} Intent Lead Detected`,
+    description: payload.message.slice(0, 500),
+    color: embedColor,
+    fields: [
+      {
+        name: "👤 Author",
+        value: payload.author_name,
+        inline: true,
+      },
+      {
+        name: "📊 Intent Score",
+        value: `**${payload.score}**/100 (${payload.level})`,
+        inline: true,
+      },
+      {
+        name: "🏷️ Category",
+        value: payload.category,
+        inline: true,
+      },
+      {
+        name: "📡 Platform",
+        value: payload.platform,
+        inline: true,
+      },
+      {
+        name: "📍 Source",
+        value: payload.source,
+        inline: true,
+      },
+      {
+        name: "🔑 Matched Keywords",
+        value: payload.matchedKeywords.length > 0
+          ? payload.matchedKeywords.map((kw) => `\`${kw}\``).join(", ")
+          : "None",
+        inline: false,
+      },
+      {
+        name: "🔗 Post Link",
+        value: `[View Original Post](${payload.url})`,
+        inline: false,
+      },
+    ],
+    footer: {
+      text: "SignalDesk AI — Chrome Extension",
+    },
+    timestamp: payload.created_time,
+  };
+
+  console.log(`[discord] Sending rich embed notification...`);
+  console.log(`[discord] Author: ${payload.author_name}, Platform: ${payload.platform}, Score: ${payload.score}, Level: ${payload.level}`);
+
+  const res = await fetch(webhookUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      username: "SignalDesk AI",
+      embeds: [embed],
+    }),
+  });
+
+  if (!res.ok) {
+    const errBody = await res.text().catch(() => "");
+    console.error(`[discord] Embed notification failed: ${res.status} ${res.statusText} — ${errBody}`);
+  } else {
+    console.log(`[discord] Discord embed sent successfully (${res.status})`);
+  }
+}
+
+/**
+ * Legacy plain-text notification (used by Facebook webhook pipeline).
+ */
 export async function sendDiscordNotification(
   payload: DiscordPayload
 ): Promise<void> {
   const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
   if (!webhookUrl) {
-    console.warn("[facebook-webhook] DISCORD_WEBHOOK_URL is not configured");
+    console.warn("[discord] DISCORD_WEBHOOK_URL is not configured — skipping notification");
     return;
   }
 
   const emoji = payload.type === "HIRING_VA" ? "🟢" : "🔵";
   const label =
     payload.type === "HIRING_VA" ? "HIRING VA" : "SEEKING WORK";
-  const postLink = `https://facebook.com/${payload.post_id}`;
+
+  const postLink = payload.post_id.startsWith("http")
+    ? payload.post_id
+    : `https://facebook.com/${payload.post_id}`;
 
   const content = [
     `${emoji} **NEW ${label} POST FOUND**`,
@@ -78,6 +196,8 @@ export async function sendDiscordNotification(
     `🕒 **Time:** ${payload.created_time}`,
   ].join("\n");
 
+  console.log(`[discord] Sending plain-text notification...`);
+
   const res = await fetch(webhookUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -86,8 +206,10 @@ export async function sendDiscordNotification(
 
   if (!res.ok) {
     console.error(
-      `[facebook-webhook] Discord notification failed: ${res.status} ${res.statusText}`
+      `[discord] Notification failed: ${res.status} ${res.statusText}`
     );
+  } else {
+    console.log(`[discord] Discord notification sent successfully (${res.status})`);
   }
 }
 

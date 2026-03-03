@@ -8,7 +8,20 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { alerts as mockAlerts } from "@/lib/mock-data";
 import { timeAgo, cn } from "@/lib/utils";
-import type { Alert, Lead } from "@/lib/types";
+import type { Lead } from "@/lib/types";
+
+type AlertWithUrl = {
+  id: string;
+  leadId: string;
+  platform: Lead["platform"];
+  intentScore: number;
+  snippet: string;
+  username: string;
+  source: string;
+  createdAt: Date;
+  read: boolean;
+  url?: string;
+};
 import {
   Bell,
   BellOff,
@@ -18,7 +31,9 @@ import {
 } from "lucide-react";
 
 export default function AlertsPage() {
-  const [alerts, setAlerts] = useState<Alert[]>(mockAlerts);
+  const [alerts, setAlerts] = useState<AlertWithUrl[]>(
+    mockAlerts.map((a) => ({ ...a, url: undefined }))
+  );
 
   useEffect(() => {
     fetch("/api/alerts?limit=30")
@@ -36,6 +51,7 @@ export default function AlertsPage() {
               source: lead.source,
               createdAt: new Date(lead.createdAt),
               read: false,
+              url: lead.url || undefined,
             }))
           );
         }
@@ -156,11 +172,27 @@ export default function AlertsPage() {
 
                   {/* Actions */}
                   <div className="mt-3 flex items-center gap-2">
-                    <Button size="sm" className="gap-1.5 h-7 shadow-sm shadow-primary/25">
+                    <Button
+                      size="sm"
+                      className="gap-1.5 h-7 shadow-sm shadow-primary/25"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        markAsRead(alert.id);
+                        if (alert.url) window.open(alert.url, "_blank");
+                      }}
+                    >
                       <MessageSquare className="h-3 w-3" />
                       Respond
                     </Button>
-                    <Button variant="outline" size="sm" className="gap-1.5 h-7">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5 h-7"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (alert.url) window.open(alert.url, "_blank");
+                      }}
+                    >
                       <ExternalLink className="h-3 w-3" />
                       View Post
                     </Button>

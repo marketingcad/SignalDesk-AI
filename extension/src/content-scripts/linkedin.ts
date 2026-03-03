@@ -74,8 +74,23 @@ async function init() {
   console.log("[SignalDesk] LinkedIn content script active");
 
   createPlatformObserver(adapter, (post) => {
-    if (!passesPreFilter(post.text)) return;
-    chrome.runtime.sendMessage({ type: "POST_DETECTED", payload: post });
+    if (!passesPreFilter(post.text)) {
+      console.log(`[SignalDesk] [LinkedIn] Post FILTERED OUT: "${post.text.slice(0, 80)}..."`);
+      return;
+    }
+
+    console.log(`[SignalDesk] [LinkedIn] Sending to background: ${post.username} — "${post.text.slice(0, 100)}..."`);
+
+    chrome.runtime.sendMessage(
+      { type: "POST_DETECTED", payload: post },
+      (response) => {
+        if (chrome.runtime.lastError) {
+          console.error(`[SignalDesk] [LinkedIn] sendMessage error:`, chrome.runtime.lastError.message);
+        } else {
+          console.log(`[SignalDesk] [LinkedIn] Background response:`, response);
+        }
+      }
+    );
   });
 }
 

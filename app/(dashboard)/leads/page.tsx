@@ -33,6 +33,44 @@ export default function LeadsPage() {
   const [expandedLead, setExpandedLead] = useState<string | null>(null);
   const [filteredLeads, setFilteredLeads] = useState<Lead[]>(mockLeads);
 
+  const updateStatus = async (id: string, status: LeadStatus) => {
+    setFilteredLeads((prev) =>
+      prev.map((l) => (l.id === id ? { ...l, status } : l))
+    );
+    try {
+      await fetch(`/api/leads/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+    } catch {
+      // optimistic update already applied
+    }
+  };
+
+  const handleExport = () => {
+    const headers = ["Username", "Platform", "Source", "Intent Score", "Intent Level", "Status", "Category", "URL", "Created At"];
+    const rows = filteredLeads.map((l) => [
+      l.username,
+      l.platform,
+      l.source,
+      l.intentScore,
+      l.intentLevel,
+      l.status,
+      l.intentCategory,
+      l.url || "",
+      new Date(l.createdAt).toISOString(),
+    ]);
+    const csv = [headers, ...rows].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `leads-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const fetchLeads = useCallback(() => {
     const params = new URLSearchParams();
     if (platformFilter !== "All") params.set("platform", platformFilter);
@@ -76,7 +114,7 @@ export default function LeadsPage() {
         title="Leads"
         subtitle={`${filteredLeads.length} leads found`}
         actions={
-          <ActionButton icon={Download} variant="secondary">
+          <ActionButton icon={Download} variant="secondary" onClick={handleExport}>
             Export
           </ActionButton>
         }
@@ -221,19 +259,51 @@ export default function LeadsPage() {
                         </div>
                       </div>
                       <div className="flex items-start gap-2">
-                        <Button size="sm" className="gap-1.5 shadow-sm shadow-primary/25">
+                        <Button
+                          size="sm"
+                          className="gap-1.5 shadow-sm shadow-primary/25"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            updateStatus(lead.id, "Contacted");
+                            if (lead.url) window.open(lead.url, "_blank");
+                          }}
+                        >
                           <MessageSquare className="h-3.5 w-3.5" />
                           Contact
                         </Button>
-                        <Button variant="outline" size="sm" className="gap-1.5">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (lead.url) window.open(lead.url, "_blank");
+                          }}
+                        >
                           <ExternalLink className="h-3.5 w-3.5" />
                           View Post
                         </Button>
-                        <Button variant="outline" size="sm" className="gap-1.5">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            updateStatus(lead.id, "Qualified");
+                          }}
+                        >
                           <UserPlus className="h-3.5 w-3.5" />
                           Assign
                         </Button>
-                        <Button variant="outline" size="sm" className="gap-1.5 border-rose-500/20 text-rose-400 hover:bg-rose-500/10 hover:text-rose-400">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5 border-rose-500/20 text-rose-400 hover:bg-rose-500/10 hover:text-rose-400"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            updateStatus(lead.id, "Dismissed");
+                          }}
+                        >
                           <XCircle className="h-3.5 w-3.5" />
                           Dismiss
                         </Button>

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifySession } from "@/lib/auth";
 import { scoreIntent } from "@/lib/intent-scoring";
 import { supabase } from "@/lib/supabase";
-import { sendDiscordNotification } from "@/lib/facebook-webhook";
+import { sendDiscordLeadAlert } from "@/lib/facebook-webhook";
 import type { Platform } from "@/lib/types";
 
 interface IncomingPayload {
@@ -16,29 +16,48 @@ interface IncomingPayload {
 }
 
 export async function POST(request: NextRequest) {
+  console.log("[leads/process] ---- Incoming request ----");
+
   // --- Auth: Bearer token ---
   const authHeader = request.headers.get("authorization");
+  const xSource = request.headers.get("x-source") || "unknown";
+  console.log(`[leads/process] Source: ${xSource}`);
+
   if (!authHeader?.startsWith("Bearer ")) {
+    console.warn("[leads/process] Missing authorization header");
     return NextResponse.json({ error: "Missing authorization" }, { status: 401 });
   }
 
   const token = authHeader.slice(7);
   const session = await verifySession(token);
   if (!session) {
+    console.warn("[leads/process] Invalid token");
     return NextResponse.json({ error: "Invalid token" }, { status: 401 });
   }
+  console.log(`[leads/process] Authenticated user: ${session.userId}`);
 
   // --- Parse body ---
   let payload: IncomingPayload;
   try {
     payload = await request.json();
   } catch {
+    console.warn("[leads/process] Invalid JSON body");
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
   const { platform, text, username, url, timestamp, engagement, source } = payload;
+  console.log(
+    `[leads/process] Payload:`,
+    `\n  Platform: ${platform}`,
+    `\n  User: ${username}`,
+    `\n  Text: ${text?.slice(0, 120)}...`,
+    `\n  URL: ${url}`,
+    `\n  Source: ${source}`,
+    `\n  Engagement: ${engagement}`
+  );
 
   if (!platform || !text || !username || !url) {
+    console.warn("[leads/process] Missing required fields");
     return NextResponse.json({ error: "Missing required fields: platform, text, username, url" }, { status: 400 });
   }
 
@@ -50,6 +69,7 @@ export async function POST(request: NextRequest) {
     .maybeSingle();
 
   if (existing) {
+    console.log(`[leads/process] Duplicate detected — existing lead ID: ${existing.id}`);
     return NextResponse.json(
       { success: true, duplicate: true, leadId: existing.id },
       { status: 200 }
@@ -58,6 +78,13 @@ export async function POST(request: NextRequest) {
 
   // --- Intent Scoring ---
   const scoringResult = scoreIntent({ text, engagement: engagement || 0, platform });
+  console.log(
+    `[leads/process] Scoring result:`,
+    `\n  Score: ${scoringResult.score}`,
+    `\n  Level: ${scoringResult.level}`,
+    `\n  Category: ${scoringResult.category}`,
+    `\n  Matched keywords: [${scoringResult.matchedKeywords.join(", ")}]`
+  );
 
   // --- Insert lead ---
   const { data: lead, error: insertError } = await supabase
@@ -81,20 +108,34 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (insertError) {
-    console.error("[leads/process] Insert error:", insertError);
+    console.error("[leads/process] Supabase insert error:", insertError);
     return NextResponse.json({ error: "Database error" }, { status: 500 });
   }
 
+  console.log(`[leads/process] Lead inserted — ID: ${lead.id}, Score: ${lead.intent_score}, Level: ${lead.intent_level}`);
+
   // --- Discord alert for high-intent leads ---
   if (scoringResult.score >= 80) {
-    await sendDiscordNotification({
-      type: "HIRING_VA",
+    console.log(`[leads/process] High intent (${scoringResult.score}) — sending Discord notification...`);
+    await sendDiscordLeadAlert({
       author_name: username,
       message: text.slice(0, 500),
-      post_id: url,
+      url,
+      platform,
+      source: source || "Unknown",
+      score: scoringResult.score,
+      level: scoringResult.level,
+      category: scoringResult.category,
+      matchedKeywords: scoringResult.matchedKeywords,
       created_time: timestamp || new Date().toISOString(),
-    }).catch((err) => console.error("[leads/process] Discord error:", err));
+    })
+      .then(() => console.log("[leads/process] Discord embed sent successfully"))
+      .catch((err: unknown) => console.error("[leads/process] Discord notification failed:", err));
+  } else {
+    console.log(`[leads/process] Score ${scoringResult.score} < 80 — no Discord notification`);
   }
+
+  console.log("[leads/process] ---- Request complete ----");
 
   return NextResponse.json(
     {

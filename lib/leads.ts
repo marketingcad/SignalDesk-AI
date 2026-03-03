@@ -221,6 +221,21 @@ export async function getDailyReports(days = 7): Promise<DailyReport[]> {
   return reports.reverse();
 }
 
+export async function updateLeadStatus(
+  id: string,
+  status: LeadStatus
+): Promise<Lead | null> {
+  const { data, error } = await supabase
+    .from("leads")
+    .update({ status })
+    .eq("id", id)
+    .select("*")
+    .single();
+
+  if (error) throw error;
+  return data ? mapRow(data) : null;
+}
+
 export async function getPlatformCounts(): Promise<
   Record<Platform, { total: number; lastActive: Date | null }>
 > {

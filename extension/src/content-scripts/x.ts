@@ -73,8 +73,23 @@ async function init() {
   console.log("[SignalDesk] X content script active");
 
   createPlatformObserver(adapter, (post) => {
-    if (!passesPreFilter(post.text)) return;
-    chrome.runtime.sendMessage({ type: "POST_DETECTED", payload: post });
+    if (!passesPreFilter(post.text)) {
+      console.log(`[SignalDesk] [X] Post FILTERED OUT: "${post.text.slice(0, 80)}..."`);
+      return;
+    }
+
+    console.log(`[SignalDesk] [X] Sending to background: ${post.username} — "${post.text.slice(0, 100)}..."`);
+
+    chrome.runtime.sendMessage(
+      { type: "POST_DETECTED", payload: post },
+      (response) => {
+        if (chrome.runtime.lastError) {
+          console.error(`[SignalDesk] [X] sendMessage error:`, chrome.runtime.lastError.message);
+        } else {
+          console.log(`[SignalDesk] [X] Background response:`, response);
+        }
+      }
+    );
   });
 }
 

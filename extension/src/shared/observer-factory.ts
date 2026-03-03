@@ -26,7 +26,10 @@ export function createPlatformObserver(
     if (!adapter.isPostNode(node)) return;
 
     const post = adapter.extractPost(node);
-    if (!post || !post.text) return;
+    if (!post || !post.text) {
+      console.log(`[SignalDesk] [${adapter.platform}] Post node found but no text extracted`);
+      return;
+    }
 
     // Dedup by URL or content fingerprint
     const key = post.url || `${post.username}-${post.text.slice(0, 80)}`;
@@ -39,16 +42,25 @@ export function createPlatformObserver(
       entries.slice(0, 500).forEach((k) => processedPosts.delete(k));
     }
 
+    console.log(
+      `[SignalDesk] [${adapter.platform}] Post detected:`,
+      `\n  User: ${post.username}`,
+      `\n  Text: ${post.text.slice(0, 120)}...`,
+      `\n  URL: ${post.url}`,
+      `\n  Engagement: ${post.engagement}`
+    );
+
     onPostDetected(post);
   }
 
   function startObserving() {
     const container = document.querySelector(adapter.feedContainerSelector);
     if (!container) {
-      // SPA may not have rendered the feed yet — retry
+      console.log(`[SignalDesk] [${adapter.platform}] Feed container "${adapter.feedContainerSelector}" not found — retrying in 2s...`);
       retryTimeout = setTimeout(startObserving, 2000);
       return;
     }
+    console.log(`[SignalDesk] [${adapter.platform}] Feed container found:`, container.tagName, container.className?.slice(0, 60));
 
     observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
@@ -65,9 +77,13 @@ export function createPlatformObserver(
     observer.observe(container, { childList: true, subtree: true });
 
     // Process existing posts on initial load
-    container.querySelectorAll("*").forEach((el) => processNode(el));
+    const existingCount = { total: 0 };
+    container.querySelectorAll("*").forEach((el) => {
+      existingCount.total++;
+      processNode(el);
+    });
 
-    console.log(`[SignalDesk] Observer started for ${adapter.platform}`);
+    console.log(`[SignalDesk] [${adapter.platform}] Observer started — scanned ${existingCount.total} existing elements, ${processedPosts.size} posts tracked`);
   }
 
   function disconnect() {

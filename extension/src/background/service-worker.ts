@@ -7,12 +7,26 @@ const DEFAULT_API_URL = "http://localhost:3000";
 // ---------------------------------------------------------------------------
 
 chrome.runtime.onMessage.addListener(
-  (message: DetectedMessage, _sender, sendResponse) => {
+  (message: DetectedMessage, sender, sendResponse) => {
     if (message.type !== "POST_DETECTED") return false;
 
+    const { platform, username, text } = message.payload;
+    console.log(
+      `[SignalDesk] [SW] POST_DETECTED from ${sender.tab?.url || "unknown tab"}:`,
+      `\n  Platform: ${platform}`,
+      `\n  User: ${username}`,
+      `\n  Text: ${text.slice(0, 120)}...`
+    );
+
     processPost(message.payload)
-      .then((result) => sendResponse({ success: true, ...result }))
-      .catch((err) => sendResponse({ success: false, error: err.message }));
+      .then((result) => {
+        console.log(`[SignalDesk] [SW] API success:`, result);
+        sendResponse({ success: true, ...result });
+      })
+      .catch((err) => {
+        console.error(`[SignalDesk] [SW] API error:`, err.message);
+        sendResponse({ success: false, error: err.message });
+      });
 
     return true; // Keep channel open for async response
   }
@@ -32,10 +46,14 @@ async function processPost(
   const baseUrl = apiUrl || DEFAULT_API_URL;
 
   if (!authToken) {
+    console.warn(`[SignalDesk] [SW] No auth token — user not signed in`);
     throw new Error("Not authenticated. Please sign in via the popup.");
   }
 
-  const response = await fetch(`${baseUrl}/api/leads/process`, {
+  const endpoint = `${baseUrl}/api/leads/process`;
+  console.log(`[SignalDesk] [SW] POSTing to ${endpoint}...`);
+
+  const response = await fetch(endpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -45,7 +63,10 @@ async function processPost(
     body: JSON.stringify(payload),
   });
 
+  console.log(`[SignalDesk] [SW] Response status: ${response.status}`);
+
   if (response.status === 401) {
+    console.error(`[SignalDesk] [SW] 401 Unauthorized — clearing auth token`);
     await chrome.storage.local.set({ authToken: null });
     throw new Error("Session expired. Please sign in again.");
   }
@@ -53,14 +74,23 @@ async function processPost(
   if (!response.ok) {
     await incrementStat("errors");
     const errText = await response.text();
+    console.error(`[SignalDesk] [SW] API error response: ${errText}`);
     throw new Error(`API error ${response.status}: ${errText}`);
   }
 
   const result = await response.json();
+  console.log(
+    `[SignalDesk] [SW] Lead processed:`,
+    `\n  Lead ID: ${result.leadId}`,
+    `\n  Intent Score: ${result.intentScore}`,
+    `\n  Intent Level: ${result.intentLevel}`,
+    `\n  Duplicate: ${result.duplicate || false}`
+  );
 
   if (!result.duplicate) {
     await incrementStat("totalSent");
     await incrementPlatformCount(payload.platform);
+    console.log(`[SignalDesk] [SW] Stats updated — new lead counted for ${payload.platform}`);
   }
   await chrome.storage.local.set({ lastSentAt: new Date().toISOString() });
   await updateBadge();
@@ -103,7 +133,9 @@ async function updateBadge() {
 // Initialize defaults on install
 // ---------------------------------------------------------------------------
 
-chrome.runtime.onInstalled.addListener(() => {
+chrome.runtime.onInstalled.addListener((details) => {
+  console.log(`[SignalDesk] [SW] Extension installed/updated — reason: ${details.reason}`);
+
   chrome.storage.local.set({
     platformToggles: {
       Facebook: true,
@@ -120,4 +152,6 @@ chrome.runtime.onInstalled.addListener(() => {
     authToken: null,
     apiUrl: DEFAULT_API_URL,
   });
+
+  console.log(`[SignalDesk] [SW] Default storage values initialized`);
 });

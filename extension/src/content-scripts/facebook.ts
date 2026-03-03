@@ -90,12 +90,28 @@ async function init() {
   console.log("[SignalDesk] Facebook content script active");
 
   createPlatformObserver(adapter, (post) => {
-    if (!passesPreFilter(post.text)) return;
+    if (!passesPreFilter(post.text)) {
+      console.log(`[SignalDesk] [Facebook] Post FILTERED OUT (no keyword match): "${post.text.slice(0, 80)}..."`);
+      return;
+    }
 
-    chrome.runtime.sendMessage({
-      type: "POST_DETECTED",
-      payload: post,
-    });
+    console.log(
+      `[SignalDesk] [Facebook] Sending to background:`,
+      `\n  User: ${post.username}`,
+      `\n  Text: ${post.text.slice(0, 100)}...`,
+      `\n  Source: ${post.source}`
+    );
+
+    chrome.runtime.sendMessage(
+      { type: "POST_DETECTED", payload: post },
+      (response) => {
+        if (chrome.runtime.lastError) {
+          console.error(`[SignalDesk] [Facebook] sendMessage error:`, chrome.runtime.lastError.message);
+        } else {
+          console.log(`[SignalDesk] [Facebook] Background response:`, response);
+        }
+      }
+    );
   });
 }
 

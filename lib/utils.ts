@@ -21,9 +21,10 @@ export function formatDate(date: Date): string {
   }).format(date);
 }
 
-export function timeAgo(date: Date): string {
+export function timeAgo(date: Date | string): string {
   const now = new Date();
-  const diff = now.getTime() - date.getTime();
+  const d = date instanceof Date ? date : new Date(date);
+  const diff = now.getTime() - d.getTime();
   const minutes = Math.floor(diff / 60000);
   const hours = Math.floor(diff / 3600000);
   const days = Math.floor(diff / 86400000);
