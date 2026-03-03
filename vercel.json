@@ -1,8 +1,1 @@
-{
-  "crons": [
-    {
-      "path": "/api/reddit-monitor",
-      "schedule": "*/5 * * * *"
-    }
-  ]
-}
+{}
