@@ -19,6 +19,7 @@ import {
   UserPlus,
   XCircle,
   ChevronDown,
+  Trash2,
 } from "lucide-react";
 
 type FilterPlatform = Platform | "All";
@@ -43,6 +44,27 @@ export default function LeadsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
       });
+    } catch {
+      // optimistic update already applied
+    }
+  };
+
+  const handleDeleteLead = async (id: string) => {
+    setFilteredLeads((prev) => prev.filter((l) => l.id !== id));
+    if (expandedLead === id) setExpandedLead(null);
+    try {
+      await fetch(`/api/leads/${id}`, { method: "DELETE" });
+    } catch {
+      // optimistic update already applied
+    }
+  };
+
+  const handleDeleteAll = async () => {
+    if (!confirm("Are you sure you want to delete all leads? This cannot be undone.")) return;
+    setFilteredLeads([]);
+    setExpandedLead(null);
+    try {
+      await fetch("/api/leads", { method: "DELETE" });
     } catch {
       // optimistic update already applied
     }
@@ -121,9 +143,9 @@ export default function LeadsPage() {
       />
       <div className="p-6 space-y-4">
         {/* Filters Bar */}
-        <Card className="flex flex-wrap items-center gap-3 border-border bg-card px-4 py-3">
-          {/* Search */}
-          <div className="relative flex-1 min-w-[200px]">
+        <Card className="border-border bg-card px-4 py-3 space-y-3">
+          {/* Search Row */}
+          <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               type="text"
@@ -134,31 +156,39 @@ export default function LeadsPage() {
             />
           </div>
 
-          <div className="h-6 w-px bg-border" />
+          {/* Filters + Actions Row */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <FilterSelect
+                label="Platform"
+                value={platformFilter}
+                options={["All", "Facebook", "LinkedIn", "Reddit", "X"]}
+                onChange={(v) => setPlatformFilter(v as FilterPlatform)}
+              />
+              <FilterSelect
+                label="Intent"
+                value={intentFilter}
+                options={["All", "High", "Medium", "Low"]}
+                onChange={(v) => setIntentFilter(v as FilterIntent)}
+              />
+              <FilterSelect
+                label="Status"
+                value={statusFilter}
+                options={["All", "New", "Contacted", "Qualified", "Dismissed"]}
+                onChange={(v) => setStatusFilter(v as FilterStatus)}
+              />
+            </div>
 
-          {/* Platform Filter */}
-          <FilterSelect
-            label="Platform"
-            value={platformFilter}
-            options={["All", "Facebook", "LinkedIn", "Reddit", "X"]}
-            onChange={(v) => setPlatformFilter(v as FilterPlatform)}
-          />
-
-          {/* Intent Filter */}
-          <FilterSelect
-            label="Intent"
-            value={intentFilter}
-            options={["All", "High", "Medium", "Low"]}
-            onChange={(v) => setIntentFilter(v as FilterIntent)}
-          />
-
-          {/* Status Filter */}
-          <FilterSelect
-            label="Status"
-            value={statusFilter}
-            options={["All", "New", "Contacted", "Qualified", "Dismissed"]}
-            onChange={(v) => setStatusFilter(v as FilterStatus)}
-          />
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 border-rose-500/20 text-rose-400 hover:bg-rose-500/10 hover:text-rose-400 ml-auto"
+              onClick={handleDeleteAll}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Delete All
+            </Button>
+          </div>
         </Card>
 
         {/* Table */}
@@ -307,6 +337,18 @@ export default function LeadsPage() {
                           <XCircle className="h-3.5 w-3.5" />
                           Dismiss
                         </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5 border-rose-500/20 text-rose-400 hover:bg-rose-500/10 hover:text-rose-400"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteLead(lead.id);
+                          }}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Delete
+                        </Button>
                       </div>
                     </div>
                   </div>
@@ -340,19 +382,24 @@ function FilterSelect({
   onChange: (v: string) => void;
 }) {
   return (
-    <div className="flex items-center gap-2">
-      <span className="text-xs font-medium text-muted-foreground">{label}:</span>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="h-8 rounded-lg border border-border bg-secondary/50 px-2 pr-7 text-xs font-medium text-foreground outline-none transition-colors focus:border-primary cursor-pointer appearance-none"
-      >
-        {options.map((opt) => (
-          <option key={opt} value={opt}>
-            {opt}
-          </option>
-        ))}
-      </select>
+    <div className="relative flex items-center gap-1.5">
+      <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        {label}
+      </span>
+      <div className="relative">
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="h-8 rounded-md border border-border bg-secondary/50 pl-2.5 pr-7 text-xs font-medium text-foreground outline-none transition-colors hover:bg-secondary focus:border-primary focus:ring-1 focus:ring-primary/30 cursor-pointer appearance-none"
+        >
+          {options.map((opt) => (
+            <option key={opt} value={opt}>
+              {opt}
+            </option>
+          ))}
+        </select>
+        <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
+      </div>
     </div>
   );
 }

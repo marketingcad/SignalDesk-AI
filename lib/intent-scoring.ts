@@ -2,12 +2,32 @@ import type { IntentLevel, IntentCategory, Platform } from "./types";
 
 // ---------------------------------------------------------------------------
 // Weighted keyword dictionaries
+//
+// Default keywords are used when no dynamic config is provided.
+// The scoring function also accepts optional overrides loaded from the DB
+// so new services (Web Dev, Marketing, etc.) can be added without code changes.
 // ---------------------------------------------------------------------------
 
-interface WeightedKeyword {
+export interface WeightedKeyword {
   phrase: string;
   weight: number;
   category: IntentCategory;
+}
+
+export interface NegativeSignal {
+  phrase: string;
+  weight: number;
+}
+
+/** Dynamic scoring config — passed from DB when available */
+export interface DynamicScoringConfig {
+  positiveSignals?: WeightedKeyword[];
+  negativeSignals?: NegativeSignal[];
+  targetCountries?: string[];
+  highThreshold?: number;
+  mediumThreshold?: number;
+  engagementBonus?: number;
+  countryBonus?: number;
 }
 
 const POSITIVE_SIGNALS: WeightedKeyword[] = [
@@ -88,11 +108,6 @@ const POSITIVE_SIGNALS: WeightedKeyword[] = [
   { phrase: "customer support", weight: 15, category: "Technical VA Request" },
 ];
 
-interface NegativeSignal {
-  phrase: string;
-  weight: number;
-}
-
 const NEGATIVE_SIGNALS: NegativeSignal[] = [
   // Job seeker (-40)
   { phrase: "i am looking for a va job", weight: -40 },
@@ -136,15 +151,33 @@ export interface ScoringResult {
   matchedKeywords: string[];
 }
 
-export function scoreIntent(input: ScoringInput): ScoringResult {
+/**
+ * Score a post's hiring intent.
+ *
+ * When called without `dynamicConfig`, uses the hardcoded default keywords.
+ * When `dynamicConfig` is provided (loaded from DB), its keyword sets override
+ * the defaults — enabling new service types without code changes.
+ */
+export function scoreIntent(
+  input: ScoringInput,
+  dynamicConfig?: DynamicScoringConfig
+): ScoringResult {
   const lower = input.text.toLowerCase();
   let totalScore = 0;
   const matchedKeywords: string[] = [];
   const matchedCategories: IntentCategory[] = [];
   const matchedPhrases = new Set<string>();
 
+  const positives = dynamicConfig?.positiveSignals ?? POSITIVE_SIGNALS;
+  const negatives = dynamicConfig?.negativeSignals ?? NEGATIVE_SIGNALS;
+  const countries = dynamicConfig?.targetCountries ?? TARGET_COUNTRIES;
+  const highThreshold = dynamicConfig?.highThreshold ?? 80;
+  const mediumThreshold = dynamicConfig?.mediumThreshold ?? 50;
+  const engagementBonus = dynamicConfig?.engagementBonus ?? 5;
+  const countryBonus = dynamicConfig?.countryBonus ?? 10;
+
   // Positive signals
-  for (const signal of POSITIVE_SIGNALS) {
+  for (const signal of positives) {
     if (lower.includes(signal.phrase) && !matchedPhrases.has(signal.phrase)) {
       matchedPhrases.add(signal.phrase);
       totalScore += signal.weight;
@@ -154,7 +187,7 @@ export function scoreIntent(input: ScoringInput): ScoringResult {
   }
 
   // Negative signals
-  for (const signal of NEGATIVE_SIGNALS) {
+  for (const signal of negatives) {
     if (lower.includes(signal.phrase) && !matchedPhrases.has(signal.phrase)) {
       matchedPhrases.add(signal.phrase);
       totalScore += signal.weight;
@@ -162,17 +195,17 @@ export function scoreIntent(input: ScoringInput): ScoringResult {
     }
   }
 
-  // Country match bonus (+10)
-  for (const country of TARGET_COUNTRIES) {
-    if (lower.includes(country)) {
-      totalScore += 10;
+  // Country match bonus
+  for (const country of countries) {
+    if (lower.includes(country.toLowerCase())) {
+      totalScore += countryBonus;
       break;
     }
   }
 
-  // Engagement threshold bonus (+5 if > 5 reactions)
+  // Engagement threshold bonus
   if (input.engagement > 5) {
-    totalScore += 5;
+    totalScore += engagementBonus;
   }
 
   // Clamp score to 0-100
@@ -180,8 +213,8 @@ export function scoreIntent(input: ScoringInput): ScoringResult {
 
   // Determine level
   let level: IntentLevel;
-  if (score >= 80) level = "High";
-  else if (score >= 50) level = "Medium";
+  if (score >= highThreshold) level = "High";
+  else if (score >= mediumThreshold) level = "Medium";
   else level = "Low";
 
   // Determine primary category (most frequently matched)

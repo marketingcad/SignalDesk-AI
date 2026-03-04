@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifySession, SESSION_COOKIE_NAME } from "@/lib/auth";
-import { updateLeadStatus } from "@/lib/leads";
+import { updateLeadStatus, deleteLead } from "@/lib/leads";
 import type { LeadStatus } from "@/lib/types";
 
 const VALID_STATUSES: LeadStatus[] = ["New", "Contacted", "Qualified", "Dismissed"];
@@ -33,6 +33,26 @@ export async function PATCH(
     return NextResponse.json({ lead });
   } catch (error) {
     console.error("[api/leads/[id]] Error:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const token = request.cookies.get(SESSION_COOKIE_NAME)?.value;
+  if (!token || !(await verifySession(token))) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { id } = await params;
+
+  try {
+    await deleteLead(id);
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("[api/leads/[id]] Delete error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

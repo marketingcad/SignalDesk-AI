@@ -1,14 +1,25 @@
 import { createPlatformObserver, type PlatformAdapter } from "../shared/observer-factory";
 import { passesPreFilter } from "../shared/pre-filter";
-import { getCleanText, parseEngagement } from "../shared/dom-utils";
+import { getCleanText, parseEngagement, querySelectorFallback, querySelectorAllFallback } from "../shared/dom-utils";
 import { startAutoScroll, stopAutoScroll } from "../shared/auto-scroll";
 import type { ExtractedPost, StartAutoScrollMessage } from "../types";
 
 const PLATFORM = "Facebook" as const;
 
+// Selector fallback chains — self-healing against DOM changes
+const SELECTORS = {
+  feedContainer: '[role="feed"]',
+  textContent: ['[dir="auto"]', '[data-ad-comet-preview]', ".userContent"],
+  username: ['a[href*="/user/"]', 'a[href*="/profile"]', "h3 a", "h4 a"],
+  postUrl: ['a[href*="/posts/"]', 'a[href*="/permalink/"]', 'a[href*="story_fbid"]'],
+  engagement: ['[aria-label*="reaction"]', '[aria-label*="like"]'],
+  groupHeader: ["h1", '[role="banner"] a'],
+  timestamp: ["abbr", "[data-utime]", "time"],
+};
+
 const adapter: PlatformAdapter = {
   platform: PLATFORM,
-  feedContainerSelector: '[role="feed"]',
+  feedContainerSelector: SELECTORS.feedContainer,
 
   isPostNode(node: Node): node is HTMLElement {
     if (!(node instanceof HTMLElement)) return false;
@@ -25,8 +36,23 @@ const adapter: PlatformAdapter = {
         : element.querySelector('[role="article"]');
     if (!article || !(article instanceof HTMLElement)) return null;
 
-    // Extract post text from dir="auto" blocks
-    const textBlocks = article.querySelectorAll('[dir="auto"]');
+    // Try to expand "See More" so we get full post text for keyword matching
+    const seeMoreBtn = article.querySelector<HTMLElement>(
+      '[role="button"][tabindex="0"]'
+    );
+    if (seeMoreBtn) {
+      const btnText = (seeMoreBtn.textContent || "").toLowerCase().trim();
+      if (btnText === "see more" || btnText === "see more…") {
+        try {
+          seeMoreBtn.click();
+        } catch {
+          // Non-critical — proceed with visible text
+        }
+      }
+    }
+
+    // Extract post text — fallback chain
+    const textBlocks = querySelectorAllFallback(article, SELECTORS.textContent, PLATFORM, "textContent");
     const textParts: string[] = [];
     textBlocks.forEach((block) => {
       const text = getCleanText(block as HTMLElement);
@@ -35,34 +61,20 @@ const adapter: PlatformAdapter = {
     const text = textParts.join(" ").slice(0, 2000);
     if (!text) return null;
 
-    // Extract username from profile link
-    const profileLink = article.querySelector(
-      'a[href*="/user/"], a[href*="/profile"], h3 a, h4 a'
-    );
-    const username = profileLink
-      ? getCleanText(profileLink as HTMLElement)
-      : "Unknown";
+    // Extract username — fallback chain
+    const profileLink = querySelectorFallback(article, SELECTORS.username, PLATFORM, "username");
+    const username = profileLink ? getCleanText(profileLink) : "Unknown";
 
-    // Extract post URL
-    const timeLink = article.querySelector(
-      'a[href*="/posts/"], a[href*="/permalink/"], a[href*="story_fbid"]'
-    );
-    const url = timeLink
-      ? (timeLink as HTMLAnchorElement).href
-      : window.location.href;
+    // Extract post URL — fallback chain
+    const timeLink = querySelectorFallback(article, SELECTORS.postUrl, PLATFORM, "postUrl");
+    const url = timeLink ? (timeLink as HTMLAnchorElement).href : window.location.href;
 
-    // Extract group name
-    const groupHeader =
-      document.querySelector("h1") ||
-      document.querySelector('[role="banner"] a');
-    const source = groupHeader
-      ? getCleanText(groupHeader as HTMLElement)
-      : "Facebook Group";
+    // Extract group name — fallback chain
+    const groupHeader = querySelectorFallback(document, SELECTORS.groupHeader, PLATFORM, "groupHeader");
+    const source = groupHeader ? getCleanText(groupHeader) : "Facebook Group";
 
-    // Extract engagement
-    const reactionSpans = article.querySelectorAll(
-      '[aria-label*="reaction"], [aria-label*="like"]'
-    );
+    // Extract engagement — fallback chain
+    const reactionSpans = querySelectorAllFallback(article, SELECTORS.engagement, PLATFORM, "engagement");
     let engagement = 0;
     reactionSpans.forEach((span) => {
       const label = span.getAttribute("aria-label") || "";
@@ -70,8 +82,8 @@ const adapter: PlatformAdapter = {
       if (match) engagement = Math.max(engagement, parseEngagement(match[1]));
     });
 
-    // Timestamp
-    const timeEl = article.querySelector("abbr, [data-utime], time");
+    // Timestamp — fallback chain
+    const timeEl = querySelectorFallback(article, SELECTORS.timestamp, PLATFORM, "timestamp");
     const timestamp =
       timeEl?.getAttribute("title") ||
       timeEl?.getAttribute("datetime") ||
@@ -92,16 +104,9 @@ async function init() {
 
   createPlatformObserver(adapter, (post) => {
     if (!passesPreFilter(post.text)) {
-      console.log(`[SignalDesk] [Facebook] Post FILTERED OUT (no keyword match): "${post.text.slice(0, 80)}..."`);
+      console.log(`[SignalDesk] [Facebook] Post FILTERED OUT: "${post.text.slice(0, 80)}..."`);
       return;
     }
-
-    console.log(
-      `[SignalDesk] [Facebook] Sending to background:`,
-      `\n  User: ${post.username}`,
-      `\n  Text: ${post.text.slice(0, 100)}...`,
-      `\n  Source: ${post.source}`
-    );
 
     chrome.runtime.sendMessage(
       { type: "POST_DETECTED", payload: post },

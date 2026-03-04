@@ -1,14 +1,22 @@
 import { createPlatformObserver, type PlatformAdapter } from "../shared/observer-factory";
 import { passesPreFilter } from "../shared/pre-filter";
-import { getCleanText, parseEngagement } from "../shared/dom-utils";
+import { getCleanText, parseEngagement, querySelectorFallback } from "../shared/dom-utils";
 import { startAutoScroll, stopAutoScroll } from "../shared/auto-scroll";
 import type { ExtractedPost, StartAutoScrollMessage } from "../types";
 
 const PLATFORM = "LinkedIn" as const;
 
+// Selector fallback chains — self-healing against DOM changes
+const SELECTORS = {
+  feedContainer: '[role="main"]',
+  textContent: [".feed-shared-text", ".break-words", "[dir='ltr']"],
+  username: [".feed-shared-actor__name", ".update-components-actor__name"],
+  engagement: [".social-details-social-counts__reactions-count"],
+};
+
 const adapter: PlatformAdapter = {
   platform: PLATFORM,
-  feedContainerSelector: '[role="main"]',
+  feedContainerSelector: SELECTORS.feedContainer,
 
   isPostNode(node: Node): node is HTMLElement {
     if (!(node instanceof HTMLElement)) return false;
@@ -26,18 +34,14 @@ const adapter: PlatformAdapter = {
         : element.querySelector(".feed-shared-update-v2");
     if (!post || !(post instanceof HTMLElement)) return null;
 
-    // Extract text
-    const textEl = post.querySelector(
-      ".feed-shared-text, .break-words, [dir='ltr']"
-    );
-    const text = getCleanText(textEl as HTMLElement).slice(0, 2000);
+    // Extract text — fallback chain
+    const textEl = querySelectorFallback(post, SELECTORS.textContent, PLATFORM, "textContent");
+    const text = getCleanText(textEl).slice(0, 2000);
     if (!text) return null;
 
-    // Username
-    const nameEl = post.querySelector(
-      ".feed-shared-actor__name, .update-components-actor__name"
-    );
-    const username = getCleanText(nameEl as HTMLElement) || "Unknown";
+    // Username — fallback chain
+    const nameEl = querySelectorFallback(post, SELECTORS.username, PLATFORM, "username");
+    const username = getCleanText(nameEl) || "Unknown";
 
     // Post URL
     const urnAttr = post.getAttribute("data-urn") || "";
@@ -46,12 +50,10 @@ const adapter: PlatformAdapter = {
       ? `https://www.linkedin.com/feed/update/urn:li:activity:${activityId}`
       : window.location.href;
 
-    // Engagement
-    const reactionEl = post.querySelector(
-      ".social-details-social-counts__reactions-count"
-    );
+    // Engagement — fallback chain
+    const reactionEl = querySelectorFallback(post, SELECTORS.engagement, PLATFORM, "engagement");
     const engagement = reactionEl
-      ? parseEngagement(getCleanText(reactionEl as HTMLElement))
+      ? parseEngagement(getCleanText(reactionEl))
       : 0;
 
     // Timestamp
@@ -79,8 +81,6 @@ async function init() {
       console.log(`[SignalDesk] [LinkedIn] Post FILTERED OUT: "${post.text.slice(0, 80)}..."`);
       return;
     }
-
-    console.log(`[SignalDesk] [LinkedIn] Sending to background: ${post.username} — "${post.text.slice(0, 100)}..."`);
 
     chrome.runtime.sendMessage(
       { type: "POST_DETECTED", payload: post },

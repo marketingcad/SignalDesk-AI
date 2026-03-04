@@ -1,15 +1,23 @@
 import { createPlatformObserver, type PlatformAdapter } from "../shared/observer-factory";
 import { passesPreFilter } from "../shared/pre-filter";
-import { getCleanText, parseEngagement } from "../shared/dom-utils";
+import { getCleanText, parseEngagement, querySelectorFallback } from "../shared/dom-utils";
 import { startAutoScroll, stopAutoScroll } from "../shared/auto-scroll";
 import type { ExtractedPost, StartAutoScrollMessage } from "../types";
 
 const PLATFORM = "X" as const;
 
+// Selector fallback chains — self-healing against DOM changes
+const SELECTORS = {
+  feedContainer: '[data-testid="primaryColumn"] section, [aria-label*="Timeline"]',
+  textContent: ['[data-testid="tweetText"]'],
+  username: ['[data-testid="User-Name"]'],
+  likes: ['[data-testid="like"] span', '[data-testid="unlike"] span'],
+  retweets: ['[data-testid="retweet"] span', '[data-testid="unretweet"] span'],
+};
+
 const adapter: PlatformAdapter = {
   platform: PLATFORM,
-  feedContainerSelector:
-    '[data-testid="primaryColumn"] section, [aria-label*="Timeline"]',
+  feedContainerSelector: SELECTORS.feedContainer,
 
   isPostNode(node: Node): node is HTMLElement {
     if (!(node instanceof HTMLElement)) return false;
@@ -26,15 +34,15 @@ const adapter: PlatformAdapter = {
         : element.querySelector('article[data-testid="tweet"]');
     if (!article || !(article instanceof HTMLElement)) return null;
 
-    // Extract tweet text
-    const textEl = article.querySelector('[data-testid="tweetText"]');
-    const text = getCleanText(textEl as HTMLElement).slice(0, 2000);
+    // Extract tweet text — fallback chain
+    const textEl = querySelectorFallback(article, SELECTORS.textContent, PLATFORM, "textContent");
+    const text = getCleanText(textEl).slice(0, 2000);
     if (!text) return null;
 
-    // Username
-    const userEl = article.querySelector('[data-testid="User-Name"]');
+    // Username — fallback chain
+    const userEl = querySelectorFallback(article, SELECTORS.username, PLATFORM, "username");
     const username = userEl
-      ? getCleanText(userEl as HTMLElement).split("@")[0].trim()
+      ? getCleanText(userEl).split("@")[0].trim()
       : "Unknown";
 
     // Tweet URL — look for the timestamp link
@@ -42,15 +50,11 @@ const adapter: PlatformAdapter = {
     const tweetLink = timeLink?.closest("a") as HTMLAnchorElement | null;
     const url = tweetLink ? tweetLink.href : window.location.href;
 
-    // Engagement — likes
-    const likeEl = article.querySelector(
-      '[data-testid="like"] span, [data-testid="unlike"] span'
-    );
-    const retweetEl = article.querySelector(
-      '[data-testid="retweet"] span, [data-testid="unretweet"] span'
-    );
-    const likes = likeEl ? parseEngagement(getCleanText(likeEl as HTMLElement)) : 0;
-    const retweets = retweetEl ? parseEngagement(getCleanText(retweetEl as HTMLElement)) : 0;
+    // Engagement — likes (fallback chain)
+    const likeEl = querySelectorFallback(article, SELECTORS.likes, PLATFORM, "likes");
+    const retweetEl = querySelectorFallback(article, SELECTORS.retweets, PLATFORM, "retweets");
+    const likes = likeEl ? parseEngagement(getCleanText(likeEl)) : 0;
+    const retweets = retweetEl ? parseEngagement(getCleanText(retweetEl)) : 0;
     const engagement = likes + retweets;
 
     // Timestamp
@@ -78,8 +82,6 @@ async function init() {
       console.log(`[SignalDesk] [X] Post FILTERED OUT: "${post.text.slice(0, 80)}..."`);
       return;
     }
-
-    console.log(`[SignalDesk] [X] Sending to background: ${post.username} — "${post.text.slice(0, 100)}..."`);
 
     chrome.runtime.sendMessage(
       { type: "POST_DETECTED", payload: post },

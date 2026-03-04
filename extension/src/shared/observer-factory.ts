@@ -1,4 +1,6 @@
 import type { ExtractedPost, Platform } from "../types";
+import { canProcess } from "./rate-limiter";
+import { recordScan, isPaused } from "./burst-detector";
 
 export interface PlatformAdapter {
   platform: Platform;
@@ -10,9 +12,23 @@ export interface PlatformAdapter {
   extractPost(element: HTMLElement): ExtractedPost | null;
 }
 
+/** DOM attribute used to mark elements as processed — prevents re-scanning */
+const PROCESSED_MARKER = "data-sdai-seen";
+
+/** Max posts to process per mutation batch (prevents UI jank on fast scrolling) */
+const MAX_PER_CYCLE = 10;
+
+/** Throttle interval between processing cycles (ms) */
+const THROTTLE_MS = 200;
+
 /**
  * Creates and starts a MutationObserver for a given platform.
  * Returns a disconnect function to stop observing.
+ *
+ * Enhanced with:
+ * - DOM marker to prevent re-scanning already-processed elements
+ * - Throttled processing queue to avoid jank during fast scrolling
+ * - Per-platform rate limiting + burst detection
  */
 export function createPlatformObserver(
   adapter: PlatformAdapter,
@@ -21,15 +37,25 @@ export function createPlatformObserver(
   const processedPosts = new Set<string>();
   let observer: MutationObserver | null = null;
   let retryTimeout: ReturnType<typeof setTimeout> | null = null;
+  let processingQueue: HTMLElement[] = [];
+  let flushTimer: ReturnType<typeof setTimeout> | null = null;
 
-  function processNode(node: Node) {
-    if (!adapter.isPostNode(node)) return;
+  function processElement(el: HTMLElement): void {
+    // Skip already-processed elements (DOM marker)
+    if (el.hasAttribute(PROCESSED_MARKER)) return;
 
-    const post = adapter.extractPost(node);
-    if (!post || !post.text) {
-      console.log(`[SignalDesk] [${adapter.platform}] Post node found but no text extracted`);
-      return;
-    }
+    if (!adapter.isPostNode(el)) return;
+
+    // Mark as processed immediately
+    el.setAttribute(PROCESSED_MARKER, "1");
+
+    // Rate limit + burst check
+    if (isPaused()) return;
+    if (!canProcess(adapter.platform)) return;
+    if (!recordScan()) return;
+
+    const post = adapter.extractPost(el);
+    if (!post || !post.text) return;
 
     // Dedup by URL or content fingerprint
     const key = post.url || `${post.username}-${post.text.slice(0, 80)}`;
@@ -53,6 +79,42 @@ export function createPlatformObserver(
     onPostDetected(post);
   }
 
+  /** Throttled queue processor — caps at MAX_PER_CYCLE per THROTTLE_MS */
+  function flushQueue(): void {
+    flushTimer = null;
+    if (processingQueue.length === 0) return;
+
+    const batch = processingQueue.splice(0, MAX_PER_CYCLE);
+    for (const el of batch) {
+      processElement(el);
+    }
+
+    // Continue processing if queue has more
+    if (processingQueue.length > 0) {
+      flushTimer = setTimeout(flushQueue, THROTTLE_MS);
+    }
+  }
+
+  function enqueueNode(node: Node): void {
+    if (node instanceof HTMLElement) {
+      // Check the node itself
+      if (!node.hasAttribute(PROCESSED_MARKER)) {
+        processingQueue.push(node);
+      }
+      // Also check children (platforms nest posts in wrapper divs)
+      node.querySelectorAll(`*:not([${PROCESSED_MARKER}])`).forEach((child) => {
+        if (child instanceof HTMLElement) {
+          processingQueue.push(child);
+        }
+      });
+    }
+
+    // Schedule processing
+    if (!flushTimer && processingQueue.length > 0) {
+      flushTimer = setTimeout(flushQueue, THROTTLE_MS);
+    }
+  }
+
   function startObserving() {
     const container = document.querySelector(adapter.feedContainerSelector);
     if (!container) {
@@ -65,11 +127,7 @@ export function createPlatformObserver(
     observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
         for (const node of mutation.addedNodes) {
-          processNode(node);
-          // Also check children (platforms nest posts in wrapper divs)
-          if (node instanceof HTMLElement) {
-            node.querySelectorAll("*").forEach((child) => processNode(child));
-          }
+          enqueueNode(node);
         }
       }
     });
@@ -77,18 +135,26 @@ export function createPlatformObserver(
     observer.observe(container, { childList: true, subtree: true });
 
     // Process existing posts on initial load
-    const existingCount = { total: 0 };
-    container.querySelectorAll("*").forEach((el) => {
-      existingCount.total++;
-      processNode(el);
+    let existingCount = 0;
+    container.querySelectorAll(`*:not([${PROCESSED_MARKER}])`).forEach((el) => {
+      existingCount++;
+      if (el instanceof HTMLElement) {
+        processingQueue.push(el);
+      }
     });
 
-    console.log(`[SignalDesk] [${adapter.platform}] Observer started — scanned ${existingCount.total} existing elements, ${processedPosts.size} posts tracked`);
+    if (processingQueue.length > 0) {
+      flushTimer = setTimeout(flushQueue, THROTTLE_MS);
+    }
+
+    console.log(`[SignalDesk] [${adapter.platform}] Observer started — queued ${existingCount} existing elements, ${processedPosts.size} posts tracked`);
   }
 
   function disconnect() {
     if (observer) observer.disconnect();
     if (retryTimeout) clearTimeout(retryTimeout);
+    if (flushTimer) clearTimeout(flushTimer);
+    processingQueue = [];
   }
 
   startObserving();

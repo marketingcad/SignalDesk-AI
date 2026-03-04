@@ -1,22 +1,30 @@
 import { createPlatformObserver, type PlatformAdapter } from "../shared/observer-factory";
 import { passesPreFilter } from "../shared/pre-filter";
-import { getCleanText, parseEngagement } from "../shared/dom-utils";
+import { getCleanText, parseEngagement, querySelectorFallback } from "../shared/dom-utils";
 import { startAutoScroll, stopAutoScroll } from "../shared/auto-scroll";
 import type { ExtractedPost, StartAutoScrollMessage } from "../types";
 
 const PLATFORM = "Reddit" as const;
 
+// Selector fallback chains — self-healing against DOM changes
+const SELECTORS = {
+  feedContainer: '#main-content, [data-testid="subreddit-feed"], .ListingLayout-outerContainer',
+  title: ['[data-testid="post-title"]', '[slot="title"]', "h1", "h3"],
+  body: ['[data-testid="post-content"]', '[slot="text-body"]', ".md"],
+  username: ['a[href*="/user/"]'],
+  engagement: ['[data-testid="score"]', "[score]", ".score"],
+};
+
 const adapter: PlatformAdapter = {
   platform: PLATFORM,
-  feedContainerSelector: '#main-content, [data-testid="subreddit-feed"], .ListingLayout-outerContainer',
+  feedContainerSelector: SELECTORS.feedContainer,
 
   isPostNode(node: Node): node is HTMLElement {
     if (!(node instanceof HTMLElement)) return false;
-    // Reddit uses custom elements (shreddit-post) and data-testid attributes
     return (
       node.tagName.toLowerCase() === "shreddit-post" ||
-      node.hasAttribute("data-testid") &&
-        node.getAttribute("data-testid") === "post-container" ||
+      (node.hasAttribute("data-testid") &&
+        node.getAttribute("data-testid") === "post-container") ||
       node.querySelector("shreddit-post") !== null ||
       node.querySelector('[data-testid="post-container"]') !== null
     );
@@ -30,25 +38,21 @@ const adapter: PlatformAdapter = {
           element.querySelector('[data-testid="post-container"]');
     if (!postEl || !(postEl instanceof HTMLElement)) return null;
 
-    // Extract title
-    const titleEl = postEl.querySelector(
-      '[data-testid="post-title"], [slot="title"], h1, h3'
-    );
-    const title = getCleanText(titleEl as HTMLElement);
+    // Extract title — fallback chain
+    const titleEl = querySelectorFallback(postEl, SELECTORS.title, PLATFORM, "title");
+    const title = getCleanText(titleEl);
 
-    // Extract body text
-    const bodyEl = postEl.querySelector(
-      '[data-testid="post-content"], [slot="text-body"], .md'
-    );
-    const body = getCleanText(bodyEl as HTMLElement);
+    // Extract body text — fallback chain
+    const bodyEl = querySelectorFallback(postEl, SELECTORS.body, PLATFORM, "body");
+    const body = getCleanText(bodyEl);
 
     const text = `${title} ${body}`.trim().slice(0, 2000);
     if (!text) return null;
 
-    // Username
-    const authorEl = postEl.querySelector('a[href*="/user/"]');
+    // Username — fallback chain
+    const authorEl = querySelectorFallback(postEl, SELECTORS.username, PLATFORM, "username");
     const username = authorEl
-      ? getCleanText(authorEl as HTMLElement).replace("u/", "")
+      ? getCleanText(authorEl).replace("u/", "")
       : (postEl.getAttribute("author") || "Unknown");
 
     // Post URL
@@ -58,16 +62,15 @@ const adapter: PlatformAdapter = {
       ? `https://www.reddit.com${permalink}`
       : window.location.href;
 
-    // Engagement (score/votes)
-    const scoreEl = postEl.querySelector(
-      '[data-testid="score"], [score], .score'
-    );
+    // Engagement (score/votes) — fallback chain
     const scoreAttr = postEl.getAttribute("score");
-    const engagement = scoreAttr
-      ? parseInt(scoreAttr, 10)
-      : scoreEl
-        ? parseEngagement(getCleanText(scoreEl as HTMLElement))
-        : 0;
+    let engagement = 0;
+    if (scoreAttr) {
+      engagement = parseInt(scoreAttr, 10) || 0;
+    } else {
+      const scoreEl = querySelectorFallback(postEl, SELECTORS.engagement, PLATFORM, "engagement");
+      engagement = scoreEl ? parseEngagement(getCleanText(scoreEl)) : 0;
+    }
 
     // Timestamp
     const timeEl = postEl.querySelector("time, [datetime]");
@@ -100,8 +103,6 @@ async function init() {
       console.log(`[SignalDesk] [Reddit] Post FILTERED OUT: "${post.text.slice(0, 80)}..."`);
       return;
     }
-
-    console.log(`[SignalDesk] [Reddit] Sending to background: ${post.username} — "${post.text.slice(0, 100)}..."`);
 
     chrome.runtime.sendMessage(
       { type: "POST_DETECTED", payload: post },

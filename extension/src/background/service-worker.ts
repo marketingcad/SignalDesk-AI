@@ -1,14 +1,18 @@
 import type {
   DetectedMessage,
+  ExtractedPost,
   Stats,
   AutoMonitorConfig,
   MonitoredTabMap,
   MonitoredUrl,
   StartAutoScrollMessage,
 } from "../types";
+import { BatchQueue } from "../shared/batch-queue";
 
 const DEFAULT_API_URL = "http://localhost:3000";
 const ALARM_NAME_MONITOR = "auto-monitor-cycle";
+const ALARM_NAME_CONFIG_SYNC = "config-sync";
+const ALARM_NAME_KEEPALIVE = "sw-keepalive";
 const SCROLL_START_DELAY_MS = 5_000;
 
 const DEFAULT_AUTO_CONFIG: AutoMonitorConfig = {
@@ -21,13 +25,99 @@ const DEFAULT_AUTO_CONFIG: AutoMonitorConfig = {
 };
 
 // ---------------------------------------------------------------------------
-// Message listener — relay posts from content scripts to backend
+// BatchQueue — replaces individual POST calls with batched delivery
+// ---------------------------------------------------------------------------
+
+const batchQueue = new BatchQueue({
+  maxBatchSize: 50,
+  flushIntervalMs: 5_000,
+  maxRetries: 3,
+  onFlush: flushBatchToBackend,
+});
+
+async function flushBatchToBackend(posts: ExtractedPost[]): Promise<boolean> {
+  const { apiUrl, authToken } = await chrome.storage.local.get([
+    "apiUrl",
+    "authToken",
+  ]);
+  const baseUrl = apiUrl || DEFAULT_API_URL;
+
+  if (!authToken) {
+    console.warn("[SignalDesk] [SW] No auth token — cannot flush batch");
+    return false;
+  }
+
+  const endpoint = `${baseUrl}/api/leads/batch`;
+  console.log(`[SignalDesk] [SW] Flushing ${posts.length} posts to ${endpoint}`);
+
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${authToken}`,
+        "X-Source": "signaldesk-extension",
+      },
+      body: JSON.stringify({ posts }),
+    });
+
+    if (response.status === 401) {
+      console.error("[SignalDesk] [SW] 401 Unauthorized — clearing auth token");
+      await chrome.storage.local.set({ authToken: null });
+      return false;
+    }
+
+    if (!response.ok) {
+      await incrementStat("errors");
+      const errText = await response.text();
+      console.error(`[SignalDesk] [SW] Batch API error: ${response.status} — ${errText}`);
+      return false;
+    }
+
+    const result = await response.json();
+    console.log(
+      `[SignalDesk] [SW] Batch processed:`,
+      `\n  Inserted: ${result.inserted}`,
+      `\n  Duplicates: ${result.duplicates}`,
+      `\n  Total: ${result.processed}`
+    );
+
+    // Update stats for non-duplicate inserts
+    if (result.inserted > 0) {
+      const stats = await getStats();
+      stats.totalSent += result.inserted;
+
+      // Count by platform
+      for (const r of result.results || []) {
+        if (r.leadId && !r.duplicate) {
+          const post = posts.find((p) => p.url === r.url);
+          if (post) {
+            stats.byPlatform[post.platform] = (stats.byPlatform[post.platform] || 0) + 1;
+          }
+        }
+      }
+
+      await chrome.storage.local.set({ stats });
+      await chrome.storage.local.set({ lastSentAt: new Date().toISOString() });
+      await updateBadge();
+    }
+
+    return true;
+  } catch (err) {
+    console.error("[SignalDesk] [SW] Batch fetch error:", err);
+    await incrementStat("errors");
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Message listener — relay posts from content scripts to batch queue
 // + handle auto-monitor commands from popup
 // ---------------------------------------------------------------------------
 
 chrome.runtime.onMessage.addListener(
   (message: DetectedMessage & { type: string }, sender, sendResponse) => {
-    // --- Post detection (from content scripts) ---
+    // --- Post detection (from content scripts) → enqueue to batch ---
     if (message.type === "POST_DETECTED") {
       const { platform, username, text } = message.payload;
       console.log(
@@ -37,17 +127,17 @@ chrome.runtime.onMessage.addListener(
         `\n  Text: ${text.slice(0, 120)}...`
       );
 
-      processPost(message.payload)
-        .then((result) => {
-          console.log(`[SignalDesk] [SW] API success:`, result);
-          sendResponse({ success: true, ...result });
-        })
-        .catch((err) => {
-          console.error(`[SignalDesk] [SW] API error:`, err.message);
-          sendResponse({ success: false, error: err.message });
-        });
+      batchQueue.push(message.payload);
+      sendResponse({ success: true, queued: true, pending: batchQueue.pending });
+      return false;
+    }
 
-      return true;
+    // --- Parsing failure logs (from content scripts) ---
+    if (message.type === "PARSING_EVENTS") {
+      const events = (message as unknown as { events: unknown[] }).events;
+      console.log(`[SignalDesk] [SW] Received ${events?.length || 0} parsing event(s)`);
+      // In future: forward to /api/health/parsers endpoint
+      return false;
     }
 
     // --- Auto-monitor commands (from popup) ---
@@ -85,74 +175,6 @@ chrome.runtime.onMessage.addListener(
 );
 
 // ---------------------------------------------------------------------------
-// Process a detected post — send to backend API
-// ---------------------------------------------------------------------------
-
-async function processPost(
-  payload: DetectedMessage["payload"]
-): Promise<Record<string, unknown>> {
-  const { apiUrl, authToken } = await chrome.storage.local.get([
-    "apiUrl",
-    "authToken",
-  ]);
-  const baseUrl = apiUrl || DEFAULT_API_URL;
-
-  if (!authToken) {
-    console.warn(`[SignalDesk] [SW] No auth token — user not signed in`);
-    throw new Error("Not authenticated. Please sign in via the popup.");
-  }
-
-  const endpoint = `${baseUrl}/api/leads/process`;
-  console.log(`[SignalDesk] [SW] POSTing to ${endpoint}...`);
-
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${authToken}`,
-      "X-Source": "signaldesk-extension",
-    },
-    body: JSON.stringify(payload),
-  });
-
-  console.log(`[SignalDesk] [SW] Response status: ${response.status}`);
-
-  if (response.status === 401) {
-    console.error(`[SignalDesk] [SW] 401 Unauthorized — clearing auth token`);
-    await chrome.storage.local.set({ authToken: null });
-    throw new Error("Session expired. Please sign in again.");
-  }
-
-  if (!response.ok) {
-    await incrementStat("errors");
-    const errText = await response.text();
-    console.error(`[SignalDesk] [SW] API error response: ${errText}`);
-    throw new Error(`API error ${response.status}: ${errText}`);
-  }
-
-  const result = await response.json();
-  console.log(
-    `[SignalDesk] [SW] Lead processed:`,
-    `\n  Lead ID: ${result.leadId}`,
-    `\n  Intent Score: ${result.intentScore}`,
-    `\n  Intent Level: ${result.intentLevel}`,
-    `\n  Duplicate: ${result.duplicate || false}`
-  );
-
-  if (!result.duplicate) {
-    await incrementStat("totalSent");
-    await incrementPlatformCount(payload.platform);
-    console.log(
-      `[SignalDesk] [SW] Stats updated — new lead counted for ${payload.platform}`
-    );
-  }
-  await chrome.storage.local.set({ lastSentAt: new Date().toISOString() });
-  await updateBadge();
-
-  return result;
-}
-
-// ---------------------------------------------------------------------------
 // Stats helpers
 // ---------------------------------------------------------------------------
 
@@ -169,11 +191,6 @@ async function incrementStat(key: "totalSent" | "errors") {
   await chrome.storage.local.set({ stats });
 }
 
-async function incrementPlatformCount(platform: string) {
-  const stats = await getStats();
-  stats.byPlatform[platform] = (stats.byPlatform[platform] || 0) + 1;
-  await chrome.storage.local.set({ stats });
-}
 
 async function updateBadge() {
   const stats = await getStats();
@@ -181,6 +198,40 @@ async function updateBadge() {
   const text = total > 99 ? "99+" : total > 0 ? String(total) : "";
   chrome.action.setBadgeText({ text });
   chrome.action.setBadgeBackgroundColor({ color: "#6366f1" });
+}
+
+// ---------------------------------------------------------------------------
+// Config sync — periodically fetch dynamic config from backend
+// ---------------------------------------------------------------------------
+
+async function syncConfig(): Promise<void> {
+  const { authToken, apiUrl } = await chrome.storage.local.get([
+    "authToken",
+    "apiUrl",
+  ]);
+  if (!authToken) return;
+
+  const baseUrl = apiUrl || DEFAULT_API_URL;
+
+  try {
+    const res = await fetch(`${baseUrl}/api/config`, {
+      headers: { Authorization: `Bearer ${authToken}` },
+    });
+
+    if (res.ok) {
+      const config = await res.json();
+      await chrome.storage.local.set({
+        remoteConfig: config,
+        configVersion: config.version,
+        configSyncedAt: new Date().toISOString(),
+      });
+      console.log(`[SignalDesk] [SW] Config synced — version: ${config.version}`);
+    } else {
+      console.warn(`[SignalDesk] [SW] Config sync failed: ${res.status}`);
+    }
+  } catch (err) {
+    console.warn("[SignalDesk] [SW] Config sync error:", err);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -343,10 +394,23 @@ async function sendScrollMessageToAllTabs(
 }
 
 // ---------------------------------------------------------------------------
-// Alarm handler — periodic reload + scroll
+// Alarm handler — periodic reload + scroll + config sync + keepalive
 // ---------------------------------------------------------------------------
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
+  // --- Config sync alarm ---
+  if (alarm.name === ALARM_NAME_CONFIG_SYNC) {
+    await syncConfig();
+    return;
+  }
+
+  // --- Keepalive alarm — drain any buffered posts ---
+  if (alarm.name === ALARM_NAME_KEEPALIVE) {
+    await batchQueue.recoverPending();
+    return;
+  }
+
+  // --- Auto-monitor alarm ---
   if (alarm.name !== ALARM_NAME_MONITOR) return;
 
   console.log(
@@ -466,6 +530,10 @@ chrome.runtime.onInstalled.addListener(async (details) => {
     console.log(`[SignalDesk] [SW] Default storage values initialized`);
   }
 
+  // Register periodic alarms
+  chrome.alarms.create(ALARM_NAME_CONFIG_SYNC, { periodInMinutes: 30 });
+  chrome.alarms.create(ALARM_NAME_KEEPALIVE, { periodInMinutes: 4 });
+
   if (details.reason === "update") {
     const config = await getAutoMonitorConfig();
     if (config.isRunning) {
@@ -479,12 +547,26 @@ chrome.runtime.onInstalled.addListener(async (details) => {
       });
     }
   }
+
+  // Initial config sync
+  syncConfig();
 });
 
 chrome.runtime.onStartup.addListener(async () => {
   console.log(
-    "[SignalDesk] [SW] Browser started — checking auto-monitor state"
+    "[SignalDesk] [SW] Browser started — recovering state"
   );
+
+  // Recover any posts buffered in IndexedDB
+  await batchQueue.recoverPending();
+
+  // Re-register periodic alarms
+  chrome.alarms.create(ALARM_NAME_CONFIG_SYNC, { periodInMinutes: 30 });
+  chrome.alarms.create(ALARM_NAME_KEEPALIVE, { periodInMinutes: 4 });
+
+  // Re-sync config
+  syncConfig();
+
   const config = await getAutoMonitorConfig();
   if (config.isRunning) {
     console.log(

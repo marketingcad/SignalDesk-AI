@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifySession } from "@/lib/auth";
 import { scoreIntent } from "@/lib/intent-scoring";
 import { supabase } from "@/lib/supabase";
-import { sendDiscordLeadAlert } from "@/lib/facebook-webhook";
+import { alertEngine } from "@/lib/alert-engine";
 import type { Platform } from "@/lib/types";
 
 interface IncomingPayload {
@@ -114,10 +114,10 @@ export async function POST(request: NextRequest) {
 
   console.log(`[leads/process] Lead inserted — ID: ${lead.id}, Score: ${lead.intent_score}, Level: ${lead.intent_level}`);
 
-  // --- Discord alert for high-intent leads ---
+  // --- Smart alert for high-intent leads (batched, deduped, rate-limited) ---
   if (scoringResult.score >= 80) {
-    console.log(`[leads/process] High intent (${scoringResult.score}) — sending Discord notification...`);
-    await sendDiscordLeadAlert({
+    console.log(`[leads/process] High intent (${scoringResult.score}) — enqueuing alert`);
+    alertEngine.enqueue({
       author_name: username,
       message: text.slice(0, 500),
       url,
@@ -128,11 +128,9 @@ export async function POST(request: NextRequest) {
       category: scoringResult.category,
       matchedKeywords: scoringResult.matchedKeywords,
       created_time: timestamp || new Date().toISOString(),
-    })
-      .then(() => console.log("[leads/process] Discord embed sent successfully"))
-      .catch((err: unknown) => console.error("[leads/process] Discord notification failed:", err));
+    });
   } else {
-    console.log(`[leads/process] Score ${scoringResult.score} < 80 — no Discord notification`);
+    console.log(`[leads/process] Score ${scoringResult.score} < 80 — no alert`);
   }
 
   console.log("[leads/process] ---- Request complete ----");

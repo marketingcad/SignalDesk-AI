@@ -236,6 +236,23 @@ export async function updateLeadStatus(
   return data ? mapRow(data) : null;
 }
 
+export async function deleteLead(id: string): Promise<boolean> {
+  const { error } = await supabase.from("leads").delete().eq("id", id);
+  if (error) throw error;
+  return true;
+}
+
+export async function deleteAllLeads(): Promise<number> {
+  const { data, error } = await supabase
+    .from("leads")
+    .delete()
+    .gte("created_at", "1970-01-01")
+    .select("id");
+
+  if (error) throw error;
+  return data?.length || 0;
+}
+
 export async function getPlatformCounts(): Promise<
   Record<Platform, { total: number; lastActive: Date | null }>
 > {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifySession, SESSION_COOKIE_NAME } from "@/lib/auth";
-import { getLeads } from "@/lib/leads";
+import { getLeads, deleteAllLeads } from "@/lib/leads";
 import type { Platform, IntentLevel, LeadStatus } from "@/lib/types";
 
 export async function GET(request: NextRequest) {
@@ -25,6 +25,21 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(result);
   } catch (error) {
     console.error("[api/leads] Error:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  const token = request.cookies.get(SESSION_COOKIE_NAME)?.value;
+  if (!token || !(await verifySession(token))) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  try {
+    const deleted = await deleteAllLeads();
+    return NextResponse.json({ success: true, deleted });
+  } catch (error) {
+    console.error("[api/leads] Delete all error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
