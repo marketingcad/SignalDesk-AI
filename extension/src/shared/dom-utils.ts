@@ -101,6 +101,202 @@ export function querySelectorAllFallback(
   return [];
 }
 
+// ---------------------------------------------------------------------------
+// Cross-platform "See More" expansion
+// ---------------------------------------------------------------------------
+
+interface SeeMoreConfig {
+  buttonSelectors: string[];
+  buttonTextPatterns: string[];
+}
+
+const SEE_MORE_CONFIGS: Record<string, SeeMoreConfig> = {
+  Facebook: {
+    buttonSelectors: [
+      '[role="button"][tabindex="0"]',
+      'div[dir="auto"] [role="button"]',
+    ],
+    buttonTextPatterns: ["see more", "see more\u2026"],
+  },
+  LinkedIn: {
+    buttonSelectors: [
+      ".see-more-less-button",
+      'button[data-tracking-control-name*="see_more"]',
+      ".feed-shared-inline-show-more-text button",
+    ],
+    buttonTextPatterns: ["see more", "\u2026see more", "...see more"],
+  },
+  X: {
+    buttonSelectors: [
+      '[data-testid="tweet-text-show-more-link"]',
+    ],
+    buttonTextPatterns: ["show more"],
+  },
+  Reddit: {
+    buttonSelectors: [],
+    buttonTextPatterns: [],
+  },
+};
+
+/** Try to expand truncated post text by clicking "See More" / "Show More" buttons */
+export function expandTruncatedText(container: HTMLElement, platform: string): void {
+  const config = SEE_MORE_CONFIGS[platform];
+  if (!config || config.buttonSelectors.length === 0) return;
+
+  for (const selector of config.buttonSelectors) {
+    const btn = container.querySelector<HTMLElement>(selector);
+    if (!btn) continue;
+    const btnText = (btn.textContent || "").toLowerCase().trim();
+    if (config.buttonTextPatterns.some((p) => btnText.includes(p))) {
+      try { btn.click(); } catch { /* non-critical */ }
+      return;
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Heuristic/structural extraction — last resort when ALL CSS selectors fail
+// ---------------------------------------------------------------------------
+
+const NOISE_ROLES = ["navigation", "complementary", "banner", "contentinfo"];
+
+/**
+ * Heuristic: find the most likely "post body" text block within a container.
+ * Scores candidates by text length, text-to-HTML ratio, and position.
+ */
+export function heuristicFindTextBlock(container: HTMLElement): HTMLElement | null {
+  let bestEl: HTMLElement | null = null;
+  let bestScore = 0;
+
+  const candidates = container.querySelectorAll("div, span, p");
+  for (const candidate of candidates) {
+    const el = candidate as HTMLElement;
+
+    // Skip noise containers
+    const role = el.getAttribute("role") || "";
+    if (NOISE_ROLES.includes(role)) continue;
+    if (el.closest('[role="navigation"], [role="complementary"], [role="banner"]')) continue;
+
+    const text = (el.textContent || "").trim();
+    if (text.length < 40) continue;
+
+    const html = el.innerHTML || "";
+    // Text-to-HTML ratio: high = real text, low = heavy markup/ads
+    const ratio = html.length > 0 ? text.length / html.length : 0;
+    if (ratio < 0.3) continue;
+
+    // Score: text length (normalized) * ratio
+    const score = Math.min(text.length, 500) * ratio;
+    if (score > bestScore) {
+      bestScore = score;
+      bestEl = el;
+    }
+  }
+
+  if (bestEl) {
+    logParsingEvent({
+      platform: "unknown",
+      field: "textContent",
+      primarySelector: "heuristic",
+      fallbackUsed: "heuristicFindTextBlock",
+      fallbackIndex: -2,
+      timestamp: Date.now(),
+      url: window.location.href,
+    });
+  }
+
+  return bestEl;
+}
+
+/** Platform-specific path patterns for identifying profile links */
+const PROFILE_PATTERNS = ["/user/", "/profile", "/@", "/people/", "/in/"];
+
+/**
+ * Heuristic: find the author username by looking for profile-like links.
+ */
+export function heuristicFindUsername(container: HTMLElement): string {
+  // Strategy 1: find <a> with profile-like href
+  const links = container.querySelectorAll("a[href]");
+  for (const link of links) {
+    const href = (link as HTMLAnchorElement).href || "";
+    if (PROFILE_PATTERNS.some((p) => href.includes(p))) {
+      const text = (link.textContent || "").trim();
+      if (text.length > 0 && text.length < 60) return text;
+    }
+  }
+
+  // Strategy 2: first bold/strong text (author names are often bold)
+  const bold = container.querySelector("strong, b, [style*='font-weight']");
+  if (bold) {
+    const text = (bold.textContent || "").trim();
+    if (text.length > 0 && text.length < 60) return text;
+  }
+
+  return "";
+}
+
+/**
+ * Heuristic: find engagement count by looking for aria-labels with numbers
+ * or small numeric text near action buttons.
+ */
+export function heuristicFindEngagement(container: HTMLElement): number {
+  let maxEngagement = 0;
+
+  // Strategy 1: aria-label with numbers
+  const labeled = container.querySelectorAll("[aria-label]");
+  for (const el of labeled) {
+    const label = el.getAttribute("aria-label") || "";
+    const match = label.match(/(\d[\d,.]*[KkMm]?)/);
+    if (match) {
+      maxEngagement = Math.max(maxEngagement, parseEngagement(match[1]));
+    }
+  }
+
+  // Strategy 2: small numeric text near role="button" or role="group"
+  if (maxEngagement === 0) {
+    const groups = container.querySelectorAll('[role="group"], [role="button"]');
+    for (const group of groups) {
+      const spans = group.querySelectorAll("span");
+      for (const span of spans) {
+        const text = (span.textContent || "").trim();
+        if (/^\d[\d,.]*[KkMm]?$/.test(text)) {
+          maxEngagement = Math.max(maxEngagement, parseEngagement(text));
+        }
+      }
+    }
+  }
+
+  return maxEngagement;
+}
+
+/** Platform-specific post URL path patterns */
+const POST_URL_PATTERNS = [
+  "/posts/", "/status/", "/comments/", "/permalink/",
+  "story_fbid", "pfbid", "/feed/update/",
+];
+
+/**
+ * Heuristic: find a post URL by looking for links with post-specific path patterns.
+ */
+export function heuristicFindPostUrl(container: HTMLElement): string {
+  const links = container.querySelectorAll("a[href]");
+  for (const link of links) {
+    const href = (link as HTMLAnchorElement).href || "";
+    if (POST_URL_PATTERNS.some((p) => href.includes(p))) {
+      return href;
+    }
+  }
+
+  // Fallback: timestamp link (all platforms tend to link timestamps to the post)
+  const timeLink = container.querySelector("a time, a [datetime]");
+  if (timeLink) {
+    const anchor = timeLink.closest("a") as HTMLAnchorElement | null;
+    if (anchor?.href) return anchor.href;
+  }
+
+  return "";
+}
+
 // Buffer parsing events and send to service worker in batches
 let parsingEventBuffer: ParsingEvent[] = [];
 let parsingEventTimer: ReturnType<typeof setTimeout> | null = null;

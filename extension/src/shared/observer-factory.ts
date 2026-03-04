@@ -1,6 +1,7 @@
 import type { ExtractedPost, Platform } from "../types";
 import { canProcess } from "./rate-limiter";
 import { recordScan, isPaused } from "./burst-detector";
+import { isDuplicate, markProcessed } from "./persistent-dedup";
 
 export interface PlatformAdapter {
   platform: Platform;
@@ -40,7 +41,7 @@ export function createPlatformObserver(
   let processingQueue: HTMLElement[] = [];
   let flushTimer: ReturnType<typeof setTimeout> | null = null;
 
-  function processElement(el: HTMLElement): void {
+  async function processElement(el: HTMLElement): Promise<void> {
     // Skip already-processed elements (DOM marker)
     if (el.hasAttribute(PROCESSED_MARKER)) return;
 
@@ -57,12 +58,27 @@ export function createPlatformObserver(
     const post = adapter.extractPost(el);
     if (!post || !post.text) return;
 
-    // Dedup by URL or content fingerprint
-    const key = post.url || `${post.username}-${post.text.slice(0, 80)}`;
-    if (processedPosts.has(key)) return;
-    processedPosts.add(key);
+    // Dedup by URL or content fingerprint.
+    // IMPORTANT: If URL is just the page URL (e.g. group page), it's the same for
+    // every post — fall back to content fingerprint to avoid blocking all but the first.
+    const isGenericUrl = !post.url || post.url === window.location.href;
+    const key = isGenericUrl
+      ? `${post.username}-${post.text.slice(0, 80)}`
+      : post.url;
 
-    // Cap dedup set size to prevent memory leaks
+    // Fast path: in-memory check (synchronous)
+    if (processedPosts.has(key)) return;
+
+    // Slow path: persistent check (survives tab reloads from auto-monitor)
+    if (await isDuplicate(key)) {
+      processedPosts.add(key); // Cache locally to skip async next time
+      return;
+    }
+
+    processedPosts.add(key);
+    await markProcessed(key);
+
+    // Cap in-memory dedup set size to prevent memory leaks
     if (processedPosts.size > 1000) {
       const entries = Array.from(processedPosts);
       entries.slice(0, 500).forEach((k) => processedPosts.delete(k));
@@ -80,13 +96,13 @@ export function createPlatformObserver(
   }
 
   /** Throttled queue processor — caps at MAX_PER_CYCLE per THROTTLE_MS */
-  function flushQueue(): void {
+  async function flushQueue(): Promise<void> {
     flushTimer = null;
     if (processingQueue.length === 0) return;
 
     const batch = processingQueue.splice(0, MAX_PER_CYCLE);
     for (const el of batch) {
-      processElement(el);
+      await processElement(el);
     }
 
     // Continue processing if queue has more

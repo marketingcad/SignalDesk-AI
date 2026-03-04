@@ -1,6 +1,6 @@
 import { createPlatformObserver, type PlatformAdapter } from "../shared/observer-factory";
 import { passesPreFilter } from "../shared/pre-filter";
-import { getCleanText, parseEngagement, querySelectorFallback } from "../shared/dom-utils";
+import { getCleanText, parseEngagement, querySelectorFallback, expandTruncatedText, heuristicFindTextBlock, heuristicFindUsername, heuristicFindEngagement, heuristicFindPostUrl } from "../shared/dom-utils";
 import { startAutoScroll, stopAutoScroll } from "../shared/auto-scroll";
 import type { ExtractedPost, StartAutoScrollMessage } from "../types";
 
@@ -9,9 +9,28 @@ const PLATFORM = "LinkedIn" as const;
 // Selector fallback chains — self-healing against DOM changes
 const SELECTORS = {
   feedContainer: '[role="main"]',
-  textContent: [".feed-shared-text", ".break-words", "[dir='ltr']"],
-  username: [".feed-shared-actor__name", ".update-components-actor__name"],
-  engagement: [".social-details-social-counts__reactions-count"],
+  textContent: [
+    ".feed-shared-text",
+    ".break-words",
+    "[dir='ltr']",
+    ".feed-shared-update-v2__description span[dir]",  // deeper structural
+    ".update-components-text span",                    // newer LI components
+  ],
+  username: [
+    ".feed-shared-actor__name",
+    ".update-components-actor__name",
+    'a[data-tracking-control-name*="actor"]',          // tracking attrs are stable
+    ".feed-shared-actor a span[dir='ltr']",            // structural
+  ],
+  engagement: [
+    ".social-details-social-counts__reactions-count",
+    'button[aria-label*="reaction"] span',             // reaction button
+    ".social-details-social-counts button span",       // generic count
+  ],
+  timestamp: [
+    "time[datetime]",
+    '.feed-shared-actor__sub-description span[aria-hidden="true"]',
+  ],
 };
 
 const adapter: PlatformAdapter = {
@@ -23,7 +42,9 @@ const adapter: PlatformAdapter = {
     return (
       node.classList.contains("feed-shared-update-v2") ||
       node.hasAttribute("data-urn") ||
-      node.querySelector(".feed-shared-update-v2") !== null
+      node.hasAttribute("data-id") ||
+      node.querySelector(".feed-shared-update-v2") !== null ||
+      node.querySelector("[data-urn]") !== null
     );
   },
 
@@ -34,30 +55,43 @@ const adapter: PlatformAdapter = {
         : element.querySelector(".feed-shared-update-v2");
     if (!post || !(post instanceof HTMLElement)) return null;
 
-    // Extract text — fallback chain
+    // Try to expand "See More" so we get full post text for keyword matching
+    expandTruncatedText(post, PLATFORM);
+
+    // Extract text — fallback chain + heuristic
     const textEl = querySelectorFallback(post, SELECTORS.textContent, PLATFORM, "textContent");
-    const text = getCleanText(textEl).slice(0, 2000);
+    let text = getCleanText(textEl).slice(0, 2000);
+    if (!text) {
+      const heuristicEl = heuristicFindTextBlock(post);
+      text = getCleanText(heuristicEl).slice(0, 2000);
+    }
     if (!text) return null;
 
-    // Username — fallback chain
+    // Username — fallback chain + heuristic
     const nameEl = querySelectorFallback(post, SELECTORS.username, PLATFORM, "username");
-    const username = getCleanText(nameEl) || "Unknown";
+    const username = getCleanText(nameEl) || heuristicFindUsername(post) || "Unknown";
 
-    // Post URL
+    // Post URL + heuristic fallback
     const urnAttr = post.getAttribute("data-urn") || "";
     const activityId = urnAttr.split(":").pop() || "";
-    const url = activityId
+    let url = activityId
       ? `https://www.linkedin.com/feed/update/urn:li:activity:${activityId}`
-      : window.location.href;
+      : "";
+    if (!url || url === window.location.href) {
+      url = heuristicFindPostUrl(post) || window.location.href;
+    }
 
-    // Engagement — fallback chain
+    // Engagement — fallback chain + heuristic
     const reactionEl = querySelectorFallback(post, SELECTORS.engagement, PLATFORM, "engagement");
-    const engagement = reactionEl
+    let engagement = reactionEl
       ? parseEngagement(getCleanText(reactionEl))
       : 0;
+    if (engagement === 0) {
+      engagement = heuristicFindEngagement(post);
+    }
 
-    // Timestamp
-    const timeEl = post.querySelector("time");
+    // Timestamp — fallback chain
+    const timeEl = querySelectorFallback(post, SELECTORS.timestamp, PLATFORM, "timestamp");
     const timestamp =
       timeEl?.getAttribute("datetime") || new Date().toISOString();
 
