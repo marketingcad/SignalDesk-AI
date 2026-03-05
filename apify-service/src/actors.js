@@ -3,6 +3,16 @@ import { config } from "./config.js";
 
 const client = new ApifyClient({ token: config.apifyToken });
 
+/** Convert any timestamp (Unix number, string, or missing) to ISO string */
+function toISOTimestamp(value) {
+  if (!value) return new Date().toISOString();
+  if (typeof value === "number") {
+    // Unix timestamps < 1e12 are in seconds, otherwise milliseconds
+    return new Date(value < 1e12 ? value * 1000 : value).toISOString();
+  }
+  return String(value);
+}
+
 /**
  * Platform-specific actor configurations.
  * Each defines the actor ID, how to build the input, and how to normalize the output.
@@ -27,7 +37,7 @@ export function normalizeFacebookResult(item) {
     text: item.text || item.message || item.postText || "",
     username: item.user?.name || item.authorName || item.userName || "Unknown",
     url: item.url || item.postUrl || item.link || "",
-    timestamp: item.time || item.timestamp || item.date || new Date().toISOString(),
+    timestamp: toISOTimestamp(item.time || item.timestamp || item.date),
     engagement: (item.likes || 0) + (item.comments || 0) + (item.shares || 0),
     source: "apify",
   };
@@ -52,7 +62,7 @@ export function normalizeLinkedInResult(item) {
     text: item.text || item.postText || item.content || "",
     username: item.authorName || item.author?.name || item.profileName || "Unknown",
     url: item.url || item.postUrl || item.link || "",
-    timestamp: item.postedAt || item.publishedAt || item.date || new Date().toISOString(),
+    timestamp: toISOTimestamp(item.postedAt || item.publishedAt || item.date),
     engagement: (item.numLikes || 0) + (item.numComments || 0) + (item.numShares || 0),
     source: "apify",
   };
@@ -76,14 +86,21 @@ export function buildRedditInput(subreddits) {
 export function normalizeRedditResult(item) {
   const title = item.title || "";
   const body = item.body || item.selftext || item.text || "";
+
+  // Handle URL — permalink may be relative
+  let url = item.url || "";
+  if (!url && item.permalink) {
+    url = item.permalink.startsWith("http")
+      ? item.permalink
+      : `https://www.reddit.com${item.permalink}`;
+  }
+
   return {
     platform: "Reddit",
     text: `${title} ${body}`.trim(),
     username: item.author || item.username || "Unknown",
-    url: item.url || item.permalink
-      ? (item.permalink?.startsWith("http") ? item.permalink : `https://www.reddit.com${item.permalink}`)
-      : "",
-    timestamp: item.createdAt || item.created_utc || item.date || new Date().toISOString(),
+    url,
+    timestamp: toISOTimestamp(item.createdAt || item.created_utc || item.date),
     engagement: (item.score || 0) + (item.numComments || item.num_comments || 0),
     source: "apify",
   };
@@ -109,7 +126,7 @@ export function normalizeXResult(item) {
     username: item.user?.screen_name || item.username || item.author || "Unknown",
     url: item.url || item.tweetUrl ||
       (item.id ? `https://x.com/i/status/${item.id}` : ""),
-    timestamp: item.created_at || item.createdAt || item.date || new Date().toISOString(),
+    timestamp: toISOTimestamp(item.created_at || item.createdAt || item.date),
     engagement: (item.favorite_count || item.likes || 0) + (item.retweet_count || item.retweets || 0),
     source: "apify",
   };
