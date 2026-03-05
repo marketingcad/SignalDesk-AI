@@ -24,15 +24,18 @@ export function App() {
   const [autoTabCount, setAutoTabCount] = useState(0);
   const [newUrlInput, setNewUrlInput] = useState("");
   const [urlInputError, setUrlInputError] = useState("");
+  const [customKeywords, setCustomKeywords] = useState<string[]>([]);
+  const [newKeyword, setNewKeyword] = useState("");
 
   useEffect(() => {
     chrome.storage.local.get(
-      ["authToken", "stats", "platformToggles", "apiUrl", "autoMonitorConfig"],
+      ["authToken", "stats", "platformToggles", "apiUrl", "autoMonitorConfig", "customKeywords"],
       (result) => {
         setAuthToken(result.authToken || null);
         setStats(result.stats || { totalSent: 0, byPlatform: {}, lastSentAt: null, errors: 0 });
         setToggles(result.platformToggles || { Facebook: true, LinkedIn: true, Reddit: true, X: false });
         setApiUrl(result.apiUrl || "http://localhost:3000");
+        setCustomKeywords(result.customKeywords || []);
         setAutoConfig(result.autoMonitorConfig || {
           urls: [],
           intervalMinutes: 2,
@@ -189,6 +192,23 @@ export function App() {
         }
       });
     }
+  }
+
+  // --- Keyword Manager helpers ---
+
+  async function handleAddKeyword() {
+    const trimmed = newKeyword.trim().toLowerCase();
+    if (!trimmed || customKeywords.includes(trimmed)) return;
+    const updated = [...customKeywords, trimmed];
+    await chrome.storage.local.set({ customKeywords: updated });
+    setCustomKeywords(updated);
+    setNewKeyword("");
+  }
+
+  async function handleRemoveKeyword(keyword: string) {
+    const updated = customKeywords.filter((k) => k !== keyword);
+    await chrome.storage.local.set({ customKeywords: updated });
+    setCustomKeywords(updated);
   }
 
   if (loading) {
@@ -433,6 +453,47 @@ export function App() {
         </div>
       )}
 
+      {/* Keyword Manager */}
+      <div style={styles.card}>
+        <div style={styles.cardTitle}>Custom Keywords</div>
+        <div style={{ display: "flex", gap: 6 }}>
+          <input
+            style={{ ...styles.input, flex: 1, fontSize: 12, padding: "6px 10px" }}
+            type="text"
+            value={newKeyword}
+            onChange={(e) => setNewKeyword(e.target.value)}
+            placeholder="e.g. hiring executive assistant"
+            onKeyDown={(e) => e.key === "Enter" && handleAddKeyword()}
+          />
+          <button
+            style={{ ...styles.button, padding: "6px 12px", fontSize: 12 }}
+            onClick={handleAddKeyword}
+          >
+            Add
+          </button>
+        </div>
+        {customKeywords.length > 0 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+            {customKeywords.map((kw) => (
+              <span key={kw} style={styles.keywordTag}>
+                {kw}
+                <button
+                  style={styles.keywordRemove}
+                  onClick={() => handleRemoveKeyword(kw)}
+                >
+                  x
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+        {customKeywords.length === 0 && (
+          <div style={{ fontSize: 11, color: "#52525b" }}>
+            Add keywords to boost detection. Built-in keywords are always active.
+          </div>
+        )}
+      </div>
+
       <button style={styles.logoutButton} onClick={handleLogout}>
         Sign Out
       </button>
@@ -627,6 +688,30 @@ const styles: Record<string, React.CSSProperties> = {
     backgroundColor: "#3f3f46",
     color: "#a1a1aa",
     fontSize: 11,
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    lineHeight: 1,
+  },
+  keywordTag: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+    padding: "2px 8px",
+    borderRadius: 6,
+    backgroundColor: "#27272a",
+    color: "#a1a1aa",
+    fontSize: 11,
+  },
+  keywordRemove: {
+    width: 14,
+    height: 14,
+    borderRadius: 3,
+    border: "none",
+    backgroundColor: "transparent",
+    color: "#71717a",
+    fontSize: 10,
     cursor: "pointer",
     display: "flex",
     alignItems: "center",

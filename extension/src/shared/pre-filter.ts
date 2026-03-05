@@ -122,7 +122,33 @@ export interface PreFilterResult {
 // Main filter function
 // ---------------------------------------------------------------------------
 
-export function preFilter(text: string): PreFilterResult {
+/** Cached custom keywords from chrome.storage */
+let cachedCustomKeywords: string[] = [];
+let customKeywordsLoaded = false;
+
+async function loadCustomKeywords(): Promise<string[]> {
+  if (customKeywordsLoaded) return cachedCustomKeywords;
+  try {
+    const { customKeywords } = await chrome.storage.local.get("customKeywords");
+    cachedCustomKeywords = customKeywords || [];
+    customKeywordsLoaded = true;
+
+    // Reload when user updates keywords from popup
+    chrome.storage.onChanged.addListener((changes) => {
+      if (changes.customKeywords) {
+        cachedCustomKeywords = changes.customKeywords.newValue || [];
+      }
+    });
+  } catch {
+    // Not in extension context (e.g. unit tests)
+  }
+  return cachedCustomKeywords;
+}
+
+// Kick off loading immediately
+loadCustomKeywords();
+
+export function preFilter(text: string, extraKeywords?: string[]): PreFilterResult {
   if (!text || text.length < MIN_TEXT_LENGTH) {
     return { pass: false, quickScore: 0, matchedTerms: [], rejected: false };
   }
@@ -145,6 +171,15 @@ export function preFilter(text: string): PreFilterResult {
     if (lower.includes(term)) {
       score += weight;
       matchedTerms.push(term);
+    }
+  }
+
+  // Custom keywords from user (popup keyword manager) — weight: 25 each
+  const userKeywords = extraKeywords ?? cachedCustomKeywords;
+  for (const kw of userKeywords) {
+    if (kw && lower.includes(kw.toLowerCase())) {
+      score += 25;
+      matchedTerms.push(kw);
     }
   }
 

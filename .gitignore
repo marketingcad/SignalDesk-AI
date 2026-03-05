@@ -46,3 +46,6 @@ next-env.d.ts
 # chrome extension build output
 /extension/dist
 /extension/node_modules
+
+# apify service
+/apify-service/node_modules
