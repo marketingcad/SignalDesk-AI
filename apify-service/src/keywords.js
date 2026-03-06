@@ -1,108 +1,251 @@
 /**
  * Keyword-based pre-filter for Apify results.
- * Filters out irrelevant posts before sending to the backend,
- * saving API calls and processing time.
+ *
+ * OBJECTIVE: Only pass posts where someone is HIRING or LOOKING TO HIRE
+ * a Virtual Assistant. Reject all self-promotion, job-seeking, and
+ * irrelevant posts to ensure only qualified VA hiring leads reach the DB.
  */
 
 // ---------------------------------------------------------------------------
-// Reject terms — posts matching these are self-promotion, not hiring
+// REJECT — Self-promotion, job seekers, VAs advertising themselves
+// Any match = immediate rejection, never saved to DB
 // ---------------------------------------------------------------------------
 
 const REJECT_TERMS = [
+  // Self-identification as a VA
   "i'm a virtual assistant",
   "i am a virtual assistant",
+  "i'm a va",
+  "i am a va",
+  "i'm a remote assistant",
+  "i am a remote assistant",
+  "i'm an executive assistant",
+  "i am an executive assistant",
+  "i'm a professional virtual",
+  "i am a professional virtual",
+  "i'm an experienced virtual",
+  "i am an experienced virtual",
+
+  // Offering services
   "offering va services",
+  "offering my services",
   "i provide va services",
+  "i offer va services",
+  "i offer virtual assistant",
+  "i can be your va",
+  "i can be your virtual assistant",
+  "i will be your va",
+  "i will be your virtual assistant",
+  "i will be your professional",
+  "i will be your trustworthy",
+  "i will be your reliable",
+  "i will be your dedicated",
+
+  // Seeking work
   "looking for va work",
   "looking for a va job",
+  "looking for a va position",
+  "looking for va clients",
+  "looking for clients",
+  "looking for a side gig",
+  "looking for work",
+  "looking for new clients",
+  "looking for opportunities",
   "freelance va here",
+  "va for hire",
+  "va available for",
+  "available for hire",
+  "available for work",
+  "open for clients",
+  "open for work",
+  "open for new clients",
+  "open to new clients",
+  "accepting new clients",
+  "taking on new clients",
+  "currently accepting",
+
+  // Self-promotion markers
   "hire me",
   "va available",
-  "available for hire",
-  "open for clients",
-  "looking for work",
+  "dm me for",
+  "dm for rates",
+  "reach out to me",
+  "contact me for",
+  "book a call with me",
+  "check out my services",
+  "my va services",
+  "my services include",
+  "services i offer",
+  "what i offer",
+  "i can help you with",
+  "i can help streamline",
+  "i can assist you",
+  "i specialize in",
+  "my expertise",
+  "my experience includes",
+
+  // Reddit [For Hire] tag (VAs advertising)
+  "[for hire]",
+  "[for hire]:",
+  "for hire -",
+  "for hire:",
+
+  // Rate advertising
+  "$5/hour",
+  "$5/hr",
+  "$5 per hour",
+  "$4/hour",
+  "$4/hr",
+  "$3/hour",
+  "$3/hr",
+  "usd/hour",
+  "per hour rate",
+  "hourly rate is",
+  "my rate is",
+  "starting at $",
 ];
 
 // ---------------------------------------------------------------------------
-// Primary Keywords — High Intent (+40)
+// HIGH INTENT (+40) — Direct hiring signals
+// Person is actively looking to HIRE a VA
 // ---------------------------------------------------------------------------
 
 const HIGH_INTENT = [
+  // Explicit hiring
   "looking for a virtual assistant",
+  "looking for a va",
   "hiring a virtual assistant",
+  "hiring a va",
+  "hiring va",
+  "hire a va",
+  "hire a virtual assistant",
   "need a va",
   "need a virtual assistant",
   "want to hire a va",
+  "want to hire a virtual assistant",
   "searching for a va",
+  "searching for a virtual assistant",
+  "virtual assistant needed",
+  "va needed",
+
+  // Role-specific hiring
   "hiring remote assistant",
-  "need admin support",
-  "hiring executive assistant remote",
+  "hiring executive assistant",
+  "hiring admin assistant",
+  "hiring personal assistant",
   "hiring ghl va",
   "hiring gohighlevel va",
   "hiring social media va",
   "hiring real estate va",
-  "hiring cold caller va",
+  "hiring cold caller",
   "hiring appointment setter",
+  "hiring bookkeeper",
+  "hiring data entry",
+
+  // Task-specific hiring
   "need someone to manage my crm",
   "need someone to handle admin",
-  "need help with inbox",
   "need someone to manage emails",
   "need someone to book appointments",
-  "hiring immediately va",
-  "urgent va hire",
-  "outsourcing admin work",
-  "hiring va",
-  "virtual assistant needed",
-  "looking for va",
-  "hire a va",
-  "looking to hire",
-  "want to hire",
-  "need someone to manage",
+  "need someone to manage my social",
+  "need someone to handle my",
+  "need help with inbox",
+  "need admin support",
+  "need va support",
+
+  // Urgency + hiring
   "hiring immediately",
   "hiring asap",
+  "hiring immediately va",
+  "urgent va hire",
+  "urgently need a va",
+  "urgently hiring",
+  "looking to hire asap",
+  "need a va asap",
+  "need va urgently",
+
+  // Outsourcing
+  "outsourcing admin work",
+  "outsource my admin",
+  "outsource to a va",
+  "looking to outsource",
+  "want to outsource",
+  "looking to delegate",
+  "want to delegate",
+  "looking to hire",
+  "want to hire",
+  "ready to hire",
+  "planning to hire",
+
+  // Hiring tag (Reddit)
+  "[hiring]",
 ];
 
 // ---------------------------------------------------------------------------
-// Secondary Keywords — Medium Intent (+20)
+// MEDIUM INTENT (+20) — Research / consideration phase
+// Person is exploring hiring a VA but hasn't committed yet
 // ---------------------------------------------------------------------------
 
 const MEDIUM_INTENT = [
   "any va recommendations",
   "who can recommend a virtual assistant",
+  "who can recommend a va",
+  "can anyone recommend a va",
+  "recommend a good va",
+  "recommend a virtual assistant",
   "best va service",
+  "best virtual assistant service",
   "how much does a va cost",
   "virtual assistant rates",
   "va pricing",
-  "where to find a va",
-  "is it worth hiring a va",
-  "thinking of hiring a va",
-  "va recommendations",
-  "recommend a virtual",
   "va cost",
   "va rates",
+  "where to find a va",
+  "where to find a virtual assistant",
+  "where to hire a va",
+  "is it worth hiring a va",
+  "thinking of hiring a va",
+  "thinking about hiring a va",
+  "considering hiring a va",
+  "should i hire a va",
+  "has anyone hired a va",
+  "anyone use a va",
+  "anyone have a va",
+  "experience with hiring a va",
 ];
 
 // ---------------------------------------------------------------------------
-// Delegation Signals (+15)
+// DELEGATION SIGNALS (+15) — Pain points that lead to VA hiring
+// Only count when combined with VA/hiring language (checked below)
 // ---------------------------------------------------------------------------
 
 const DELEGATION_SIGNALS = [
-  "need extra help in my business",
   "overwhelmed with admin",
-  "overwhelmed",
+  "overwhelmed with tasks",
+  "overwhelmed with work",
   "drowning in tasks",
+  "drowning in admin",
+  "drowning in emails",
   "too many client messages",
+  "too many tasks",
+  "too busy to handle",
+  "can't keep up with",
+  "need extra help in my business",
   "need support in my business",
+  "need help running my business",
   "scaling my business and need help",
   "scaling my business",
+  "growing my business",
   "need extra help",
-  "delegate",
-  "admin work",
+  "need extra hands",
+  "need more help",
+  "burned out",
+  "burnout",
 ];
 
 // ---------------------------------------------------------------------------
-// Tool / Skill-Based Triggers (+15)
-// Increase intent score when paired with hiring language
+// TOOL / SKILL TRIGGERS (+10) — Only meaningful when paired with VA context
+// These alone do NOT pass the filter
 // ---------------------------------------------------------------------------
 
 const TOOL_TRIGGERS = [
@@ -117,28 +260,50 @@ const TOOL_TRIGGERS = [
   "funnel building",
   "lead management",
   "appointment booking",
+  "appointment setting",
   "email marketing",
   "social media management",
   "facebook ads support",
+  "facebook ads manager",
   "tiktok management",
+  "instagram management",
   "bookkeeping",
   "quickbooks",
+  "xero",
   "data entry",
   "customer support",
+  "calendar management",
+  "inbox management",
+  "travel booking",
+  "project management",
+  "trello",
+  "asana",
+  "monday.com",
+  "notion",
 ];
 
 // ---------------------------------------------------------------------------
-// Urgency Boosters (+10)
+// URGENCY BOOSTERS (+10)
 // ---------------------------------------------------------------------------
 
 const URGENCY = [
   "asap",
   "urgently",
   "immediately",
+  "right away",
+  "this week",
+  "start today",
+  "start immediately",
+  "start asap",
+  "ready to start",
 ];
 
+// VA context — post must mention VA/virtual assistant/assistant somewhere
+const VA_CONTEXT_REGEX = /\b(virtual assistant|va|remote assistant|admin assistant|executive assistant|personal assistant)\b/i;
 const VA_WORD_REGEX = /\bva\b/i;
-const MIN_SCORE = 15;
+
+// Minimum score to pass — raised to 30 to ensure real hiring intent
+const MIN_SCORE = 30;
 
 // ---------------------------------------------------------------------------
 // Pre-filter function
@@ -156,7 +321,7 @@ export function preFilterPost(text) {
 
   const lower = text.toLowerCase();
 
-  // Reject self-promotion
+  // Reject self-promotion / job seekers
   for (const term of REJECT_TERMS) {
     if (lower.includes(term)) {
       return { pass: false, score: 0, matchedTerms: [term], rejected: true };
@@ -165,36 +330,43 @@ export function preFilterPost(text) {
 
   let score = 0;
   const matchedTerms = [];
+  let hasVAContext = VA_CONTEXT_REGEX.test(text);
 
-  // High intent (+40)
+  // High intent (+40) — direct hiring signals
   for (const term of HIGH_INTENT) {
     if (lower.includes(term)) {
       score += 40;
       matchedTerms.push(term);
+      hasVAContext = true; // hiring terms imply VA context
     }
   }
 
-  // Medium intent (+20)
+  // Medium intent (+20) — research/consideration
   for (const term of MEDIUM_INTENT) {
     if (lower.includes(term)) {
       score += 20;
       matchedTerms.push(term);
+      hasVAContext = true;
     }
   }
 
-  // Delegation signals (+15)
+  // Delegation signals (+15) — only if VA context exists
   for (const term of DELEGATION_SIGNALS) {
     if (lower.includes(term)) {
-      score += 15;
-      matchedTerms.push(term);
+      if (hasVAContext) {
+        score += 15;
+        matchedTerms.push(term);
+      }
     }
   }
 
-  // Tool triggers (+15)
+  // Tool triggers (+10) — only count if VA context exists
   for (const term of TOOL_TRIGGERS) {
     if (lower.includes(term)) {
-      score += 15;
-      matchedTerms.push(term);
+      if (hasVAContext) {
+        score += 10;
+        matchedTerms.push(term);
+      }
     }
   }
 
@@ -206,9 +378,9 @@ export function preFilterPost(text) {
     }
   }
 
-  // Standalone "VA" mention (+10)
+  // Standalone "VA" mention (+5) — small bonus
   if (VA_WORD_REGEX.test(text)) {
-    score += 10;
+    score += 5;
   }
 
   const capped = Math.min(score, 100);
