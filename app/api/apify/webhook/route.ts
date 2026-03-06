@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ApifyClient } from "apify-client";
 import { scoreIntent } from "@/lib/intent-scoring";
 import { supabase } from "@/lib/supabase";
 import { alertEngine } from "@/lib/alert-engine";
@@ -9,14 +8,8 @@ import type { Platform } from "@/lib/types";
  * POST /api/apify/webhook
  *
  * Receives webhook callbacks from Apify when an actor run completes.
- * Fetches the dataset, normalizes posts, scores intent, stores in DB,
- * and triggers Discord alerts for high-intent leads.
- *
- * Configure in Apify Console:
- *   Webhook URL: https://your-app.vercel.app/api/apify/webhook
- *   Event: ACTOR.RUN.SUCCEEDED
- *
- * Security: Verified by checking the APIFY_WEBHOOK_SECRET header.
+ * Fetches the dataset via REST API, normalizes posts, scores intent,
+ * stores in DB, and triggers Discord alerts for high-intent leads.
  */
 
 interface NormalizedPost {
@@ -32,11 +25,12 @@ interface NormalizedPost {
 export async function POST(request: NextRequest) {
   console.log("[apify/webhook] ---- Incoming webhook ----");
 
-  // Verify webhook secret (optional but recommended)
+  // Verify webhook secret
   const secret = request.headers.get("x-apify-webhook-secret");
   const expectedSecret = process.env.APIFY_WEBHOOK_SECRET;
   if (expectedSecret && secret !== expectedSecret) {
     console.warn("[apify/webhook] Invalid webhook secret");
+    console.warn(`[apify/webhook] Got: "${secret?.slice(0, 10)}..." Expected: "${expectedSecret?.slice(0, 10)}..."`);
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -65,21 +59,27 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    // Fetch results from Apify dataset
-    const client = new ApifyClient({ token: apifyToken });
-    const { items } = await client.dataset(datasetId).listItems({
-      limit: parseInt(process.env.APIFY_MAX_RESULTS || "50", 10),
-    });
+    // Fetch results from Apify dataset via REST API (no SDK needed)
+    const maxResults = parseInt(process.env.APIFY_MAX_RESULTS || "50", 10);
+    const apiUrl = `https://api.apify.com/v2/datasets/${datasetId}/items?token=${apifyToken}&limit=${maxResults}&format=json`;
+    const res = await fetch(apiUrl);
 
+    if (!res.ok) {
+      console.error(`[apify/webhook] Apify API error: ${res.status} ${res.statusText}`);
+      return NextResponse.json({ error: "Failed to fetch dataset" }, { status: 502 });
+    }
+
+    const items = (await res.json()) as Record<string, unknown>[];
     console.log(`[apify/webhook] Fetched ${items.length} items from dataset ${datasetId}`);
 
     // Detect platform from actor ID
     const actorId = (resource.actId || resource.actorId || "") as string;
     const platform = detectPlatform(actorId);
+    console.log(`[apify/webhook] Actor: ${actorId} -> Platform: ${platform || "Unknown"}`);
 
     // Normalize posts
     const posts: NormalizedPost[] = items
-      .map((item: Record<string, unknown>) => normalizeItem(item, platform))
+      .map((item) => normalizeItem(item, platform))
       .filter((p): p is NormalizedPost => p !== null && p.text.length > 20);
 
     console.log(`[apify/webhook] ${posts.length} posts after normalization`);
@@ -121,7 +121,7 @@ export async function POST(request: NextRequest) {
         engagement: post.engagement,
         matched_keywords: scoring.matchedKeywords,
         detected_at: post.timestamp,
-        _scoring: scoring, // Temporary — not inserted
+        _scoring: scoring,
       };
     });
 
@@ -135,7 +135,10 @@ export async function POST(request: NextRequest) {
         .select("id, url, intent_score, intent_level");
 
       if (insertError) {
-        console.error("[apify/webhook] Insert error:", insertError);
+        console.error("[apify/webhook] Insert error:", JSON.stringify(insertError));
+        if (dbRows.length > 0) {
+          console.error("[apify/webhook] Sample row:", JSON.stringify(dbRows[0]));
+        }
         return NextResponse.json({ error: "Database error" }, { status: 500 });
       }
 
@@ -158,6 +161,12 @@ export async function POST(request: NextRequest) {
       }
 
       console.log(`[apify/webhook] Inserted ${inserted?.length || 0} leads`);
+
+      // Log high-intent leads
+      const highIntent = toInsert.filter((r) => r._scoring.score >= 80);
+      if (highIntent.length > 0) {
+        console.log(`[apify/webhook] ${highIntent.length} high-intent leads (score >= 80) — Discord alerts queued`);
+      }
     }
 
     return NextResponse.json({
@@ -211,11 +220,19 @@ function normalizeItem(
       ""
     );
 
-    const timestamp = String(
+    const rawTimestamp =
       item.time || item.timestamp || item.createdAt || item.created_at ||
-      item.publishedAt || item.postedAt || item.date || item.created_utc ||
-      new Date().toISOString()
-    );
+      item.publishedAt || item.postedAt || item.date || item.created_utc;
+    let timestamp: string;
+    if (!rawTimestamp) {
+      timestamp = new Date().toISOString();
+    } else if (typeof rawTimestamp === "number") {
+      timestamp = new Date(
+        rawTimestamp < 1e12 ? rawTimestamp * 1000 : rawTimestamp
+      ).toISOString();
+    } else {
+      timestamp = String(rawTimestamp);
+    }
 
     const likes = Number(item.likes || item.favorite_count || item.numLikes || 0);
     const comments = Number(item.comments || item.numComments || item.num_comments || 0);
