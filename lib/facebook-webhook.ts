@@ -76,15 +76,47 @@ const PLATFORM_EMOJI: Record<string, string> = {
   X: "𝕏",
 };
 
-const LEVEL_COLOR: Record<string, number> = {
-  High: 0x22c55e,    // green
-  Medium: 0xf59e0b,  // amber
-  Low: 0x71717a,     // zinc
+const PLATFORM_COLOR: Record<string, number> = {
+  Facebook: 0x1877f2,
+  LinkedIn: 0x0a66c2,
+  Reddit: 0xff4500,
+  X: 0x000000,
 };
 
+const LEVEL_COLOR: Record<string, number> = {
+  High: 0x22c55e,
+  Medium: 0xf59e0b,
+  Low: 0x71717a,
+};
+
+const LEVEL_EMOJI: Record<string, string> = {
+  High: "🟢",
+  Medium: "🟡",
+  Low: "⚪",
+};
+
+function scoreBar(score: number): string {
+  const filled = Math.round(score / 10);
+  const empty = 10 - filled;
+  return "▓".repeat(filled) + "░".repeat(empty);
+}
+
+function formatTimestamp(ts: string): string {
+  try {
+    const date = new Date(ts);
+    if (isNaN(date.getTime())) return ts;
+    return date.toLocaleString("en-US", {
+      month: "short", day: "2-digit", year: "numeric",
+      hour: "2-digit", minute: "2-digit", hour12: true,
+    });
+  } catch {
+    return ts;
+  }
+}
+
 /**
- * Rich Discord embed notification for leads detected by the Chrome extension.
- * Includes intent score, platform, category, matched keywords, and direct link.
+ * Rich Discord embed notification for VA hiring leads.
+ * Platform-aware styling with score visualization and structured fields.
  */
 export async function sendDiscordLeadAlert(
   payload: DiscordLeadAlert
@@ -96,59 +128,78 @@ export async function sendDiscordLeadAlert(
   }
 
   const platformEmoji = PLATFORM_EMOJI[payload.platform] || "📌";
-  const embedColor = LEVEL_COLOR[payload.level] || 0x6366f1;
+  const levelEmoji = LEVEL_EMOJI[payload.level] || "⚪";
+  const embedColor = payload.level === "High"
+    ? LEVEL_COLOR.High
+    : (PLATFORM_COLOR[payload.platform] || LEVEL_COLOR[payload.level] || 0x6366f1);
+
+  // Truncate message smartly — break at sentence or word boundary
+  let description = payload.message;
+  if (description.length > 400) {
+    description = description.slice(0, 400);
+    const lastPeriod = description.lastIndexOf(".");
+    const lastSpace = description.lastIndexOf(" ");
+    if (lastPeriod > 300) description = description.slice(0, lastPeriod + 1);
+    else if (lastSpace > 300) description = description.slice(0, lastSpace);
+    description += "…";
+  }
 
   const embed = {
-    title: `${platformEmoji} New ${payload.level} Intent Lead Detected`,
-    description: payload.message.slice(0, 500),
+    title: `${levelEmoji} New ${payload.level} Intent Lead Detected`,
+    description: `> ${description.replace(/\n/g, "\n> ")}`,
     color: embedColor,
     fields: [
       {
         name: "👤 Author",
-        value: payload.author_name,
+        value: payload.author_name || "Unknown",
         inline: true,
       },
       {
         name: "📊 Intent Score",
-        value: `**${payload.score}**/100 (${payload.level})`,
+        value: `**${payload.score}**/100 (${payload.level})\n${scoreBar(payload.score)}`,
         inline: true,
       },
       {
         name: "🏷️ Category",
-        value: payload.category,
+        value: payload.category || "General",
         inline: true,
       },
       {
-        name: "📡 Platform",
+        name: `${platformEmoji} Platform`,
         value: payload.platform,
         inline: true,
       },
       {
         name: "📍 Source",
-        value: payload.source,
+        value: payload.source || "apify",
+        inline: true,
+      },
+      {
+        name: "🕒 Detected",
+        value: formatTimestamp(payload.created_time),
         inline: true,
       },
       {
         name: "🔑 Matched Keywords",
         value: payload.matchedKeywords.length > 0
-          ? payload.matchedKeywords.map((kw) => `\`${kw}\``).join(", ")
-          : "None",
+          ? payload.matchedKeywords.map((kw) => `\`${kw}\``).join("  ")
+          : "_None_",
         inline: false,
       },
       {
         name: "🔗 Post Link",
-        value: `[View Original Post](${payload.url})`,
+        value: payload.url ? `**[View Original Post →](${payload.url})**` : "_No link available_",
         inline: false,
       },
     ],
     footer: {
-      text: "SignalDesk AI — Chrome Extension",
+      text: `SignalDesk AI • ${payload.platform} • ${payload.level} Intent`,
+      icon_url: "https://cdn.discordapp.com/embed/avatars/0.png",
     },
-    timestamp: payload.created_time,
+    timestamp: new Date().toISOString(),
   };
 
-  console.log(`[discord] Sending rich embed notification...`);
-  console.log(`[discord] Author: ${payload.author_name}, Platform: ${payload.platform}, Score: ${payload.score}, Level: ${payload.level}`);
+  console.log(`[discord] Sending lead alert: @${payload.author_name} | ${payload.platform} | Score: ${payload.score} (${payload.level})`);
 
   const res = await fetch(webhookUrl, {
     method: "POST",
@@ -161,9 +212,9 @@ export async function sendDiscordLeadAlert(
 
   if (!res.ok) {
     const errBody = await res.text().catch(() => "");
-    console.error(`[discord] Embed notification failed: ${res.status} ${res.statusText} — ${errBody}`);
+    console.error(`[discord] Alert failed: ${res.status} ${res.statusText} — ${errBody}`);
   } else {
-    console.log(`[discord] Discord embed sent successfully (${res.status})`);
+    console.log(`[discord] Alert sent successfully (${res.status})`);
   }
 }
 

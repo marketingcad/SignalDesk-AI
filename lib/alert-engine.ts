@@ -155,43 +155,59 @@ class AlertEngine {
       return;
     }
 
-    const description = leads
-      .slice(0, 10)
+    const platformCounts = leads.reduce<Record<string, number>>((acc, l) => {
+      acc[l.platform] = (acc[l.platform] || 0) + 1;
+      return acc;
+    }, {});
+
+    const platformSummary = Object.entries(platformCounts)
+      .map(([p, c]) => `${PLATFORM_EMOJI[p] || "📌"} **${p}**: ${c}`)
+      .join("  •  ");
+
+    const leadList = leads
+      .slice(0, 8)
       .map((lead, i) => {
         const emoji = PLATFORM_EMOJI[lead.platform] || "📌";
+        const scoreIcon = lead.score >= 80 ? "🟢" : lead.score >= 50 ? "🟡" : "⚪";
+        const preview = lead.message.slice(0, 80).replace(/\n/g, " ");
         return (
-          `**${i + 1}.** ${emoji} [${lead.author_name}](${lead.url}) — ` +
-          `Score: **${lead.score}** — ${lead.platform}\n` +
-          `> ${lead.message.slice(0, 100)}...`
+          `${scoreIcon} **${i + 1}.** ${emoji} **${lead.author_name}** — Score: **${lead.score}**\n` +
+          `> ${preview}…\n` +
+          `> [View Post →](${lead.url})`
         );
       })
       .join("\n\n");
 
+    const avgScore = Math.round(leads.reduce((s, l) => s + l.score, 0) / leads.length);
+
     const embed = {
-      title: `📊 SignalDesk Digest — ${leads.length} High-Intent Leads`,
-      description,
+      title: `📊 SignalDesk Lead Digest — ${leads.length} High-Intent Leads`,
+      description: leadList,
       color: LEVEL_COLOR.High,
       fields: [
         {
-          name: "📡 Platform Breakdown",
-          value: Object.entries(
-            leads.reduce<Record<string, number>>((acc, l) => {
-              acc[l.platform] = (acc[l.platform] || 0) + 1;
-              return acc;
-            }, {})
-          )
-            .map(([p, c]) => `${PLATFORM_EMOJI[p] || "📌"} ${p}: ${c}`)
-            .join("  |  "),
+          name: "📡 Platforms",
+          value: platformSummary,
           inline: false,
         },
         {
-          name: "📊 Score Range",
-          value: `${leads[leads.length - 1].score} – ${leads[0].score}`,
+          name: "📈 Avg Score",
+          value: `**${avgScore}**/100`,
+          inline: true,
+        },
+        {
+          name: "🏆 Top Score",
+          value: `**${leads[0].score}**/100`,
+          inline: true,
+        },
+        {
+          name: "📋 Total Leads",
+          value: `**${leads.length}**`,
           inline: true,
         },
       ],
       footer: {
-        text: `SignalDesk AI — ${new Date().toLocaleString()}`,
+        text: "SignalDesk AI • Lead Digest",
       },
       timestamp: new Date().toISOString(),
     };
