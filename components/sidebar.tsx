@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -16,18 +16,19 @@ import {
   Zap,
   LogOut,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { platformConfigs } from "@/lib/mock-data";
-import { timeAgo } from "@/lib/utils";
+import { cn, timeAgo } from "@/lib/utils";
+import type { Platform } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { AuthTransition } from "@/components/auth-transition";
 
-const navItems = [
+const ALL_PLATFORMS: Platform[] = ["Facebook", "LinkedIn", "Reddit", "X"];
+
+const baseNavItems = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Overview" },
   { href: "/leads", icon: Users, label: "Leads" },
-  { href: "/alerts", icon: Bell, label: "Alerts", badge: 5 },
+  { href: "/alerts", icon: Bell, label: "Alerts" },
   { href: "/reports", icon: FileBarChart, label: "Reports" },
   { href: "/users", icon: UserCog, label: "Users" },
   { href: "/settings", icon: Settings, label: "Settings" },
@@ -42,6 +43,35 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [showLogoutTransition, setShowLogoutTransition] = useState(false);
+  const [alertCount, setAlertCount] = useState(0);
+  const [platformStatus, setPlatformStatus] = useState<
+    { platform: Platform; enabled: boolean; lastActive: Date | null }[]
+  >(ALL_PLATFORMS.map((p) => ({ platform: p, enabled: true, lastActive: null })));
+
+  useEffect(() => {
+    // Fetch unread alert count
+    fetch("/api/alerts?limit=100")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data: unknown[]) => setAlertCount(data.length))
+      .catch(() => {});
+
+    // Fetch platform toggles + last active times
+    Promise.all([
+      fetch("/api/settings").then((r) => (r.ok ? r.json() : null)),
+      fetch("/api/dashboard/platform-counts").then((r) => (r.ok ? r.json() : null)),
+    ])
+      .then(([settings, counts]) => {
+        const toggles = settings?.platform_toggles ?? {};
+        setPlatformStatus(
+          ALL_PLATFORMS.map((p) => ({
+            platform: p,
+            enabled: toggles[p] ?? true,
+            lastActive: counts?.[p]?.lastActive ? new Date(counts[p].lastActive) : null,
+          }))
+        );
+      })
+      .catch(() => {});
+  }, []);
 
   const handleLogoutComplete = useCallback(async () => {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -86,7 +116,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
             Navigation
           </p>
         )}
-        {navItems.map((item) => {
+        {baseNavItems.map((item) => {
           const isActive =
             item.href === "/dashboard"
               ? pathname === "/dashboard"
@@ -109,9 +139,9 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
               {!collapsed && (
                 <span className="animate-fade-in">{item.label}</span>
               )}
-              {!collapsed && item.badge && (
+              {!collapsed && item.href === "/alerts" && alertCount > 0 && (
                 <Badge className="ml-auto h-5 min-w-5 justify-center rounded-full bg-primary px-1.5 text-[11px] font-semibold text-primary-foreground border-0">
-                  {item.badge}
+                  {alertCount}
                 </Badge>
               )}
             </Link>
@@ -130,7 +160,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
             </p>
           </div>
           <div className="space-y-2">
-            {platformConfigs.map((p) => (
+            {platformStatus.map((p) => (
               <div key={p.platform} className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <div
