@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { cn, timeAgo } from "@/lib/utils";
 import type { Platform } from "@/lib/types";
+import { useRealtime } from "@/hooks/use-realtime";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -72,6 +73,37 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
       })
       .catch(() => {});
   }, []);
+
+  // Realtime: auto-increment alert count when new high-intent leads arrive
+  useRealtime<{ intent_score: number; platform: string; created_at: string }>({
+    table: "leads",
+    event: "INSERT",
+    onInsert: (newLead) => {
+      if (newLead.intent_score >= 70) {
+        setAlertCount((prev) => prev + 1);
+      }
+      // Update platform lastActive
+      const platform = newLead.platform as Platform;
+      setPlatformStatus((prev) =>
+        prev.map((p) =>
+          p.platform === platform
+            ? { ...p, lastActive: new Date(newLead.created_at) }
+            : p
+        )
+      );
+    },
+  });
+
+  // Realtime: decrement alert count when leads are deleted
+  useRealtime<{ intent_score: number }>({
+    table: "leads",
+    event: "DELETE",
+    onDelete: (oldLead) => {
+      if (oldLead.intent_score >= 70) {
+        setAlertCount((prev) => Math.max(0, prev - 1));
+      }
+    },
+  });
 
   const handleLogoutComplete = useCallback(async () => {
     await fetch("/api/auth/logout", { method: "POST" });

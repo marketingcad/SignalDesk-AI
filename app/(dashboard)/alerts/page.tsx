@@ -7,6 +7,7 @@ import { PlatformBadge } from "@/components/platform-badge";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { timeAgo, cn } from "@/lib/utils";
+import { useRealtime } from "@/hooks/use-realtime";
 import type { Lead } from "@/lib/types";
 
 type AlertWithUrl = {
@@ -57,6 +58,29 @@ export default function AlertsPage() {
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
+  // Realtime: new high-intent leads appear as alerts instantly
+  useRealtime<Record<string, unknown>>({
+    table: "leads",
+    event: "INSERT",
+    onInsert: (row) => {
+      const score = row.intent_score as number;
+      if (score < 70) return;
+      const newAlert: AlertWithUrl = {
+        id: row.id as string,
+        leadId: row.id as string,
+        platform: row.platform as Lead["platform"],
+        intentScore: score,
+        snippet: ((row.text as string) || "").slice(0, 140),
+        username: row.username as string,
+        source: row.source as string,
+        createdAt: new Date(row.created_at as string),
+        read: false,
+        url: (row.url as string) || undefined,
+      };
+      setAlerts((prev) => [newAlert, ...prev]);
+    },
+  });
+
   const [filter, setFilter] = useState<"all" | "unread">("all");
 
   const displayed = filter === "unread" ? alerts.filter((a) => !a.read) : alerts;

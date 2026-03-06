@@ -9,6 +9,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { timeAgo, cn } from "@/lib/utils";
+import { useRealtime } from "@/hooks/use-realtime";
 import type { Lead, Platform, IntentLevel, LeadStatus } from "@/lib/types";
 import {
   Search,
@@ -188,6 +189,42 @@ export default function LeadsPage() {
   useEffect(() => {
     fetchLeads();
   }, [fetchLeads]);
+
+  // Realtime: new leads appear at top, deleted leads disappear
+  useRealtime<Record<string, unknown>>({
+    table: "leads",
+    event: "INSERT",
+    onInsert: (row) => {
+      const lead: Lead = {
+        id: row.id as string,
+        platform: row.platform as Platform,
+        source: row.source as string,
+        username: row.username as string,
+        text: row.text as string,
+        url: row.url as string,
+        intentScore: row.intent_score as number,
+        intentLevel: row.intent_level as IntentLevel,
+        intentCategory: row.intent_category as Lead["intentCategory"],
+        status: row.status as LeadStatus,
+        engagement: row.engagement as number,
+        location: (row.location as string) || undefined,
+        matchedKeywords: (row.matched_keywords as string[]) || [],
+        createdAt: new Date(row.created_at as string),
+        assignedTo: (row.assigned_to as string) || undefined,
+      };
+      setFilteredLeads((prev) => [lead, ...prev]);
+    },
+  });
+
+  useRealtime<Record<string, unknown>>({
+    table: "leads",
+    event: "DELETE",
+    onDelete: (old) => {
+      const id = old.id as string;
+      setFilteredLeads((prev) => prev.filter((l) => l.id !== id));
+      if (selectedLead?.id === id) setSelectedLead(null);
+    },
+  });
 
   return (
     <>
