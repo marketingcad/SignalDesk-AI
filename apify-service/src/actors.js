@@ -150,19 +150,23 @@ export async function runActor(actorId, input, normalizer, platform) {
     return [];
   }
 
-  console.log(`[apify] Starting ${platform} actor: ${actorId}`);
-  console.log(`[apify] Input:`, JSON.stringify(input, null, 2));
+  console.log(`[apify] ${platform} — calling actor: ${actorId}`);
+  console.log(`[apify] ${platform} — input: ${JSON.stringify(input)}`);
+  console.log(`[apify] ${platform} — waiting for actor to finish (max 5 min)...`);
 
   try {
-    // Start the actor and wait for it to finish (up to 5 minutes)
+    const startTime = Date.now();
     const run = await client.actor(actorId).call(input, {
       waitSecs: 300,
     });
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
 
-    console.log(`[apify] ${platform} actor finished — run ID: ${run.id}, status: ${run.status}`);
+    console.log(`[apify] ${platform} — actor finished in ${elapsed}s`);
+    console.log(`[apify] ${platform} — run ID: ${run.id} | status: ${run.status} | dataset: ${run.defaultDatasetId}`);
 
     if (run.status !== "SUCCEEDED") {
-      console.error(`[apify] ${platform} actor failed with status: ${run.status}`);
+      console.error(`[apify] ${platform} — FAILED with status: ${run.status}`);
+      if (run.statusMessage) console.error(`[apify] ${platform} — message: ${run.statusMessage}`);
       return [];
     }
 
@@ -171,24 +175,30 @@ export async function runActor(actorId, input, normalizer, platform) {
       limit: config.maxResultsPerRun,
     });
 
-    console.log(`[apify] ${platform}: ${items.length} raw results`);
+    console.log(`[apify] ${platform} — fetched ${items.length} items from dataset`);
 
     // Normalize and filter
-    const normalized = items
-      .map((item) => {
-        try {
-          return normalizer(item);
-        } catch (err) {
-          console.warn(`[apify] ${platform}: failed to normalize item`, err.message);
-          return null;
-        }
-      })
-      .filter((post) => post && post.text && post.text.length > 20);
+    let normFailed = 0;
+    let tooShort = 0;
+    const normalized = [];
 
-    console.log(`[apify] ${platform}: ${normalized.length} posts after normalization`);
+    for (const item of items) {
+      try {
+        const post = normalizer(item);
+        if (!post || !post.text) { normFailed++; continue; }
+        if (post.text.length <= 20) { tooShort++; continue; }
+        normalized.push(post);
+      } catch (err) {
+        normFailed++;
+        console.warn(`[apify] ${platform} — normalize error: ${err.message}`);
+      }
+    }
+
+    console.log(`[apify] ${platform} — ${normalized.length} valid posts (${normFailed} normalize errors, ${tooShort} too short)`);
     return normalized;
   } catch (err) {
-    console.error(`[apify] ${platform} actor error:`, err.message);
+    console.error(`[apify] ${platform} — ACTOR ERROR: ${err.message}`);
+    if (err.statusCode) console.error(`[apify] ${platform} — HTTP ${err.statusCode}`);
     return [];
   }
 }

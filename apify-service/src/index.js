@@ -6,6 +6,15 @@ import { sendToBackend } from "./backend.js";
 const app = express();
 app.use(express.json({ limit: "5mb" }));
 
+function ts() {
+  return new Date().toLocaleString("en-US", {
+    hour12: true, hour: "2-digit", minute: "2-digit", second: "2-digit",
+    month: "short", day: "2-digit", year: "numeric",
+  });
+}
+
+let runCount = 0;
+
 // ---------------------------------------------------------------------------
 // Health check
 // ---------------------------------------------------------------------------
@@ -30,21 +39,27 @@ app.get("/health", (_req, res) => {
 let runInProgress = false;
 
 app.post("/api/run", async (req, res) => {
+  console.log(`[${ts()}] [api] POST /api/run — manual trigger`);
+
   const authHeader = req.headers.authorization;
   if (config.backendAuthToken && authHeader !== `Bearer ${config.backendAuthToken}`) {
+    console.log(`[${ts()}] [api] 401 — invalid auth token`);
     return res.status(401).json({ error: "Unauthorized" });
   }
 
   if (runInProgress) {
+    console.log(`[${ts()}] [api] 409 — run already in progress`);
     return res.status(409).json({ error: "A scrape run is already in progress" });
   }
 
   runInProgress = true;
+  runCount++;
+  console.log(`[${ts()}] [api] Starting manual run #${runCount}`);
   try {
     const results = await runAllActors();
     res.json({ success: true, results });
   } catch (err) {
-    console.error("[server] Run error:", err.message);
+    console.error(`[${ts()}] [api] Run error: ${err.message}`);
     res.status(500).json({ error: err.message });
   } finally {
     runInProgress = false;
@@ -61,7 +76,11 @@ app.post("/api/run", async (req, res) => {
 app.post("/api/webhook", async (req, res) => {
   const body = req.body;
 
-  console.log("[webhook] Received Apify webhook:", JSON.stringify(body, null, 2).slice(0, 500));
+  console.log(`\n[${ts()}] [webhook] ---- Incoming Apify webhook ----`);
+  console.log(`[${ts()}] [webhook] Event: ${body.eventType || "unknown"}`);
+  console.log(`[${ts()}] [webhook] Actor: ${body.resource?.actId || "unknown"}`);
+  console.log(`[${ts()}] [webhook] Status: ${body.resource?.status || "unknown"}`);
+  console.log(`[${ts()}] [webhook] Dataset: ${body.resource?.defaultDatasetId || "none"}`);
 
   const resource = body.resource;
   if (!resource || resource.status !== "SUCCEEDED") {
@@ -134,25 +153,34 @@ function detectPlatformFromActor(actorId) {
 // ---------------------------------------------------------------------------
 
 let scheduledTimer = null;
+let nextRunAt = null;
 
 function startScheduler() {
   const intervalMs = config.runIntervalMinutes * 60 * 1000;
-  if (intervalMs < 60_000) return; // Don't run more than once per minute
+  if (intervalMs < 60_000) return;
 
-  console.log(`[scheduler] Will run actors every ${config.runIntervalMinutes} minutes`);
+  nextRunAt = new Date(Date.now() + intervalMs);
+  console.log(`[${ts()}] [scheduler] Scheduled to run every ${config.runIntervalMinutes} min`);
+  console.log(`[${ts()}] [scheduler] Next run at: ${nextRunAt.toLocaleString()}`);
 
   scheduledTimer = setInterval(async () => {
+    runCount++;
+    console.log(`\n[${ts()}] [scheduler] ====== SCHEDULED RUN #${runCount} ======`);
+
     if (runInProgress) {
-      console.log("[scheduler] Skipping — run already in progress");
+      console.log(`[${ts()}] [scheduler] Skipping — previous run still in progress`);
       return;
     }
+
     runInProgress = true;
     try {
       await runAllActors();
     } catch (err) {
-      console.error("[scheduler] Error:", err.message);
+      console.error(`[${ts()}] [scheduler] ERROR: ${err.message}`);
     } finally {
       runInProgress = false;
+      nextRunAt = new Date(Date.now() + intervalMs);
+      console.log(`[${ts()}] [scheduler] Next run at: ${nextRunAt.toLocaleString()}`);
     }
   }, intervalMs);
 }
@@ -176,12 +204,26 @@ process.on("SIGTERM", () => shutdown("SIGTERM"));
 // ---------------------------------------------------------------------------
 
 const server = app.listen(config.port, () => {
-  console.log(`\nSignalDesk Apify Service listening on port ${config.port}`);
-  console.log(`Backend: ${config.backendApiUrl}`);
-  console.log(`Apify token: ${config.apifyToken ? "configured" : "NOT SET"}`);
-  console.log(`Platforms: FB=${config.targets.facebook.length} LI=${config.targets.linkedin.length} RD=${config.targets.reddit.length} X=${config.targets.x.length}`);
+  console.log();
+  console.log("=".repeat(60));
+  console.log(`  SignalDesk Apify Service — Started at ${ts()}`);
+  console.log("=".repeat(60));
+  console.log(`  Port:           ${config.port}`);
+  console.log(`  Backend:        ${config.backendApiUrl}`);
+  console.log(`  Apify token:    ${config.apifyToken ? "configured" : "NOT SET"}`);
+  console.log(`  Backend token:  ${config.backendAuthToken ? "configured" : "NOT SET"}`);
+  console.log(`  Discord:        ${config.discordWebhookUrl ? "configured" : "NOT SET"}`);
+  console.log(`  Interval:       every ${config.runIntervalMinutes} min`);
+  console.log(`  Max results:    ${config.maxResultsPerRun} per actor`);
+  console.log("  " + "-".repeat(56));
+  console.log(`  Platforms:`);
+  console.log(`    Facebook:  ${config.targets.facebook.length} target(s) ${config.targets.facebook.length > 0 ? JSON.stringify(config.targets.facebook) : ""}`);
+  console.log(`    LinkedIn:  ${config.targets.linkedin.length} target(s) ${config.targets.linkedin.length > 0 ? JSON.stringify(config.targets.linkedin) : ""}`);
+  console.log(`    Reddit:    ${config.targets.reddit.length} target(s) ${config.targets.reddit.length > 0 ? JSON.stringify(config.targets.reddit) : ""}`);
+  console.log(`    X:         ${config.targets.x.length} target(s) ${config.targets.x.length > 0 ? JSON.stringify(config.targets.x) : ""}`);
+  console.log("=".repeat(60));
+  console.log();
 
-  // Start scheduler if interval is configured
   if (config.runIntervalMinutes > 0) {
     startScheduler();
   }
