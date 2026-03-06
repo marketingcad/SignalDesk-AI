@@ -6,7 +6,6 @@ import { IntentBadge } from "@/components/intent-badge";
 import { PlatformBadge } from "@/components/platform-badge";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { alerts as mockAlerts } from "@/lib/mock-data";
 import { timeAgo, cn } from "@/lib/utils";
 import type { Lead } from "@/lib/types";
 
@@ -31,9 +30,8 @@ import {
 } from "lucide-react";
 
 export default function AlertsPage() {
-  const [alerts, setAlerts] = useState<AlertWithUrl[]>(
-    mockAlerts.map((a) => ({ ...a, url: undefined }))
-  );
+  const [alerts, setAlerts] = useState<AlertWithUrl[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetch("/api/alerts?limit=30")
@@ -56,7 +54,8 @@ export default function AlertsPage() {
           );
         }
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
   const [filter, setFilter] = useState<"all" | "unread">("all");
 
@@ -215,7 +214,14 @@ export default function AlertsPage() {
           ))}
         </div>
 
-        {displayed.length === 0 && (
+        {loading && (
+          <Card className="flex flex-col items-center justify-center border-border bg-card py-16">
+            <Bell className="h-10 w-10 text-muted-foreground/50 mb-3 animate-pulse" />
+            <p className="text-sm font-medium text-foreground/70">Loading alerts…</p>
+          </Card>
+        )}
+
+        {!loading && displayed.length === 0 && (
           <Card className="flex flex-col items-center justify-center border-border bg-card py-16">
             <CheckCheck className="h-10 w-10 text-muted-foreground/50 mb-3" />
             <p className="text-sm font-medium text-foreground/70">All caught up!</p>

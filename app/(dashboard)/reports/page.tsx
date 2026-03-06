@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Header, ActionButton } from "@/components/header";
+import { Header } from "@/components/header";
 import { IntentBadge } from "@/components/intent-badge";
 import { PlatformBadge } from "@/components/platform-badge";
 import { Card } from "@/components/ui/card";
@@ -9,7 +9,6 @@ import { dailyReports as mockReports } from "@/lib/mock-data";
 import { cn, getPlatformColor } from "@/lib/utils";
 import type { Platform, DailyReport } from "@/lib/types";
 import {
-  Download,
   Calendar,
   TrendingUp,
   TrendingDown,
@@ -19,6 +18,7 @@ import {
   Flame,
   AlertTriangle,
   MinusCircle,
+  ExternalLink,
 } from "lucide-react";
 
 export default function ReportsPage() {
@@ -71,11 +71,6 @@ export default function ReportsPage() {
       <Header
         title="Reports"
         subtitle="Daily lead detection summaries"
-        actions={
-          <ActionButton icon={Download} variant="secondary">
-            Export CSV
-          </ActionButton>
-        }
       />
       <div className="p-6 space-y-4">
         {/* Summary Stats for This Week */}
@@ -248,14 +243,20 @@ export default function ReportsPage() {
                         </p>
                         <div className="space-y-2">
                           {report.topLeads.map((lead) => (
-                            <div
+                            <a
                               key={lead.id}
-                              className="flex items-center gap-3 rounded-lg border border-border bg-accent/30 px-3 py-2.5"
+                              href={lead.url || "#"}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-3 rounded-lg border border-border bg-accent/30 px-3 py-2.5 transition-colors hover:bg-accent/50 hover:border-primary/30 cursor-pointer group"
                             >
                               <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium text-foreground truncate">
-                                  {lead.username}
-                                </p>
+                                <div className="flex items-center gap-1.5">
+                                  <p className="text-sm font-medium text-foreground truncate">
+                                    {lead.username}
+                                  </p>
+                                  <ExternalLink className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                                </div>
                                 <p className="text-xs text-muted-foreground truncate">
                                   {lead.text.slice(0, 80)}...
                                 </p>
@@ -264,7 +265,7 @@ export default function ReportsPage() {
                                 score={lead.intentScore}
                                 size="sm"
                               />
-                            </div>
+                            </a>
                           ))}
                         </div>
                       </div>
