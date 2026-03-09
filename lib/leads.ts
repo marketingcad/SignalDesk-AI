@@ -80,7 +80,7 @@ export async function getAlerts(limit = 20): Promise<Lead[]> {
   const { data, error } = await supabase
     .from("leads")
     .select("*")
-    .gte("intent_score", 70)
+    .gte("intent_score", 60)
     .order("created_at", { ascending: false })
     .limit(limit);
 

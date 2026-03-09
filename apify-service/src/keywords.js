@@ -111,7 +111,7 @@ const REJECT_TERMS = [
 // ---------------------------------------------------------------------------
 
 const HIGH_INTENT = [
-  // Explicit hiring
+  // Explicit VA hiring
   "looking for a virtual assistant",
   "looking for a va",
   "hiring a virtual assistant",
@@ -128,54 +128,25 @@ const HIGH_INTENT = [
   "virtual assistant needed",
   "va needed",
 
-  // Role-specific hiring
-  "hiring remote assistant",
-  "hiring executive assistant",
-  "hiring admin assistant",
-  "hiring personal assistant",
+  // Role-specific VA hiring
   "hiring ghl va",
   "hiring gohighlevel va",
   "hiring social media va",
   "hiring real estate va",
-  "hiring cold caller",
-  "hiring appointment setter",
-  "hiring bookkeeper",
-  "hiring data entry",
-
-  // Task-specific hiring
-  "need someone to manage my crm",
-  "need someone to handle admin",
-  "need someone to manage emails",
-  "need someone to book appointments",
-  "need someone to manage my social",
-  "need someone to handle my",
-  "need help with inbox",
-  "need admin support",
+  "hiring remote va",
+  "hiring executive va",
+  "hiring admin va",
   "need va support",
 
-  // Urgency + hiring
-  "hiring immediately",
-  "hiring asap",
-  "hiring immediately va",
-  "urgent va hire",
-  "urgently need a va",
-  "urgently hiring",
-  "looking to hire asap",
-  "need a va asap",
-  "need va urgently",
-
-  // Outsourcing
-  "outsourcing admin work",
-  "outsource my admin",
+  // Outsource to VA
   "outsource to a va",
-  "looking to outsource",
-  "want to outsource",
-  "looking to delegate",
-  "want to delegate",
-  "looking to hire",
-  "want to hire",
-  "ready to hire",
-  "planning to hire",
+  "outsourcing to a va",
+  "looking to outsource to a virtual assistant",
+  "looking to delegate to a va",
+
+  // Urgency + VA
+  "urgently need a va",
+  "need a va asap",
 
   // Hiring tag (Reddit)
   "[hiring]",
@@ -220,27 +191,11 @@ const MEDIUM_INTENT = [
 // ---------------------------------------------------------------------------
 
 const DELEGATION_SIGNALS = [
-  "overwhelmed with admin",
-  "overwhelmed with tasks",
-  "overwhelmed with work",
-  "drowning in tasks",
-  "drowning in admin",
-  "drowning in emails",
-  "too many client messages",
-  "too many tasks",
-  "too busy to handle",
-  "can't keep up with",
-  "need extra help in my business",
-  "need support in my business",
-  "need help running my business",
-  "scaling my business and need help",
-  "scaling my business",
-  "growing my business",
-  "need extra help",
-  "need extra hands",
-  "need more help",
-  "burned out",
-  "burnout",
+  "overwhelmed need a va",
+  "drowning in tasks need va",
+  "need extra help va",
+  "scaling my business need a va",
+  "need help hiring a va",
 ];
 
 // ---------------------------------------------------------------------------
@@ -249,37 +204,14 @@ const DELEGATION_SIGNALS = [
 // ---------------------------------------------------------------------------
 
 const TOOL_TRIGGERS = [
-  "gohighlevel",
-  "ghl",
-  "clickfunnels",
-  "hubspot",
-  "salesforce",
-  "zapier",
-  "crm setup",
-  "automation setup",
-  "funnel building",
-  "lead management",
-  "appointment booking",
-  "appointment setting",
-  "email marketing",
-  "social media management",
-  "facebook ads support",
-  "facebook ads manager",
-  "tiktok management",
-  "instagram management",
-  "bookkeeping",
-  "quickbooks",
-  "xero",
-  "data entry",
-  "customer support",
-  "calendar management",
-  "inbox management",
-  "travel booking",
-  "project management",
-  "trello",
-  "asana",
-  "monday.com",
-  "notion",
+  "ghl va",
+  "gohighlevel va",
+  "va for crm",
+  "va for social media",
+  "va for email marketing",
+  "va for bookkeeping",
+  "va for data entry",
+  "va for appointment",
 ];
 
 // ---------------------------------------------------------------------------
@@ -287,15 +219,11 @@ const TOOL_TRIGGERS = [
 // ---------------------------------------------------------------------------
 
 const URGENCY = [
-  "asap",
-  "urgently",
-  "immediately",
-  "right away",
-  "this week",
-  "start today",
-  "start immediately",
-  "start asap",
-  "ready to start",
+  "va asap",
+  "va urgently",
+  "va immediately",
+  "hire va asap",
+  "need va now",
 ];
 
 // VA context — post must mention VA/virtual assistant/assistant somewhere

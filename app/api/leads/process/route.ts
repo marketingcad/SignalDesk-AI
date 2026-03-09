@@ -115,7 +115,7 @@ export async function POST(request: NextRequest) {
   console.log(`[leads/process] Lead inserted — ID: ${lead.id}, Score: ${lead.intent_score}, Level: ${lead.intent_level}`);
 
   // --- Smart alert for high-intent leads (batched, deduped, rate-limited) ---
-  if (scoringResult.score >= 80) {
+  if (scoringResult.score >= 65) {
     console.log(`[leads/process] High intent (${scoringResult.score}) — enqueuing alert`);
     alertEngine.enqueue({
       author_name: username,
@@ -130,7 +130,7 @@ export async function POST(request: NextRequest) {
       created_time: timestamp || new Date().toISOString(),
     });
   } else {
-    console.log(`[leads/process] Score ${scoringResult.score} < 80 — no alert`);
+    console.log(`[leads/process] Score ${scoringResult.score} < 65 — no alert`);
   }
 
   console.log("[leads/process] ---- Request complete ----");

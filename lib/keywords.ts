@@ -9,54 +9,56 @@
 // ---------------------------------------------------------------------------
 
 export const HIRING_KEYWORDS: string[] = [
-  // Direct hiring signals
+  // Direct hiring signals — must mention VA / virtual assistant
   "looking for a virtual assistant",
   "looking for a va",
   "hiring a virtual assistant",
   "hiring a va",
   "hiring va",
   "hire a va",
+  "hire a virtual assistant",
   "need a va",
   "need a virtual assistant",
   "want to hire a va",
+  "want to hire a virtual assistant",
   "searching for a va",
+  "searching for a virtual assistant",
   "virtual assistant needed",
   "va needed",
-  "looking to hire",
-  "want to hire",
-  "ready to hire",
 
-  // Role-specific
-  "hiring remote assistant",
-  "hiring executive assistant",
+  // Role-specific VA hiring
   "hiring ghl va",
-  "hiring appointment setter",
-  "hiring cold caller",
-  "hiring bookkeeper",
   "hiring social media va",
   "hiring real estate va",
-  "need admin support",
-  "need someone to manage my crm",
+  "hiring remote va",
+  "hiring executive va",
+  "hiring admin va",
+  "need va support",
 
-  // Research / consideration
+  // Outsourcing to a VA
+  "outsource to a va",
+  "outsourcing to a va",
+  "looking to outsource to a virtual assistant",
+  "looking to delegate to a va",
+
+  // Research / consideration — VA-specific
   "any va recommendations",
+  "recommend a good va",
+  "can anyone recommend a va",
   "how much does a va cost",
   "thinking of hiring a va",
+  "considering hiring a va",
   "should i hire a va",
   "where to find a va",
+  "where to hire a va",
+  "has anyone hired a va",
   "va pricing",
   "va rates",
+  "va cost",
 
-  // Delegation pain points
-  "overwhelmed with admin",
-  "need extra help in my business",
-  "drowning in tasks",
-  "scaling my business and need help",
-
-  // Urgency
-  "hiring asap",
-  "hiring immediately",
+  // Urgency — VA-specific
   "urgently need a va",
+  "need a va asap",
 
   // Reddit tag
   "[hiring]",
@@ -68,6 +70,7 @@ export const SEEKING_KEYWORDS: string[] = [
   "i am a virtual assistant",
   "i'm a va",
   "i am a va",
+  "freelance va here",
 
   // Offering services
   "offering va services",
@@ -78,11 +81,14 @@ export const SEEKING_KEYWORDS: string[] = [
   "open for clients",
   "looking for work",
   "looking for clients",
+  "looking for va work",
+  "looking for a va job",
   "i will be your virtual assistant",
   "i can be your va",
   "my services include",
   "services i offer",
   "dm me for",
+  "dm for rates",
 
   // Reddit tag
   "[for hire]",

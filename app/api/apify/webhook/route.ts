@@ -144,7 +144,7 @@ export async function POST(request: NextRequest) {
 
       // Trigger alerts for high-intent leads
       for (const row of toInsert) {
-        if (row._scoring.score >= 80) {
+        if (row._scoring.score >= 65) {
           alertEngine.enqueue({
             author_name: row.username,
             message: row.text.slice(0, 500),
@@ -163,9 +163,9 @@ export async function POST(request: NextRequest) {
       console.log(`[apify/webhook] Inserted ${inserted?.length || 0} leads`);
 
       // Log high-intent leads
-      const highIntent = toInsert.filter((r) => r._scoring.score >= 80);
+      const highIntent = toInsert.filter((r) => r._scoring.score >= 65);
       if (highIntent.length > 0) {
-        console.log(`[apify/webhook] ${highIntent.length} high-intent leads (score >= 80) — Discord alerts queued`);
+        console.log(`[apify/webhook] ${highIntent.length} high-intent leads (score >= 65) — Discord alerts queued`);
       }
     }
 

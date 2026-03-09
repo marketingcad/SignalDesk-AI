@@ -29,7 +29,7 @@ export interface DynamicScoringConfig {
 }
 
 const POSITIVE_SIGNALS: WeightedKeyword[] = [
-  // Direct Hiring (+40)
+  // ── Direct VA Hiring (+40) ──────────────────────────────────────────
   { phrase: "looking for a virtual assistant", weight: 40, category: "Direct Hiring" },
   { phrase: "looking for a va", weight: 40, category: "Direct Hiring" },
   { phrase: "hiring a virtual assistant", weight: 40, category: "Direct Hiring" },
@@ -45,62 +45,41 @@ const POSITIVE_SIGNALS: WeightedKeyword[] = [
   { phrase: "searching for a virtual assistant", weight: 40, category: "Direct Hiring" },
   { phrase: "virtual assistant needed", weight: 40, category: "Direct Hiring" },
   { phrase: "va needed", weight: 40, category: "Direct Hiring" },
-  { phrase: "looking to hire", weight: 40, category: "Direct Hiring" },
-  { phrase: "want to hire", weight: 40, category: "Direct Hiring" },
-  { phrase: "ready to hire", weight: 40, category: "Direct Hiring" },
-  { phrase: "planning to hire", weight: 40, category: "Direct Hiring" },
 
-  // Role-specific hiring (+40)
-  { phrase: "hiring remote assistant", weight: 40, category: "Direct Hiring" },
-  { phrase: "hiring executive assistant", weight: 40, category: "Direct Hiring" },
-  { phrase: "hiring admin assistant", weight: 40, category: "Direct Hiring" },
-  { phrase: "hiring personal assistant", weight: 40, category: "Direct Hiring" },
+  // ── Role-specific VA hiring (+40) ───────────────────────────────────
   { phrase: "hiring ghl va", weight: 40, category: "Direct Hiring" },
   { phrase: "hiring gohighlevel va", weight: 40, category: "Direct Hiring" },
   { phrase: "hiring social media va", weight: 40, category: "Direct Hiring" },
   { phrase: "hiring real estate va", weight: 40, category: "Direct Hiring" },
-  { phrase: "hiring cold caller", weight: 40, category: "Direct Hiring" },
-  { phrase: "hiring appointment setter", weight: 40, category: "Direct Hiring" },
-  { phrase: "hiring bookkeeper", weight: 40, category: "Direct Hiring" },
-
-  // Task-specific hiring (+40)
-  { phrase: "need someone to manage my crm", weight: 40, category: "Direct Hiring" },
-  { phrase: "need someone to handle admin", weight: 40, category: "Direct Hiring" },
-  { phrase: "need someone to manage emails", weight: 40, category: "Direct Hiring" },
-  { phrase: "need someone to book appointments", weight: 40, category: "Direct Hiring" },
-  { phrase: "need someone to manage my social", weight: 40, category: "Direct Hiring" },
-  { phrase: "need help with inbox", weight: 40, category: "Direct Hiring" },
-  { phrase: "need admin support", weight: 40, category: "Direct Hiring" },
+  { phrase: "hiring remote va", weight: 40, category: "Direct Hiring" },
+  { phrase: "hiring executive va", weight: 40, category: "Direct Hiring" },
+  { phrase: "hiring admin va", weight: 40, category: "Direct Hiring" },
   { phrase: "need va support", weight: 40, category: "Direct Hiring" },
-  { phrase: "outsourcing admin work", weight: 40, category: "Direct Hiring" },
-  { phrase: "outsource to a va", weight: 40, category: "Direct Hiring" },
-  { phrase: "looking to outsource", weight: 40, category: "Direct Hiring" },
-  { phrase: "looking to delegate", weight: 40, category: "Direct Hiring" },
 
-  // Urgency + hiring (+20)
-  { phrase: "hiring immediately", weight: 20, category: "Direct Hiring" },
-  { phrase: "hiring asap", weight: 20, category: "Direct Hiring" },
-  { phrase: "urgently need a va", weight: 20, category: "Direct Hiring" },
-  { phrase: "urgently hiring", weight: 20, category: "Direct Hiring" },
-  { phrase: "asap", weight: 10, category: "Direct Hiring" },
-  { phrase: "urgently", weight: 10, category: "Direct Hiring" },
-  { phrase: "immediately", weight: 10, category: "Direct Hiring" },
+  // ── Outsource / delegate to VA (+35) ────────────────────────────────
+  { phrase: "outsource to a va", weight: 35, category: "Direct Hiring" },
+  { phrase: "outsourcing to a va", weight: 35, category: "Direct Hiring" },
+  { phrase: "looking to outsource to a virtual assistant", weight: 35, category: "Direct Hiring" },
+  { phrase: "looking to delegate to a va", weight: 35, category: "Direct Hiring" },
 
-  // Recommendation Request (+20)
-  { phrase: "any va recommendations", weight: 20, category: "Recommendation Request" },
-  { phrase: "who can recommend a virtual assistant", weight: 20, category: "Recommendation Request" },
-  { phrase: "who can recommend a va", weight: 20, category: "Recommendation Request" },
-  { phrase: "can anyone recommend a va", weight: 20, category: "Recommendation Request" },
-  { phrase: "recommend a good va", weight: 20, category: "Recommendation Request" },
-  { phrase: "best va service", weight: 20, category: "Recommendation Request" },
-  { phrase: "where to find a va", weight: 20, category: "Recommendation Request" },
-  { phrase: "where to hire a va", weight: 20, category: "Recommendation Request" },
-  { phrase: "thinking of hiring a va", weight: 20, category: "Recommendation Request" },
-  { phrase: "considering hiring a va", weight: 20, category: "Recommendation Request" },
-  { phrase: "should i hire a va", weight: 20, category: "Recommendation Request" },
-  { phrase: "has anyone hired a va", weight: 20, category: "Recommendation Request" },
+  // ── Urgency + VA (+15 bonus, stacks with direct hiring match) ──────
+  { phrase: "urgently need a va", weight: 15, category: "Direct Hiring" },
+  { phrase: "need a va asap", weight: 15, category: "Direct Hiring" },
 
-  // Budget Inquiry (+20)
+  // ── Recommendation Request (+25) ────────────────────────────────────
+  { phrase: "any va recommendations", weight: 25, category: "Recommendation Request" },
+  { phrase: "who can recommend a virtual assistant", weight: 25, category: "Recommendation Request" },
+  { phrase: "who can recommend a va", weight: 25, category: "Recommendation Request" },
+  { phrase: "can anyone recommend a va", weight: 25, category: "Recommendation Request" },
+  { phrase: "recommend a good va", weight: 25, category: "Recommendation Request" },
+  { phrase: "where to find a va", weight: 25, category: "Recommendation Request" },
+  { phrase: "where to hire a va", weight: 25, category: "Recommendation Request" },
+  { phrase: "thinking of hiring a va", weight: 25, category: "Recommendation Request" },
+  { phrase: "considering hiring a va", weight: 25, category: "Recommendation Request" },
+  { phrase: "should i hire a va", weight: 25, category: "Recommendation Request" },
+  { phrase: "has anyone hired a va", weight: 25, category: "Recommendation Request" },
+
+  // ── Budget Inquiry — VA-specific (+20) ──────────────────────────────
   { phrase: "how much does a va cost", weight: 20, category: "Budget Inquiry" },
   { phrase: "virtual assistant rates", weight: 20, category: "Budget Inquiry" },
   { phrase: "va pricing", weight: 20, category: "Budget Inquiry" },
@@ -108,35 +87,15 @@ const POSITIVE_SIGNALS: WeightedKeyword[] = [
   { phrase: "va rates", weight: 20, category: "Budget Inquiry" },
   { phrase: "is it worth hiring a va", weight: 20, category: "Budget Inquiry" },
 
-  // Delegation Signal (+15)
-  { phrase: "overwhelmed with admin", weight: 15, category: "Delegation Signal" },
-  { phrase: "overwhelmed with tasks", weight: 15, category: "Delegation Signal" },
-  { phrase: "drowning in tasks", weight: 15, category: "Delegation Signal" },
-  { phrase: "drowning in admin", weight: 15, category: "Delegation Signal" },
-  { phrase: "drowning in emails", weight: 15, category: "Delegation Signal" },
-  { phrase: "too many client messages", weight: 15, category: "Delegation Signal" },
-  { phrase: "need extra help in my business", weight: 15, category: "Delegation Signal" },
-  { phrase: "need support in my business", weight: 15, category: "Delegation Signal" },
-  { phrase: "scaling my business and need help", weight: 15, category: "Delegation Signal" },
-  { phrase: "scaling my business", weight: 15, category: "Delegation Signal" },
-
-  // Tool-specific (+10) — only meaningful with VA hiring context
-  { phrase: "gohighlevel", weight: 10, category: "Technical VA Request" },
-  { phrase: "ghl", weight: 10, category: "Technical VA Request" },
-  { phrase: "clickfunnels", weight: 10, category: "Technical VA Request" },
-  { phrase: "hubspot", weight: 10, category: "Technical VA Request" },
-  { phrase: "salesforce", weight: 10, category: "Technical VA Request" },
-  { phrase: "zapier", weight: 10, category: "Technical VA Request" },
-  { phrase: "crm setup", weight: 10, category: "Technical VA Request" },
-  { phrase: "automation setup", weight: 10, category: "Technical VA Request" },
-  { phrase: "funnel building", weight: 10, category: "Technical VA Request" },
-  { phrase: "lead management", weight: 10, category: "Technical VA Request" },
-  { phrase: "appointment booking", weight: 10, category: "Technical VA Request" },
-  { phrase: "email marketing", weight: 10, category: "Technical VA Request" },
-  { phrase: "social media management", weight: 10, category: "Technical VA Request" },
-  { phrase: "bookkeeping", weight: 10, category: "Technical VA Request" },
-  { phrase: "data entry", weight: 10, category: "Technical VA Request" },
-  { phrase: "customer support", weight: 10, category: "Technical VA Request" },
+  // ── Technical VA Request (+10) — only as bonus context ──────────────
+  { phrase: "ghl va", weight: 10, category: "Technical VA Request" },
+  { phrase: "gohighlevel va", weight: 10, category: "Technical VA Request" },
+  { phrase: "va for crm", weight: 10, category: "Technical VA Request" },
+  { phrase: "va for social media", weight: 10, category: "Technical VA Request" },
+  { phrase: "va for email marketing", weight: 10, category: "Technical VA Request" },
+  { phrase: "va for bookkeeping", weight: 10, category: "Technical VA Request" },
+  { phrase: "va for data entry", weight: 10, category: "Technical VA Request" },
+  { phrase: "va for appointment", weight: 10, category: "Technical VA Request" },
 ];
 
 const NEGATIVE_SIGNALS: NegativeSignal[] = [
@@ -202,8 +161,8 @@ export function scoreIntent(
   const positives = dynamicConfig?.positiveSignals ?? POSITIVE_SIGNALS;
   const negatives = dynamicConfig?.negativeSignals ?? NEGATIVE_SIGNALS;
   const countries = dynamicConfig?.targetCountries ?? TARGET_COUNTRIES;
-  const highThreshold = dynamicConfig?.highThreshold ?? 80;
-  const mediumThreshold = dynamicConfig?.mediumThreshold ?? 50;
+  const highThreshold = dynamicConfig?.highThreshold ?? 65;
+  const mediumThreshold = dynamicConfig?.mediumThreshold ?? 35;
   const engagementBonus = dynamicConfig?.engagementBonus ?? 5;
   const countryBonus = dynamicConfig?.countryBonus ?? 10;
 
