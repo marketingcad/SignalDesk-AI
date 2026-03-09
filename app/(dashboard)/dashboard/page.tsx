@@ -8,14 +8,9 @@ import { StatusBadge } from "@/components/status-badge";
 import { LeadChart } from "@/components/lead-chart";
 import { PlatformChart } from "@/components/platform-chart";
 import { Card } from "@/components/ui/card";
-import {
-  dashboardStats as mockStats,
-  leads as mockLeads,
-  alerts as mockAlerts,
-} from "@/lib/mock-data";
 import { useApi } from "@/lib/use-api";
 import { timeAgo } from "@/lib/utils";
-import type { Lead, Alert, DashboardStats } from "@/lib/types";
+import type { Lead, DashboardStats } from "@/lib/types";
 import {
   Users,
   Flame,
@@ -28,18 +23,24 @@ import {
 export default function DashboardPage() {
   const { data: stats } = useApi<DashboardStats>(
     "/api/dashboard/stats",
-    mockStats
+    {
+      totalLeads: 0,
+      highIntentLeads: 0,
+      avgIntentScore: 0,
+      responseRate: 0,
+      totalLeadsChange: 0,
+      highIntentChange: 0,
+      avgScoreChange: 0,
+      responseRateChange: 0,
+    }
   );
   const { data: leadsResponse } = useApi<{ leads: Lead[]; count: number }>(
     "/api/leads?intentLevel=High&limit=5",
-    { leads: mockLeads.filter((l) => l.intentLevel === "High").slice(0, 5), count: 5 }
+    { leads: [], count: 0 }
   );
   const { data: alertLeads } = useApi<Lead[]>(
     "/api/alerts?limit=4",
-    mockAlerts.map((a) => ({
-      ...mockLeads.find((l) => l.id === a.leadId)!,
-      id: a.id,
-    }))
+    []
   );
 
   const dashboardStats = stats;

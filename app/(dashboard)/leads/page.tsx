@@ -30,6 +30,7 @@ import {
   X,
   LayoutGrid,
   LayoutList,
+  MessageCircle,
 } from "lucide-react";
 
 type FilterPlatform = Platform | "All";
@@ -537,6 +538,15 @@ export default function LeadsPage() {
                         variant="outline"
                         size="sm"
                         className="gap-1.5"
+                        onClick={() => updateStatus(selectedLead.id, "Contacted")}
+                      >
+                        <MessageCircle className="h-3.5 w-3.5" />
+                        Contacted
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5"
                         onClick={() => updateStatus(selectedLead.id, "Qualified")}
                       >
                         <UserPlus className="h-3.5 w-3.5" />
@@ -768,6 +778,15 @@ export default function LeadsPage() {
                     >
                       <ExternalLink className="h-3.5 w-3.5" />
                       View Post
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5"
+                      onClick={() => updateStatus(selectedLead.id, "Contacted")}
+                    >
+                      <MessageCircle className="h-3.5 w-3.5" />
+                      Contacted
                     </Button>
                     <Button
                       variant="outline"

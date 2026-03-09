@@ -5,7 +5,6 @@ import { Header } from "@/components/header";
 import { IntentBadge } from "@/components/intent-badge";
 import { PlatformBadge } from "@/components/platform-badge";
 import { Card } from "@/components/ui/card";
-import { dailyReports as mockReports } from "@/lib/mock-data";
 import { cn, getPlatformColor } from "@/lib/utils";
 import type { Platform, DailyReport } from "@/lib/types";
 import {
@@ -22,7 +21,7 @@ import {
 } from "lucide-react";
 
 export default function ReportsPage() {
-  const [dailyReports, setDailyReports] = useState<DailyReport[]>(mockReports);
+  const [dailyReports, setDailyReports] = useState<DailyReport[]>([]);
   const [expandedDate, setExpandedDate] = useState<string | null>(
     dailyReports[0]?.date ?? null
   );
