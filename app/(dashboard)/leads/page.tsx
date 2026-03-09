@@ -79,11 +79,15 @@ export default function LeadsPage() {
   const [leftWidth, setLeftWidth] = useState(60); // percentage
   const isDragging = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const cardContainerRef = useRef<HTMLDivElement>(null);
 
+  // Handles mouse move and mouse up for resizing panels
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      if (!isDragging.current || !containerRef.current) return;
-      const rect = containerRef.current.getBoundingClientRect();
+      if (!isDragging.current) return;
+      const ref = viewMode === "card" ? cardContainerRef.current : containerRef.current;
+      if (!ref) return;
+      const rect = ref.getBoundingClientRect();
       const pct = ((e.clientX - rect.left) / rect.width) * 100;
       setLeftWidth(Math.min(80, Math.max(30, pct)));
     };
@@ -100,7 +104,7 @@ export default function LeadsPage() {
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
     };
-  }, []);
+  }, [viewMode]);
 
   const startDragging = () => {
     isDragging.current = true;
@@ -396,12 +400,12 @@ export default function LeadsPage() {
 
         {/* Card View */}
         {viewMode === "card" && (
-          <div className="flex flex-col lg:flex-row gap-0 items-start animate-view-switch">
+          <div ref={cardContainerRef} className="flex flex-col lg:flex-row gap-0 items-start animate-view-switch">
             {/* Left Panel: Card Grid */}
             <Card className={cn(
-              "border-border bg-card overflow-hidden p-0 w-full transition-all duration-300",
-              selectedLead ? "lg:w-[55%] lg:rounded-r-none" : "lg:w-full"
-            )}>
+              "border-border bg-card overflow-hidden p-0 w-full lg:rounded-r-none",
+              !selectedLead && "lg:w-full! lg:rounded-r-md!"
+            )} style={{ width: selectedLead ? `${leftWidth}%` : undefined, flexShrink: 0 }}>
               <div className={cn(
                 "grid gap-3 p-4 max-h-[calc(100vh-320px)] overflow-y-auto transition-all duration-300",
                 selectedLead
@@ -440,7 +444,7 @@ export default function LeadsPage() {
 
                     <div className="flex items-center justify-between pt-2 border-t border-border/60">
                       <span className="text-[11px] text-muted-foreground" title={formatDate(new Date(lead.createdAt))}>
-                        {formatDate(new Date(lead.createdAt))} · {timeAgo(lead.createdAt)}
+                      Posted on: {formatDate(new Date(lead.createdAt))} · {timeAgo(lead.createdAt)}
                       </span>
                       {lead.location && (
                         <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
@@ -469,10 +473,20 @@ export default function LeadsPage() {
               )}
             </Card>
 
+            {/* Drag Handle */}
+            {selectedLead && (
+              <div
+                onMouseDown={startDragging}
+                className="hidden lg:flex w-2 shrink-0 cursor-col-resize items-center justify-center self-stretch group hover:bg-primary/10 transition-colors"
+              >
+                <div className="h-8 w-0.5 rounded-full bg-border group-hover:bg-primary/40 transition-colors" />
+              </div>
+            )}
+
             {/* Right Panel: Card Detail */}
             <Card className={cn(
-              "border-border bg-card p-0 lg:sticky lg:top-6 overflow-hidden min-w-0 w-full lg:rounded-l-none transition-all duration-300 origin-left",
-              selectedLead ? "lg:w-[45%] opacity-100 scale-x-100" : "lg:w-0 opacity-0 scale-x-0 border-0"
+              "border-border bg-card p-0 lg:sticky lg:top-6 overflow-hidden min-w-0 w-full lg:rounded-l-none transition-all duration-300 origin-left flex-1",
+              selectedLead ? "opacity-100" : "lg:w-0 opacity-0 scale-x-0 border-0"
             )}>
               {selectedLead ? (
                 <div className="animate-fade-in">
@@ -503,6 +517,12 @@ export default function LeadsPage() {
                       <PlatformBadge platform={selectedLead.platform} size="sm" />
                       <IntentBadge score={selectedLead.intentScore} size="sm" />
                       <StatusBadge status={selectedLead.status} />
+                    </div>
+
+                    <div className="pt-3.5">
+                       <span className="text-[11px] text-muted-foreground" title={formatDate(new Date(selectedLead.createdAt))}>
+                      Posted on: {formatDate(new Date(selectedLead.createdAt))} · {timeAgo(selectedLead.createdAt)}
+                      </span>
                     </div>
                   </div>
 
