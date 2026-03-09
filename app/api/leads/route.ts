@@ -16,6 +16,8 @@ export async function GET(request: NextRequest) {
     intentLevel: (searchParams.get("intentLevel") as IntentLevel) || undefined,
     status: (searchParams.get("status") as LeadStatus) || undefined,
     search: searchParams.get("search") || undefined,
+    from: searchParams.get("from") || undefined,
+    to: searchParams.get("to") || undefined,
     limit: searchParams.get("limit") ? Number(searchParams.get("limit")) : 50,
     offset: searchParams.get("offset") ? Number(searchParams.get("offset")) : 0,
   };

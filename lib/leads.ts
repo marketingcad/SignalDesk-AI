@@ -42,6 +42,8 @@ export async function getLeads(filters?: {
   intentLevel?: IntentLevel;
   status?: LeadStatus;
   search?: string;
+  from?: string;
+  to?: string;
   limit?: number;
   offset?: number;
 }): Promise<{ leads: Lead[]; count: number }> {
@@ -53,6 +55,8 @@ export async function getLeads(filters?: {
   if (filters?.platform) query = query.eq("platform", filters.platform);
   if (filters?.intentLevel) query = query.eq("intent_level", filters.intentLevel);
   if (filters?.status) query = query.eq("status", filters.status);
+  if (filters?.from) query = query.gte("created_at", filters.from);
+  if (filters?.to) query = query.lte("created_at", `${filters.to}T23:59:59.999Z`);
   if (filters?.search) {
     query = query.or(
       `username.ilike.%${filters.search}%,text.ilike.%${filters.search}%,source.ilike.%${filters.search}%`

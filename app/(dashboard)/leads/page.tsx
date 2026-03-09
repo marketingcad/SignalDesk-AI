@@ -8,7 +8,7 @@ import { StatusBadge } from "@/components/status-badge";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { timeAgo, cn } from "@/lib/utils";
+import { timeAgo, formatDate, cn } from "@/lib/utils";
 import { useRealtime } from "@/hooks/use-realtime";
 import type { Lead, Platform, IntentLevel, LeadStatus } from "@/lib/types";
 import {
@@ -31,6 +31,11 @@ import {
   LayoutGrid,
   LayoutList,
   MessageCircle,
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
 } from "lucide-react";
 
 type FilterPlatform = Platform | "All";
@@ -43,6 +48,11 @@ export default function LeadsPage() {
   const [platformFilter, setPlatformFilter] = useState<FilterPlatform>("All");
   const [intentFilter, setIntentFilter] = useState<FilterIntent>("All");
   const [statusFilter, setStatusFilter] = useState<FilterStatus>("All");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const perPage = 20;
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [filteredLeads, setFilteredLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
@@ -173,22 +183,35 @@ export default function LeadsPage() {
     URL.revokeObjectURL(url);
   };
 
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [platformFilter, intentFilter, statusFilter, searchQuery, dateFrom, dateTo]);
+
   const fetchLeads = useCallback(() => {
     const params = new URLSearchParams();
     if (platformFilter !== "All") params.set("platform", platformFilter);
     if (intentFilter !== "All") params.set("intentLevel", intentFilter);
     if (statusFilter !== "All") params.set("status", statusFilter);
     if (searchQuery) params.set("search", searchQuery);
-    params.set("limit", "50");
+    if (dateFrom) params.set("from", dateFrom);
+    if (dateTo) params.set("to", dateTo);
+    params.set("limit", String(perPage));
+    params.set("offset", String((currentPage - 1) * perPage));
 
     fetch(`/api/leads?${params}`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (data?.leads?.length >= 0) setFilteredLeads(data.leads);
+        if (data?.leads?.length >= 0) {
+          setFilteredLeads(data.leads);
+          setTotalCount(data.count ?? 0);
+        }
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [platformFilter, intentFilter, statusFilter, searchQuery]);
+  }, [platformFilter, intentFilter, statusFilter, searchQuery, dateFrom, dateTo, currentPage]);
+
+  const totalPages = Math.max(1, Math.ceil(totalCount / perPage));
 
   useEffect(() => {
     fetchLeads();
@@ -234,7 +257,7 @@ export default function LeadsPage() {
     <>
       <Header
         title="Leads"
-        subtitle={`${filteredLeads.length} leads found`}
+        subtitle={`${totalCount} leads found`}
       />
       <div className="p-6 space-y-4">
         {/* Filters Bar */}
@@ -269,6 +292,42 @@ export default function LeadsPage() {
                 options={["All", "New", "Contacted", "Qualified", "Dismissed"]}
                 onChange={(v) => setStatusFilter(v as FilterStatus)}
               />
+              <div className="flex items-center gap-1.5">
+                <div className="relative">
+                  <CalendarDays className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground pointer-events-none z-10" />
+                  <input
+                    type="date"
+                    value={dateFrom}
+                    onChange={(e) => setDateFrom(e.target.value)}
+                    className="h-8 w-[140px] cursor-pointer rounded-md border border-border bg-secondary/50 pl-8 pr-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
+                    style={{ colorScheme: "dark" }}
+                    placeholder="From"
+                    title="From date"
+                  />
+                </div>
+                <span className="text-xs text-muted-foreground">–</span>
+                <div className="relative">
+                  <CalendarDays className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground pointer-events-none z-10" />
+                  <input
+                    type="date"
+                    value={dateTo}
+                    onChange={(e) => setDateTo(e.target.value)}
+                    className="h-8 w-[140px] cursor-pointer rounded-md border border-border bg-secondary/50 pl-8 pr-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
+                    style={{ colorScheme: "dark" }}
+                    placeholder="To"
+                    title="To date"
+                  />
+                </div>
+                {(dateFrom || dateTo) && (
+                  <button
+                    onClick={() => { setDateFrom(""); setDateTo(""); }}
+                    className="flex items-center justify-center rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                    title="Clear dates"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
             </div>
             <div className="flex items-center gap-2 ml-auto">
               <div className="flex items-center rounded-md border border-border bg-secondary/50 p-0.5">
@@ -380,7 +439,9 @@ export default function LeadsPage() {
                     </div>
 
                     <div className="flex items-center justify-between pt-2 border-t border-border/60">
-                      <span className="text-[11px] text-muted-foreground">{timeAgo(lead.createdAt)}</span>
+                      <span className="text-[11px] text-muted-foreground" title={formatDate(new Date(lead.createdAt))}>
+                        {formatDate(new Date(lead.createdAt))} · {timeAgo(lead.createdAt)}
+                      </span>
                       {lead.location && (
                         <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
                           <MapPin className="h-3 w-3" />
@@ -600,7 +661,7 @@ export default function LeadsPage() {
               <span>Platform</span>
               <span>Intent</span>
               <span>Status</span>
-              <span className="text-right">Time</span>
+              <span className="text-right">Posted</span>
             </div>
 
             <div className="divide-y divide-border max-h-[calc(100vh-320px)] overflow-y-auto">
@@ -633,8 +694,8 @@ export default function LeadsPage() {
                   <PlatformBadge platform={lead.platform} size="sm" />
                   <IntentBadge score={lead.intentScore} size="sm" />
                   <StatusBadge status={lead.status} />
-                  <span className="text-xs text-muted-foreground text-right">
-                    {timeAgo(lead.createdAt)}
+                  <span className="text-xs text-muted-foreground text-right" title={formatDate(new Date(lead.createdAt))}>
+                    {formatDate(new Date(lead.createdAt))}
                   </span>
                 </div>
               ))}
@@ -831,6 +892,82 @@ export default function LeadsPage() {
             )}
           </Card>
         </div>
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <Card className="border-border bg-card px-4 py-3">
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-muted-foreground">
+                Showing {(currentPage - 1) * perPage + 1}–{Math.min(currentPage * perPage, totalCount)} of {totalCount} leads
+              </p>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 w-8 p-0"
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage(1)}
+                >
+                  <ChevronsLeft className="h-3.5 w-3.5" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 w-8 p-0"
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                </Button>
+
+                {Array.from({ length: totalPages }, (_, i) => i + 1)
+                  .filter((page) => {
+                    if (totalPages <= 7) return true;
+                    if (page === 1 || page === totalPages) return true;
+                    return Math.abs(page - currentPage) <= 1;
+                  })
+                  .reduce<(number | "ellipsis")[]>((acc, page, idx, arr) => {
+                    if (idx > 0 && page - (arr[idx - 1] as number) > 1) acc.push("ellipsis");
+                    acc.push(page);
+                    return acc;
+                  }, [])
+                  .map((item, idx) =>
+                    item === "ellipsis" ? (
+                      <span key={`e-${idx}`} className="px-1 text-xs text-muted-foreground">...</span>
+                    ) : (
+                      <Button
+                        key={item}
+                        variant={currentPage === item ? "default" : "outline"}
+                        size="sm"
+                        className="h-8 w-8 p-0 text-xs"
+                        onClick={() => setCurrentPage(item)}
+                      >
+                        {item}
+                      </Button>
+                    )
+                  )}
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 w-8 p-0"
+                  disabled={currentPage === totalPages}
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                >
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 w-8 p-0"
+                  disabled={currentPage === totalPages}
+                  onClick={() => setCurrentPage(totalPages)}
+                >
+                  <ChevronsRight className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            </div>
+          </Card>
+        )}
       </div>
 
       {/* Confirmation Modal */}
