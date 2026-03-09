@@ -102,7 +102,7 @@ export default function AlertsPage() {
         title="Alerts"
         subtitle={`${unreadCount} unread alerts`}
       />
-      <div className="p-6 space-y-4">
+      <div className="p-4 space-y-4 md:p-6">
         {/* Controls */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1 rounded-lg border border-border bg-card p-1">

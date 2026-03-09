@@ -73,7 +73,7 @@ export default function ReportsPage() {
         title="Reports"
         subtitle="Daily lead detection summaries"
       />
-      <div className="p-6 space-y-4">
+      <div className="p-4 space-y-4 md:p-6">
         {/* Summary Stats for This Week */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
           <WeekStat

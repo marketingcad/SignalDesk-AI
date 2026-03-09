@@ -65,7 +65,7 @@ export default function DashboardPage() {
         title="Dashboard"
         subtitle="Real-time lead intelligence overview"
       />
-      <div className="p-6 space-y-6">
+      <div className="p-4 space-y-4 md:p-6 md:space-y-6">
         {/* Stats Grid */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <StatsCard
@@ -165,7 +165,7 @@ export default function DashboardPage() {
               {recentLeads.map((lead, i) => (
                 <div
                   key={lead.id}
-                  className="flex items-center gap-4 px-5 py-3.5 transition-colors hover:bg-accent/50 animate-fade-in"
+                  className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:gap-4 sm:px-5 sm:py-3.5 transition-colors hover:bg-accent/50 animate-fade-in"
                   style={{ animationDelay: `${i * 50}ms` }}
                 >
                   <div className="flex-1 min-w-0">

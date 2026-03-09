@@ -184,7 +184,7 @@ export default function UsersPage() {
         title="User Management"
         subtitle="Add and manage team members"
       />
-      <div className="p-6 space-y-6 max-w-7xl mx-auto">
+      <div className="p-4 space-y-4 md:p-6 md:space-y-6 max-w-7xl mx-auto">
         {/* Stats Row */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <Card className="flex items-center gap-4 p-4">

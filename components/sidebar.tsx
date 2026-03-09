@@ -15,6 +15,8 @@ import {
   ChevronRight,
   Zap,
   LogOut,
+  Menu,
+  X,
 } from "lucide-react";
 import { cn, timeAgo } from "@/lib/utils";
 import type { Platform } from "@/lib/types";
@@ -38,9 +40,12 @@ const baseNavItems = [
 interface SidebarProps {
   collapsed: boolean;
   onToggle: () => void;
+  mobileOpen?: boolean;
+  onMobileClose?: () => void;
+  onMobileToggle?: () => void;
 }
 
-export function Sidebar({ collapsed, onToggle }: SidebarProps) {
+export function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose, onMobileToggle }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [showLogoutTransition, setShowLogoutTransition] = useState(false);
@@ -120,10 +125,25 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
     {showLogoutTransition && (
       <AuthTransition type="logout" onComplete={handleLogoutComplete} />
     )}
+    {/* Mobile hamburger button — visible only when sidebar is closed on mobile */}
+    {!mobileOpen && (
+      <button
+        onClick={onMobileToggle}
+        className="fixed left-3 top-4 z-50 flex h-10 w-10 items-center justify-center rounded-lg bg-sidebar border border-sidebar-border text-sidebar-foreground shadow-md md:hidden"
+        aria-label="Open menu"
+      >
+        <Menu className="h-5 w-5" />
+      </button>
+    )}
+
     <aside
       className={cn(
         "fixed left-0 top-0 z-40 flex h-screen flex-col border-r border-sidebar-border bg-sidebar transition-all duration-300",
-        collapsed ? "w-[68px]" : "w-[260px]"
+        // Desktop: show normally with collapse behavior
+        collapsed ? "md:w-[68px]" : "md:w-[260px]",
+        // Mobile: slide in/out as overlay
+        "w-[260px]",
+        mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
       )}
     >
       {/* Logo */}
@@ -132,12 +152,22 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
           <Zap className="h-5 w-5 text-primary-foreground" />
         </div>
         {!collapsed && (
-          <div className="animate-fade-in overflow-hidden">
+          <div className="animate-fade-in overflow-hidden flex-1">
             <h1 className="text-[15px] font-semibold text-sidebar-foreground leading-tight">
               SignalDesk
             </h1>
             <p className="text-[11px] font-medium text-sidebar-primary">AI</p>
           </div>
+        )}
+        {/* Mobile close button */}
+        {mobileOpen && (
+          <button
+            onClick={onMobileClose}
+            className="ml-auto flex h-8 w-8 items-center justify-center rounded-md text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground md:hidden"
+            aria-label="Close menu"
+          >
+            <X className="h-4 w-4" />
+          </button>
         )}
       </div>
 
@@ -157,6 +187,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
             <Link
               key={item.href}
               href={item.href}
+              onClick={onMobileClose}
               className={cn(
                 "group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150",
                 isActive

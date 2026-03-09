@@ -263,7 +263,7 @@ export default function LeadsPage() {
         title="Leads"
         subtitle={`${totalCount} leads found`}
       />
-      <div className="p-6 space-y-4">
+      <div className="p-4 space-y-4 md:p-6">
         {/* Filters Bar */}
         <Card className="border-border bg-card px-4 py-3 space-y-3">
           <div className="relative">
