@@ -36,6 +36,8 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
+  MoreHorizontal,
+  ArrowUpRight,
 } from "lucide-react";
 
 type FilterPlatform = Platform | "All";
@@ -130,6 +132,7 @@ export default function LeadsPage() {
     }
   };
 
+// handle delete lead
   const handleDeleteLead = (id: string) => {
     setConfirmModal({
       title: "Delete Lead",
@@ -764,6 +767,19 @@ function LeadDetailContent({
   onUpdateStatus: (id: string, status: LeadStatus) => void;
   onDelete: (id: string) => void;
 }) {
+
+const [isShowActions, setIsShowActions] = useState(false);
+
+
+// Handle show actions
+  const toggleActions = (id: string) => {
+    setIsShowActions((prev) => (prev ? false : true));
+  };
+
+
+
+
+
   return (
     <div className="animate-fade-in">
       {/* Detail Header */}
@@ -879,11 +895,27 @@ function LeadDetailContent({
       </div>
 
       {/* Actions Footer */}
-      <div className="border-t border-border bg-muted/10 px-5 py-3">
-        <div className="flex flex-wrap items-center gap-2">
+      <div className="flex items-center border-t border-border bg-muted/10 px-5 py-3 overflow-hidden">
+
+          {/* Toggle button */}
+          <button onClick={() => toggleActions(lead.id) }
+            className="flex items-center gap-2.5 rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
+            title={isShowActions ? "Hide actions" : "Show actions"}
+          >
+            <ArrowUpRight className={cn("h-4 w-4 transition-transform duration-300", isShowActions && "rotate-90")}/>
+          </button>
+
+          <div
+            className={cn(
+              "flex flex-wrap items-center gap-2 transition-all duration-300 ease-out ml-2",
+              isShowActions
+                ? "opacity-100 translate-x-0"
+                : "opacity-0 -translate-x-4 pointer-events-none"
+            )}
+          >
           <Button
             size="sm"
-            className="gap-1.5 shadow-sm shadow-primary/25"
+            className="gap-1.5 shadow-sm shadow-primary/25 whitespace-nowrap"
             onClick={() => {
               if (lead.url) window.open(lead.url, "_blank");
             }}
@@ -894,7 +926,7 @@ function LeadDetailContent({
           <Button
             variant="outline"
             size="sm"
-            className="gap-1.5"
+            className="gap-1.5 whitespace-nowrap"
             onClick={() => onUpdateStatus(lead.id, "Contacted")}
           >
             <MessageCircle className="h-3.5 w-3.5" />
@@ -903,7 +935,7 @@ function LeadDetailContent({
           <Button
             variant="outline"
             size="sm"
-            className="gap-1.5"
+            className="gap-1.5 whitespace-nowrap"
             onClick={() => onUpdateStatus(lead.id, "Qualified")}
           >
             <UserPlus className="h-3.5 w-3.5" />
@@ -912,7 +944,7 @@ function LeadDetailContent({
           <Button
             variant="outline"
             size="sm"
-            className="gap-1.5 border-rose-500/20 text-rose-400 hover:bg-rose-500/10 hover:text-rose-400"
+            className="gap-1.5 border-rose-500/20 text-rose-400 hover:bg-rose-500/10 hover:text-rose-400 whitespace-nowrap"
             onClick={() => onUpdateStatus(lead.id, "Dismissed")}
           >
             <XCircle className="h-3.5 w-3.5" />
@@ -921,7 +953,7 @@ function LeadDetailContent({
           <Button
             variant="outline"
             size="sm"
-            className="gap-1.5 border-rose-500/20 text-rose-400 hover:bg-rose-500/10 hover:text-rose-400"
+            className="gap-1.5 border-rose-500/20 text-rose-400 hover:bg-rose-500/10 hover:text-rose-400 whitespace-nowrap"
             onClick={() => onDelete(lead.id)}
           >
             <Trash2 className="h-3.5 w-3.5" />
