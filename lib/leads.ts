@@ -257,6 +257,69 @@ export async function deleteAllLeads(): Promise<number> {
   return data?.length || 0;
 }
 
+export interface GeographyDataPoint {
+  country: string;
+  code: string;
+  leads: number;
+  highIntent: number;
+  percentage: number;
+}
+
+const COUNTRY_CODES: Record<string, string> = {
+  "United States": "US",
+  "United Kingdom": "GB",
+  Canada: "CA",
+  Australia: "AU",
+  Germany: "DE",
+  Philippines: "PH",
+  India: "IN",
+  Singapore: "SG",
+  "New Zealand": "NZ",
+  Ireland: "IE",
+  Netherlands: "NL",
+  "South Africa": "ZA",
+  "United Arab Emirates": "AE",
+  Japan: "JP",
+  France: "FR",
+  Spain: "ES",
+  Brazil: "BR",
+  Mexico: "MX",
+};
+
+export async function getGeographyData(): Promise<GeographyDataPoint[]> {
+  const { data, error } = await supabase
+    .from("leads")
+    .select("location, intent_level")
+    .not("location", "is", null);
+
+  if (error) throw error;
+
+  const rows = data || [];
+  const counts: Record<string, { leads: number; highIntent: number }> = {};
+
+  for (const row of rows) {
+    const loc = (row.location as string) || "";
+    if (!loc) continue;
+    if (!counts[loc]) counts[loc] = { leads: 0, highIntent: 0 };
+    counts[loc].leads++;
+    if (row.intent_level === "High") counts[loc].highIntent++;
+  }
+
+  const total = Object.values(counts).reduce((s, c) => s + c.leads, 0);
+  if (total === 0) return [];
+
+  return Object.entries(counts)
+    .sort((a, b) => b[1].leads - a[1].leads)
+    .slice(0, 8)
+    .map(([country, c]) => ({
+      country,
+      code: COUNTRY_CODES[country] ?? "??",
+      leads: c.leads,
+      highIntent: c.highIntent,
+      percentage: Math.round((c.leads / total) * 100),
+    }));
+}
+
 export async function getPlatformCounts(): Promise<
   Record<Platform, { total: number; lastActive: Date | null }>
 > {

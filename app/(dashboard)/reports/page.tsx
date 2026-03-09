@@ -6,6 +6,7 @@ import { IntentBadge } from "@/components/intent-badge";
 import { PlatformBadge } from "@/components/platform-badge";
 import { Card } from "@/components/ui/card";
 import { cn, getPlatformColor } from "@/lib/utils";
+import { GeographyChart } from "@/components/geography-chart";
 import type { Platform, DailyReport } from "@/lib/types";
 import {
   Calendar,
@@ -18,6 +19,7 @@ import {
   AlertTriangle,
   MinusCircle,
   ExternalLink,
+  Globe,
 } from "lucide-react";
 
 export default function ReportsPage() {
@@ -103,6 +105,18 @@ export default function ReportsPage() {
             color="#71717a"
           />
         </div>
+
+        {/* Geography Breakdown */}
+        <Card className="border-border bg-card p-5">
+          <div className="mb-4 flex items-center gap-2">
+            <Globe className="h-4 w-4 text-primary" />
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">Lead Geography</h2>
+              <p className="text-xs text-muted-foreground">Leads by country</p>
+            </div>
+          </div>
+          <GeographyChart variant="breakdown" />
+        </Card>
 
         {/* Daily Reports */}
         <div className="space-y-3">

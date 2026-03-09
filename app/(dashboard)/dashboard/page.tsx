@@ -7,6 +7,7 @@ import { PlatformBadge } from "@/components/platform-badge";
 import { StatusBadge } from "@/components/status-badge";
 import { LeadChart } from "@/components/lead-chart";
 import { PlatformChart } from "@/components/platform-chart";
+import { GeographyChart } from "@/components/geography-chart";
 import { Card } from "@/components/ui/card";
 import { useApi } from "@/lib/use-api";
 import { timeAgo } from "@/lib/utils";
@@ -18,6 +19,7 @@ import {
   Gauge,
   ArrowUpRight,
   Activity,
+  Globe,
 } from "lucide-react";
 
 export default function DashboardPage() {
@@ -128,6 +130,20 @@ export default function DashboardPage() {
             <PlatformChart />
           </Card>
         </div>
+
+        {/* Geography Row */}
+        <Card className="border-border bg-card p-5">
+          <div className="mb-4 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Globe className="h-4 w-4 text-primary" />
+              <div>
+                <h2 className="text-sm font-semibold text-foreground">Lead Geography</h2>
+                <p className="text-xs text-muted-foreground">Distribution by country</p>
+              </div>
+            </div>
+          </div>
+          <GeographyChart variant="bar" />
+        </Card>
 
         {/* Bottom Row */}
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
