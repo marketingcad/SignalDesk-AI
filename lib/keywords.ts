@@ -9,7 +9,7 @@
 // ---------------------------------------------------------------------------
 
 export const HIRING_KEYWORDS: string[] = [
-  // Direct hiring signals — must mention VA / virtual assistant
+  // ── A. Direct Hiring Intent (+40) ──────────────────────────────────
   "looking for a virtual assistant",
   "looking for a va",
   "hiring a virtual assistant",
@@ -25,40 +25,50 @@ export const HIRING_KEYWORDS: string[] = [
   "searching for a virtual assistant",
   "virtual assistant needed",
   "va needed",
-
-  // Role-specific VA hiring
+  "hiring remote assistant",
+  "hiring executive assistant remote",
   "hiring ghl va",
+  "hiring gohighlevel va",
   "hiring social media va",
   "hiring real estate va",
-  "hiring remote va",
-  "hiring executive va",
-  "hiring admin va",
-  "need va support",
+  "hiring cold caller va",
+  "hiring appointment setter",
+  "need admin support",
+  "need someone to manage my crm",
+  "need someone to handle admin",
+  "need help with inbox",
+  "need someone to manage emails",
+  "need someone to book appointments",
+  "hiring immediately va",
+  "urgent va hire",
+  "outsourcing admin work",
 
-  // Outsourcing to a VA
-  "outsource to a va",
-  "outsourcing to a va",
-  "looking to outsource to a virtual assistant",
-  "looking to delegate to a va",
-
-  // Research / consideration — VA-specific
+  // ── B. Recommendation Requests ─────────────────────────────────────
   "any va recommendations",
+  "who can recommend a virtual assistant",
   "recommend a good va",
   "can anyone recommend a va",
+  "best va service",
   "how much does a va cost",
-  "thinking of hiring a va",
-  "considering hiring a va",
-  "should i hire a va",
-  "where to find a va",
-  "where to hire a va",
-  "has anyone hired a va",
+  "virtual assistant rates",
   "va pricing",
   "va rates",
   "va cost",
+  "where to find a va",
+  "where to hire a va",
+  "is it worth hiring a va",
+  "thinking of hiring a va",
+  "considering hiring a va",
+  "should i hire a va",
+  "has anyone hired a va",
 
-  // Urgency — VA-specific
-  "urgently need a va",
-  "need a va asap",
+  // ── D. Overwhelm / Delegation Signals ──────────────────────────────
+  "need extra help in my business",
+  "overwhelmed with admin",
+  "drowning in tasks",
+  "too many client messages",
+  "need support in my business",
+  "scaling my business and need help",
 
   // Reddit tag
   "[hiring]",

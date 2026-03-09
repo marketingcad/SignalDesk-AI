@@ -36,8 +36,8 @@ export function timeAgo(date: Date | string): string {
 }
 
 export function getIntentColor(score: number) {
-  if (score >= 65) return { bg: "bg-emerald-500/10", text: "text-emerald-400", border: "border-emerald-500/20", label: "High" };
-  if (score >= 35) return { bg: "bg-amber-500/10", text: "text-amber-400", border: "border-amber-500/20", label: "Medium" };
+  if (score >= 80) return { bg: "bg-emerald-500/10", text: "text-emerald-400", border: "border-emerald-500/20", label: "High" };
+  if (score >= 50) return { bg: "bg-amber-500/10", text: "text-amber-400", border: "border-amber-500/20", label: "Medium" };
   return { bg: "bg-zinc-500/10", text: "text-zinc-400", border: "border-zinc-500/20", label: "Low" };
 }
 

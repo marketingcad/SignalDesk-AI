@@ -128,23 +128,28 @@ const HIGH_INTENT = [
   "virtual assistant needed",
   "va needed",
 
-  // Role-specific VA hiring
+  // Role-specific hiring
+  "hiring remote assistant",
+  "hiring executive assistant remote",
   "hiring ghl va",
   "hiring gohighlevel va",
   "hiring social media va",
   "hiring real estate va",
-  "hiring remote va",
-  "hiring executive va",
-  "hiring admin va",
-  "need va support",
+  "hiring cold caller va",
+  "hiring appointment setter",
 
-  // Outsource to VA
-  "outsource to a va",
-  "outsourcing to a va",
-  "looking to outsource to a virtual assistant",
-  "looking to delegate to a va",
+  // Task-specific hiring
+  "need admin support",
+  "need someone to manage my crm",
+  "need someone to handle admin",
+  "need help with inbox",
+  "need someone to manage emails",
+  "need someone to book appointments",
+  "outsourcing admin work",
 
-  // Urgency + VA
+  // Urgency + hiring
+  "hiring immediately va",
+  "urgent va hire",
   "urgently need a va",
   "need a va asap",
 
@@ -191,11 +196,12 @@ const MEDIUM_INTENT = [
 // ---------------------------------------------------------------------------
 
 const DELEGATION_SIGNALS = [
-  "overwhelmed need a va",
-  "drowning in tasks need va",
-  "need extra help va",
-  "scaling my business need a va",
-  "need help hiring a va",
+  "need extra help in my business",
+  "overwhelmed with admin",
+  "drowning in tasks",
+  "too many client messages",
+  "need support in my business",
+  "scaling my business and need help",
 ];
 
 // ---------------------------------------------------------------------------
@@ -204,14 +210,25 @@ const DELEGATION_SIGNALS = [
 // ---------------------------------------------------------------------------
 
 const TOOL_TRIGGERS = [
-  "ghl va",
-  "gohighlevel va",
-  "va for crm",
-  "va for social media",
-  "va for email marketing",
-  "va for bookkeeping",
-  "va for data entry",
-  "va for appointment",
+  "gohighlevel",
+  "ghl",
+  "clickfunnels",
+  "hubspot",
+  "salesforce",
+  "zapier",
+  "crm setup",
+  "automation setup",
+  "funnel building",
+  "lead management",
+  "appointment booking",
+  "email marketing",
+  "social media management",
+  "facebook ads support",
+  "tiktok management",
+  "bookkeeping",
+  "quickbooks",
+  "data entry",
+  "customer support",
 ];
 
 // ---------------------------------------------------------------------------
@@ -219,11 +236,14 @@ const TOOL_TRIGGERS = [
 // ---------------------------------------------------------------------------
 
 const URGENCY = [
-  "va asap",
-  "va urgently",
-  "va immediately",
-  "hire va asap",
-  "need va now",
+  "asap",
+  "urgently",
+  "immediately",
+  "right away",
+  "start today",
+  "start immediately",
+  "start asap",
+  "ready to start",
 ];
 
 // VA context — post must mention VA/virtual assistant/assistant somewhere
