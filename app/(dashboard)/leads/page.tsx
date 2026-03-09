@@ -303,7 +303,7 @@ export default function LeadsPage() {
                     type="date"
                     value={dateFrom}
                     onChange={(e) => setDateFrom(e.target.value)}
-                    className="h-8 w-[140px] cursor-pointer rounded-md border border-border bg-secondary/50 pl-8 pr-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
+                    className="h-8 w-35 cursor-pointer rounded-md border border-border bg-secondary/50 pl-8 pr-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
                     style={{ colorScheme: "dark" }}
                     placeholder="From"
                     title="From date"
@@ -316,7 +316,7 @@ export default function LeadsPage() {
                     type="date"
                     value={dateTo}
                     onChange={(e) => setDateTo(e.target.value)}
-                    className="h-8 w-[140px] cursor-pointer rounded-md border border-border bg-secondary/50 pl-8 pr-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
+                    className="h-8 w-35 cursor-pointer rounded-md border border-border bg-secondary/50 pl-8 pr-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
                     style={{ colorScheme: "dark" }}
                     placeholder="To"
                     title="To date"
@@ -536,7 +536,7 @@ export default function LeadsPage() {
                         </p>
                       </div>
                       <div className="rounded-lg border border-border/60 bg-muted/20 p-4 relative">
-                        <div className="absolute left-0 top-0 bottom-0 w-[3px] rounded-l-lg bg-primary/40" />
+                        <div className="absolute left-0 top-0 bottom-0 w-0.27 rounded-l-lg bg-primary/40" />
                         <p className="text-sm text-foreground/85 leading-[1.75] whitespace-pre-wrap pl-2">
                           <HighlightedText text={selectedLead.text} keywords={selectedLead.matchedKeywords} />
                         </p>
@@ -781,7 +781,7 @@ export default function LeadsPage() {
                       </p>
                     </div>
                     <div className="rounded-lg border border-border/60 bg-muted/20 p-4 relative">
-                      <div className="absolute left-0 top-0 bottom-0 w-[3px] rounded-l-lg bg-primary/40" />
+                      <div className="absolute left-0 top-0 bottom-0 w-0.75 rounded-l-lg bg-primary/40" />
                       <p className="text-sm text-foreground/85 leading-[1.75] whitespace-pre-wrap pl-2">
                         <HighlightedText text={selectedLead.text} keywords={selectedLead.matchedKeywords} />
                       </p>

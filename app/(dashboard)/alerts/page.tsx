@@ -149,7 +149,7 @@ export default function AlertsPage() {
                 "group relative p-5 transition-all hover:shadow-lg hover:shadow-black/5 animate-fade-in",
                 alert.read
                   ? "border-border bg-card"
-                  : "border-primary/20 bg-primary/[0.02]"
+                  : "border-primary/20 bg-primary/2"
               )}
               style={{ animationDelay: `${i * 50}ms` }}
             >
