@@ -19,6 +19,8 @@ import {
   EyeOff,
   ChevronDown,
   CheckCircle2,
+  AlertTriangle,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -48,7 +50,7 @@ export default function UsersPage() {
 
   // Delete state
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [confirmDeleteUser, setConfirmDeleteUser] = useState<User | null>(null);
 
   async function fetchUsers() {
     try {
@@ -148,7 +150,7 @@ export default function UsersPage() {
       alert("Failed to delete user");
     } finally {
       setDeletingId(null);
-      setConfirmDeleteId(null);
+      setConfirmDeleteUser(null);
     }
   }
 
@@ -192,7 +194,7 @@ export default function UsersPage() {
               <Users className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-foreground">
+              <p className="text-2xl text-center font-bold text-foreground">
                 {users.length}
               </p>
               <p className="text-xs text-muted-foreground">Total Users</p>
@@ -203,7 +205,7 @@ export default function UsersPage() {
               <Mail className="h-5 w-5 text-emerald-500" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-foreground">
+              <p className="text-2xl text-center font-bold text-foreground">
                 {users.length}
               </p>
               <p className="text-xs text-muted-foreground">Active Accounts</p>
@@ -214,7 +216,7 @@ export default function UsersPage() {
               <Calendar className="h-5 w-5 text-amber-500" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-foreground">
+              <p className="text-2xl text-center font-bold text-foreground">
                 {users.length > 0 ? formatDate(users[0].created_at) : "-"}
               </p>
               <p className="text-xs text-muted-foreground">Latest Added</p>
@@ -427,43 +429,14 @@ export default function UsersPage() {
                       Joined {formatDate(user.created_at)}
                     </Badge>
 
-                    {confirmDeleteId === user.id ? (
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-destructive font-medium">
-                          Confirm?
-                        </span>
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          className="h-7 text-xs"
-                          onClick={() => handleDeleteUser(user.id)}
-                          disabled={deletingId === user.id}
-                        >
-                          {deletingId === user.id ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : (
-                            "Delete"
-                          )}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 text-xs"
-                          onClick={() => setConfirmDeleteId(null)}
-                        >
-                          Cancel
-                        </Button>
-                      </div>
-                    ) : (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                        onClick={() => setConfirmDeleteId(user.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    )}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                      onClick={() => setConfirmDeleteUser(user)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </div>
                 </div>
               ))
@@ -471,6 +444,64 @@ export default function UsersPage() {
           </div>
         </Card>
       </div>
+
+      {/* Delete User Confirmation Modal */}
+      {confirmDeleteUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setConfirmDeleteUser(null)}
+          />
+          <div className="relative w-full max-w-sm rounded-lg border border-border bg-card p-0 shadow-xl animate-fade-in">
+            <div className="flex items-center justify-between border-b border-border px-5 py-4">
+              <div className="flex items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-rose-500/10">
+                  <AlertTriangle className="h-4 w-4 text-rose-400" />
+                </div>
+                <h3 className="text-sm font-semibold text-foreground">Delete User</h3>
+              </div>
+              <button
+                onClick={() => setConfirmDeleteUser(null)}
+                className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="px-5 py-4">
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                Are you sure you want to delete{" "}
+                <span className="font-medium text-foreground">
+                  {confirmDeleteUser.full_name || confirmDeleteUser.email}
+                </span>
+                ? This action cannot be undone.
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setConfirmDeleteUser(null)}
+                disabled={deletingId === confirmDeleteUser.id}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                className="bg-rose-500 hover:bg-rose-600 text-white shadow-sm gap-1.5"
+                onClick={() => handleDeleteUser(confirmDeleteUser.id)}
+                disabled={deletingId === confirmDeleteUser.id}
+              >
+                {deletingId === confirmDeleteUser.id ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Trash2 className="h-3.5 w-3.5" />
+                )}
+                Confirm Delete
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
