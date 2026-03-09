@@ -1,44 +1,103 @@
 # Signal Desk AI
 
-Lead intelligence dashboard that scrapes social media posts, scores them by hiring intent, and alerts you on Discord when high-intent leads are detected.
+Lead intelligence dashboard for **Virtual Assistant hiring detection**. Scrapes social media posts from Facebook, LinkedIn, Reddit, and X, scores them by VA hiring intent, and alerts you on Discord when qualified leads are detected.
 
 ---
 
-## How Intent Scoring Works
+## How It Works
 
-Every scraped post is run through a keyword-based scoring engine in [`lib/intent-scoring.ts`](lib/intent-scoring.ts). The final score (0–100) determines the intent level.
+1. **Scrape** — Apify actors crawl Facebook groups, Reddit subreddits, LinkedIn, and X for posts
+2. **Pre-filter** — The Apify service rejects self-promotion and job-seeking posts using negative keyword matching
+3. **Score** — Every qualifying post is scored (0–100) by a weighted keyword engine in [`lib/intent-scoring.ts`](lib/intent-scoring.ts)
+4. **Store** — Leads are saved to Supabase with score, category, and matched keywords
+5. **Alert** — Leads scoring **>= 65** trigger a Discord notification via the Smart Alert Engine
+
+---
+
+## Intent Scoring Engine
 
 ### Intent Levels
 
-| Level      | Score Range | Color   |
-|------------|-------------|---------|
-| **High**   | 80 – 100    | Green (Emerald)  |
-| **Medium** | 50 – 79     | Amber   |
-| **Low**    | 0 – 49      | Gray    |
+| Level      | Score Range | Color          |
+|------------|-------------|----------------|
+| **High**   | 80 – 100    | Green (Emerald)|
+| **Medium** | 50 – 79     | Amber          |
+| **Low**    | 0 – 49      | Gray           |
 
 ### Score Calculation
 
 The score is the sum of **positive signals**, **negative signals**, and **bonuses**, clamped to 0–100.
 
-#### Positive Signals (add points)
+#### A. Direct Hiring Intent (+40)
 
-| Category                | Weight   | Example Keywords                                      |
-|-------------------------|----------|-------------------------------------------------------|
-| Direct Hiring           | **+40**  | "hiring a virtual assistant", "hire a va", "need a va"|
-| Recommendation Request  | **+20**  | "any va recommendations", "who can recommend a va"    |
-| Budget Inquiry          | **+20**  | "how much does a va cost", "va pricing"               |
-| Delegation Signal       | **+15**  | "overwhelmed with admin", "drowning in tasks"         |
-| Technical VA Request    | **+10**  | "gohighlevel", "hubspot", "crm setup"                |
+Explicit statements of hiring a VA.
 
-A post can match multiple keywords and categories. The **most frequently matched category** becomes the lead's primary intent category.
+| Weight | Example Keywords |
+|--------|-----------------|
+| **+40** | "hiring a virtual assistant", "hire a va", "need a va", "va needed" |
+| **+40** | "hiring remote assistant", "hiring executive assistant remote" |
+| **+40** | "hiring ghl va", "hiring social media va", "hiring real estate va" |
+| **+40** | "hiring cold caller va", "hiring appointment setter" |
+| **+40** | "need admin support", "need someone to manage my crm" |
+| **+40** | "need help with inbox", "need someone to manage emails" |
+| **+40** | "outsourcing admin work" |
+
+#### Urgency Boosters (+20)
+
+| Weight | Example Keywords |
+|--------|-----------------|
+| **+20** | "hiring immediately va", "urgent va hire", "urgently need a va" |
+| **+20** | "asap", "urgently", "immediately" |
+
+#### B. Recommendation Requests (+20)
+
+Asking for referrals or suggestions.
+
+| Weight | Example Keywords |
+|--------|-----------------|
+| **+20** | "any va recommendations", "who can recommend a va" |
+| **+20** | "best va service", "where to find a va", "where to hire a va" |
+| **+20** | "thinking of hiring a va", "should i hire a va" |
+| **+20** | "is it worth hiring a va", "has anyone hired a va" |
+
+#### C. Budget / Pricing Inquiries (+20)
+
+| Weight | Example Keywords |
+|--------|-----------------|
+| **+20** | "how much does a va cost", "virtual assistant rates" |
+| **+20** | "va pricing", "va cost", "va rates" |
+
+#### D. Overwhelm / Delegation Signals (+15)
+
+Implicit signals of needing help.
+
+| Weight | Example Keywords |
+|--------|-----------------|
+| **+15** | "overwhelmed with admin", "drowning in tasks" |
+| **+15** | "too many client messages", "need extra help in my business" |
+| **+15** | "need support in my business", "scaling my business and need help" |
+
+#### E. Tool / Skill-Based Triggers (+15)
+
+These increase intent score when paired with hiring language.
+
+| Weight | Example Keywords |
+|--------|-----------------|
+| **+15** | "gohighlevel", "ghl", "clickfunnels", "hubspot", "salesforce", "zapier" |
+| **+15** | "crm setup", "automation setup", "funnel building", "lead management" |
+| **+15** | "appointment booking", "email marketing", "social media management" |
+| **+15** | "facebook ads support", "tiktok management", "bookkeeping", "quickbooks" |
+| **+15** | "data entry", "customer support" |
+
+A post saying *"Looking for someone to manage my GHL account"* classifies as **Virtual Assistant – Technical**.
 
 #### Negative Signals (subtract points)
 
 | Category        | Weight   | Example Keywords                                |
 |-----------------|----------|-------------------------------------------------|
 | Job Seeker      | **-40**  | "i am looking for a va job", "i'm a virtual assistant" |
-| Self-Promotion  | **-30**  | "offering va services", "hire me", "available for hire"|
-| DM Solicitation | **-20**  | "dm me for", "dm for rates"                     |
+| Self-Promotion  | **-30**  | "offering va services", "hire me", "available for hire" |
+| DM Solicitation | **-20**  | "dm me for", "dm for rates" |
 
 These penalize posts from people **offering** VA services rather than **seeking** them.
 
@@ -51,15 +110,17 @@ These penalize posts from people **offering** VA services rather than **seeking*
 
 ### Scoring Examples
 
-**Example 1 — Medium Intent (60 pts):**
+**Example 1 — High Intent (70 pts, Discord alert sent):**
 > "Hiring a VA to manage my HubSpot CRM, based in the US"
 - Direct Hiring: +40
-- Technical VA Request: +10
+- Tool Trigger (HubSpot): +15
 - Country Match: +10
+- Engagement Boost: +5
 
-**Example 2 — Medium Intent (75 pts):**
-> "I desperately need to hire a VA, drowning in admin tasks, any recommendations?"
+**Example 2 — High Intent (95 pts):**
+> "I desperately need to hire a VA ASAP, drowning in admin tasks, any recommendations?"
 - Direct Hiring: +40
+- Urgency (ASAP): +20
 - Delegation Signal: +15
 - Recommendation Request: +20
 
@@ -69,13 +130,11 @@ These penalize posts from people **offering** VA services rather than **seeking*
 - Self-Promotion: -30
 - DM Solicitation: -20
 
-Add a country mention or high engagement to Examples 1–2 and they cross into **High Intent (80+)**.
-
 ---
 
 ## Discord Notifications
 
-Discord alerts are managed by the **Smart Alert Engine** in [`lib/alert-engine.ts`](lib/alert-engine.ts). **Notifications are only sent for High Intent leads (score >= 80).**
+Discord alerts are managed by the **Smart Alert Engine** in [`lib/alert-engine.ts`](lib/alert-engine.ts). **Notifications are sent for leads scoring >= 65** (covers all High Intent and strong Medium Intent leads).
 
 ### All Conditions Required for a Discord Notification
 
@@ -83,7 +142,7 @@ Discord alerts are managed by the **Smart Alert Engine** in [`lib/alert-engine.t
 |----|-----------|----------------|
 | 1  | `DISCORD_WEBHOOK_URL` env variable is set | `.env` / `.env.local` |
 | 2  | `discord_enabled` is `true` | Dashboard → Settings page |
-| 3  | Lead intent score **>= 80** (High Intent) | Lead must score 80+ |
+| 3  | Lead intent score **>= 65** | Lead must score 65+ |
 | 4  | Not a duplicate (same author + platform not alerted in last 2 hrs) | Automatic dedup |
 | 5  | Within rate limit (max 10 Discord messages/hour) | Automatic |
 | 6  | Outside cooldown (min 5 min between batch sends) | Automatic |
@@ -104,7 +163,7 @@ Discord alerts are managed by the **Smart Alert Engine** in [`lib/alert-engine.t
 
 | Source                | API Route                  | Trigger                                     |
 |-----------------------|----------------------------|---------------------------------------------|
-| Apify Scraper         | `/api/apify/webhook`       | Apify actor completes, leads scored >= 80   |
+| Apify Scraper         | `/api/apify/webhook`       | Apify actor completes, leads scored >= 65   |
 | Facebook Webhook      | `/api/facebook/webhook`    | Real-time Facebook feed event classified    |
 | Single Lead Upload    | `/api/leads/process`       | Manual single lead submitted via API        |
 | Batch Lead Upload     | `/api/leads/batch`         | Bulk lead import via API                    |
@@ -113,47 +172,36 @@ The **Apify Service** also sends a **scrape cycle summary** to Discord after eve
 
 ---
 
-## Why 192 Leads But No Discord Notifications?
+## Troubleshooting: Leads But No Discord Notifications?
 
 Check these causes in order of likelihood:
 
-### 1. Most leads score below 80 (most likely cause)
-
-Discord only fires for **High Intent (score >= 80)**. If your 192 leads are mostly Medium (50–79) or Low (0–49), no alerts are sent. Check your dashboard — filter by intent level and count how many are actually "High".
+### 1. Most leads score below 65
+Discord only fires for leads with **score >= 65**. Check your dashboard — filter by intent level and see how many reach that threshold.
 
 ### 2. `DISCORD_WEBHOOK_URL` is missing or invalid
-
 Verify your `.env` / `.env.local` has:
 ```
 DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/YOUR_ID/YOUR_TOKEN
 ```
-If missing or malformed, all Discord sends silently fail (no error shown in dashboard).
 
 ### 3. Discord notifications are disabled in Settings
-
-Go to **Dashboard → Settings** and confirm:
-- Discord notifications toggle is **ON**
-- The webhook URL field is filled in
+Go to **Dashboard → Settings** and confirm the toggle is **ON**.
 
 ### 4. Leads were inserted directly into the database
-
 If leads were imported into Supabase manually (not through the API routes), the scoring and alert pipeline was never triggered. Only leads processed through `/api/leads/process`, `/api/leads/batch`, `/api/apify/webhook`, or `/api/facebook/webhook` trigger alerts.
 
 ### 5. Deduplication suppressed the alerts
-
 Same author + platform within a 2-hour window = only the first alert goes through.
 
 ### 6. Rate limit was reached
-
-10 messages/hour cap + 5-minute cooldown. A large batch of high-intent leads could exceed this.
+10 messages/hour cap + 5-minute cooldown. A large batch could exceed this.
 
 ### Quick Diagnostic Checklist
-
 - [ ] Verify `DISCORD_WEBHOOK_URL` is set in your environment
 - [ ] Verify Discord is enabled on the Settings page
-- [ ] Count how many of your 192 leads are High Intent (score >= 80)
+- [ ] Count how many leads score >= 65
 - [ ] Test webhook manually: `curl -X POST YOUR_WEBHOOK_URL -H "Content-Type: application/json" -d '{"content": "Test from Signal Desk"}'`
-- [ ] Consider lowering the alert threshold in Settings if you want Medium Intent leads to also trigger notifications
 
 ---
 
