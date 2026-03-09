@@ -28,6 +28,8 @@ import {
   Quote,
   AlertTriangle,
   X,
+  LayoutGrid,
+  LayoutList,
 } from "lucide-react";
 
 type FilterPlatform = Platform | "All";
@@ -35,6 +37,7 @@ type FilterIntent = IntentLevel | "All";
 type FilterStatus = LeadStatus | "All";
 
 export default function LeadsPage() {
+  const [viewMode, setViewMode] = useState<"table" | "card">("card");
   const [searchQuery, setSearchQuery] = useState("");
   const [platformFilter, setPlatformFilter] = useState<FilterPlatform>("All");
   const [intentFilter, setIntentFilter] = useState<FilterIntent>("All");
@@ -267,6 +270,32 @@ export default function LeadsPage() {
               />
             </div>
             <div className="flex items-center gap-2 ml-auto">
+              <div className="flex items-center rounded-md border border-border bg-secondary/50 p-0.5">
+                  <button
+                  onClick={() => setViewMode("card")}
+                  className={cn(
+                    "flex items-center justify-center rounded-[5px] p-1.5 transition-all duration-200",
+                    viewMode === "card"
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                  title="Card view"
+                >
+                  <LayoutGrid className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  onClick={() => setViewMode("table")}
+                  className={cn(
+                    "flex items-center justify-center rounded-[5px] p-1.5 transition-all duration-200",
+                    viewMode === "table"
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                  title="Table view"
+                >
+                  <LayoutList className="h-3.5 w-3.5" />
+                </button>
+              </div>
               <Button
                 variant="outline"
                 size="sm"
@@ -305,10 +334,257 @@ export default function LeadsPage() {
           </div>
         </Card>
 
-        {/* Two-Panel Layout */}
-        <div ref={containerRef} className="flex flex-col lg:flex-row gap-0 items-start">
+        {/* Card View */}
+        {viewMode === "card" && (
+          <div className="flex flex-col lg:flex-row gap-0 items-start animate-view-switch">
+            {/* Left Panel: Card Grid */}
+            <Card className={cn(
+              "border-border bg-card overflow-hidden p-0 w-full transition-all duration-300",
+              selectedLead ? "lg:w-[55%] lg:rounded-r-none" : "lg:w-full"
+            )}>
+              <div className={cn(
+                "grid gap-3 p-4 max-h-[calc(100vh-320px)] overflow-y-auto transition-all duration-300",
+                selectedLead
+                  ? "grid-cols-1 sm:grid-cols-2"
+                  : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+              )}>
+                {filteredLeads.map((lead, i) => (
+                  <Card
+                    key={lead.id}
+                    className={cn(
+                      "border-border bg-card p-4 cursor-pointer transition-all duration-200 hover:shadow-md hover:border-primary/30 hover:-translate-y-0.5 animate-view-card-in",
+                      selectedLead?.id === lead.id && "ring-1 ring-primary border-primary/40"
+                    )}
+                    style={{ animationDelay: `${Math.min(i * 30, 300)}ms` }}
+                    onClick={() => setSelectedLead(selectedLead?.id === lead.id ? null : lead)}
+                  >
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+                        {lead.username.split(" ").map((n) => n[0]).join("").slice(0, 2)}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-foreground truncate">{lead.username}</p>
+                        <p className="text-xs text-muted-foreground truncate">{lead.source}</p>
+                      </div>
+                    </div>
+
+                    <p className="text-xs text-foreground/70 leading-relaxed line-clamp-2 mb-3">
+                      {lead.text}
+                    </p>
+
+                    <div className="flex items-center gap-1.5 flex-wrap mb-3">
+                      <PlatformBadge platform={lead.platform} size="sm" />
+                      <IntentBadge score={lead.intentScore} size="sm" />
+                      <StatusBadge status={lead.status} />
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2 border-t border-border/60">
+                      <span className="text-[11px] text-muted-foreground">{timeAgo(lead.createdAt)}</span>
+                      {lead.location && (
+                        <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                          <MapPin className="h-3 w-3" />
+                          {lead.location}
+                        </span>
+                      )}
+                    </div>
+                  </Card>
+                ))}
+              </div>
+
+              {loading && (
+                <div className="flex flex-col items-center justify-center py-16">
+                  <Search className="h-10 w-10 text-muted-foreground/50 mb-3 animate-pulse" />
+                  <p className="text-sm font-medium text-foreground/70">Loading leads...</p>
+                </div>
+              )}
+
+              {!loading && filteredLeads.length === 0 && (
+                <div className="flex flex-col items-center justify-center py-16">
+                  <Search className="h-10 w-10 text-muted-foreground/50 mb-3" />
+                  <p className="text-sm font-medium text-foreground/70">No leads found</p>
+                  <p className="text-xs text-muted-foreground">Try adjusting your filters</p>
+                </div>
+              )}
+            </Card>
+
+            {/* Right Panel: Card Detail */}
+            <Card className={cn(
+              "border-border bg-card p-0 lg:sticky lg:top-6 overflow-hidden min-w-0 w-full lg:rounded-l-none transition-all duration-300 origin-left",
+              selectedLead ? "lg:w-[45%] opacity-100 scale-x-100" : "lg:w-0 opacity-0 scale-x-0 border-0"
+            )}>
+              {selectedLead ? (
+                <div className="animate-fade-in">
+                  {/* Detail Header */}
+                  <div className="border-b border-border bg-muted/20 px-5 py-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
+                          {selectedLead.username.split(" ").map((n) => n[0]).join("").slice(0, 2)}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-foreground truncate">
+                            {selectedLead.username}
+                          </p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {selectedLead.source}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => setSelectedLead(null)}
+                        className="flex items-center justify-center rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <PlatformBadge platform={selectedLead.platform} size="sm" />
+                      <IntentBadge score={selectedLead.intentScore} size="sm" />
+                      <StatusBadge status={selectedLead.status} />
+                    </div>
+                  </div>
+
+                  {/* Post Content */}
+                  <div className="px-5 py-4 space-y-4 max-h-[calc(100vh-520px)] overflow-y-auto">
+                    <div>
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <Quote className="h-3.5 w-3.5 text-muted-foreground" />
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          Post Content
+                        </p>
+                      </div>
+                      <div className="rounded-lg border border-border/60 bg-muted/20 p-4 relative">
+                        <div className="absolute left-0 top-0 bottom-0 w-[3px] rounded-l-lg bg-primary/40" />
+                        <p className="text-sm text-foreground/85 leading-[1.75] whitespace-pre-wrap pl-2">
+                          <HighlightedText text={selectedLead.text} keywords={selectedLead.matchedKeywords} />
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Matched Keywords */}
+                    {selectedLead.matchedKeywords.length > 0 && (
+                      <div>
+                        <div className="flex items-center gap-1.5 mb-2">
+                          <Tag className="h-3 w-3 text-muted-foreground" />
+                          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                            Matched Keywords
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {selectedLead.matchedKeywords.map((kw) => (
+                            <span
+                              key={kw}
+                              className="rounded-md bg-primary/10 border border-primary/20 px-2 py-0.5 text-[11px] font-medium text-primary"
+                            >
+                              {kw}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Meta Info */}
+                    <div className="grid grid-cols-2 gap-3">
+                      {selectedLead.location && (
+                        <div className="flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-2">
+                          <MapPin className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                          <div>
+                            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Location</p>
+                            <p className="text-xs font-medium text-foreground/80">{selectedLead.location}</p>
+                          </div>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-2">
+                        <TrendingUp className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        <div>
+                          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Engagement</p>
+                          <p className="text-xs font-medium text-foreground/80">{selectedLead.engagement}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-2">
+                        <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        <div>
+                          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Category</p>
+                          <p className="text-xs font-medium text-foreground/80">{selectedLead.intentCategory}</p>
+                        </div>
+                      </div>
+                      {selectedLead.assignedTo && (
+                        <div className="flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-2">
+                          <User className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                          <div>
+                            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Assigned</p>
+                            <p className="text-xs font-medium text-foreground/80">{selectedLead.assignedTo}</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Actions Footer */}
+                  <div className="border-t border-border bg-muted/10 px-5 py-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        size="sm"
+                        className="gap-1.5 shadow-sm shadow-primary/25"
+                        onClick={() => {
+                          if (selectedLead.url) window.open(selectedLead.url, "_blank");
+                        }}
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                        View Post
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5"
+                        onClick={() => updateStatus(selectedLead.id, "Qualified")}
+                      >
+                        <UserPlus className="h-3.5 w-3.5" />
+                        Assign
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5 border-rose-500/20 text-rose-400 hover:bg-rose-500/10 hover:text-rose-400"
+                        onClick={() => updateStatus(selectedLead.id, "Dismissed")}
+                      >
+                        <XCircle className="h-3.5 w-3.5" />
+                        Dismiss
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5 border-rose-500/20 text-rose-400 hover:bg-rose-500/10 hover:text-rose-400"
+                        onClick={() => handleDeleteLead(selectedLead.id)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Delete
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-20 px-6">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-muted/50 mb-4">
+                    <MousePointerClick className="h-7 w-7 text-muted-foreground/40" />
+                  </div>
+                  <p className="text-sm font-medium text-foreground/70 mb-1">No lead selected</p>
+                  <p className="text-xs text-muted-foreground text-center">
+                    Click on a card to view its full details
+                  </p>
+                </div>
+              )}
+            </Card>
+          </div>
+        )}
+
+        {/* Two-Panel Table Layout */}
+        <div ref={containerRef} className={cn(
+          "flex flex-col lg:flex-row gap-0 items-start transition-all duration-300",
+          viewMode === "card" && "hidden"
+        )}>
           {/* Left Panel: Leads List */}
-          <Card className="border-border bg-card overflow-hidden p-0 w-full lg:rounded-r-none" style={{ width: `${leftWidth}%`, flexShrink: 0 }}>
+          <Card className="border-border bg-card overflow-hidden p-0 w-full lg:rounded-r-none animate-view-switch" style={{ width: `${leftWidth}%`, flexShrink: 0 }}>
             <div className="grid grid-cols-[1fr_90px_80px_90px_70px] gap-3 border-b border-border bg-muted/30 px-4 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               <span>Lead</span>
               <span>Platform</span>
