@@ -80,6 +80,46 @@ export interface ChartDataPoint {
 // Facebook Webhook
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// AI Lead Qualification
+// ---------------------------------------------------------------------------
+
+export type AIIntentCategory =
+  | "HIGH_INTENT"
+  | "MEDIUM_INTENT"
+  | "LOW_INTENT"
+  | "NOT_RELATED";
+
+export type AIUrgency = "HIGH" | "MEDIUM" | "LOW";
+
+export type AIBudgetEstimate =
+  | "hourly_low"
+  | "hourly_mid"
+  | "hourly_high"
+  | "monthly_contract"
+  | "unknown";
+
+export type AISpamRisk = "SAFE" | "SUSPICIOUS" | "LIKELY_SCAM";
+
+export interface AIQualificationResult {
+  isHiring: boolean | "uncertain";
+  intentCategory: AIIntentCategory;
+  leadScore: number;
+  urgency: AIUrgency;
+  tasks: string[];
+  skills: string[];
+  tools: string[];
+  industry: string;
+  budgetEstimate: AIBudgetEstimate;
+  spamRisk: AISpamRisk;
+  spamReason: string;
+  leadSummary: string;
+}
+
+// ---------------------------------------------------------------------------
+// Facebook Webhook
+// ---------------------------------------------------------------------------
+
 export type PostClassification = "HIRING_VA" | "SEEKING_WORK";
 
 export interface FacebookPostLog {

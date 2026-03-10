@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifySession } from "@/lib/auth";
-import { scoreIntent } from "@/lib/intent-scoring";
+import { qualifyLeadsBatch } from "@/lib/ai-lead-qualifier";
 import { supabase } from "@/lib/supabase";
 import { alertEngine } from "@/lib/alert-engine";
-import type { Platform } from "@/lib/types";
+import type { Platform, AIQualificationResult } from "@/lib/types";
 
 interface IncomingPost {
   platform: Platform;
@@ -66,54 +66,67 @@ export async function POST(request: NextRequest) {
 
   console.log(`[leads/batch] ${existingUrlMap.size} duplicates found out of ${urls.length} URLs`);
 
-  // --- Process each post ---
+  // --- Filter valid, non-duplicate posts ---
   const results: BatchResult[] = [];
   const toInsert: Array<Record<string, unknown>> = [];
-  const scoredLeads: Array<{ post: IncomingPost; score: number; level: string; category: string; matchedKeywords: string[] }> = [];
+  const scoredLeads: Array<{ post: IncomingPost; score: number; level: string; category: string; matchedKeywords: string[]; aiResult: AIQualificationResult | null }> = [];
 
+  const validPosts: IncomingPost[] = [];
   for (const post of posts) {
     if (!post.platform || !post.text || !post.username || !post.url) {
       results.push({ url: post.url || "unknown", error: "Missing required fields" });
       continue;
     }
-
-    // Skip duplicates
     const existingId = existingUrlMap.get(post.url);
     if (existingId) {
       results.push({ url: post.url, duplicate: true, leadId: existingId });
       continue;
     }
+    validPosts.push(post);
+  }
 
-    // Score
-    const scoring = scoreIntent({
-      text: post.text,
-      engagement: post.engagement || 0,
-      platform: post.platform,
-    });
+  // --- Score all valid posts (rate-limited chunks with retry + keyword fallback) ---
+  if (validPosts.length > 0) {
+    const qualifyResults = await qualifyLeadsBatch(
+      validPosts.map((post) => ({
+        platform: post.platform,
+        author: post.username,
+        text: post.text,
+        url: post.url,
+        engagement: post.engagement || 0,
+      }))
+    );
 
-    toInsert.push({
-      platform: post.platform,
-      source: post.source || "Unknown",
-      username: post.username,
-      text: post.text.slice(0, 5000),
-      url: post.url,
-      intent_score: scoring.score,
-      intent_level: scoring.level,
-      intent_category: scoring.category,
-      status: "New",
-      engagement: post.engagement || 0,
-      matched_keywords: scoring.matchedKeywords,
-      detected_at: post.timestamp || new Date().toISOString(),
-      user_id: session.userId,
-    });
+    for (let i = 0; i < validPosts.length; i++) {
+      const post = validPosts[i];
+      const { scoring, aiResult } = qualifyResults[i];
 
-    scoredLeads.push({
-      post,
-      score: scoring.score,
-      level: scoring.level,
-      category: scoring.category,
-      matchedKeywords: scoring.matchedKeywords,
-    });
+      toInsert.push({
+        platform: post.platform,
+        source: post.source || "Unknown",
+        username: post.username,
+        text: post.text.slice(0, 5000),
+        url: post.url,
+        intent_score: scoring.score,
+        intent_level: scoring.level,
+        intent_category: scoring.category,
+        status: "New",
+        engagement: post.engagement || 0,
+        matched_keywords: scoring.matchedKeywords,
+        detected_at: post.timestamp || new Date().toISOString(),
+        user_id: session.userId,
+        ...(aiResult ? { ai_qualification: aiResult } : {}),
+      });
+
+      scoredLeads.push({
+        post,
+        score: scoring.score,
+        level: scoring.level,
+        category: scoring.category,
+        matchedKeywords: scoring.matchedKeywords,
+        aiResult,
+      });
+    }
   }
 
   // --- Bulk insert ---
@@ -147,8 +160,8 @@ export async function POST(request: NextRequest) {
           intentLevel: row.intent_level,
         });
 
-        // Enqueue high-intent leads for smart alerting
-        if (scored.score >= 80) {
+        // Enqueue High + Medium intent leads for alerting (skip Low)
+        if (scored.level === "High" || scored.level === "Medium") {
           alertEngine.enqueue({
             author_name: scored.post.username,
             message: scored.post.text.slice(0, 500),

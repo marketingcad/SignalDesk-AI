@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifySession } from "@/lib/auth";
-import { scoreIntent } from "@/lib/intent-scoring";
+import { qualifyLead } from "@/lib/ai-lead-qualifier";
 import { supabase } from "@/lib/supabase";
 import { alertEngine } from "@/lib/alert-engine";
 import type { Platform } from "@/lib/types";
@@ -76,14 +76,21 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // --- Intent Scoring ---
-  const scoringResult = scoreIntent({ text, engagement: engagement || 0, platform });
+  // --- Intent Scoring (AI-first with keyword fallback) ---
+  const { scoring: scoringResult, aiResult, source: scoringSource } = await qualifyLead({
+    platform,
+    author: username,
+    text,
+    url,
+    engagement: engagement || 0,
+  });
   console.log(
-    `[leads/process] Scoring result:`,
+    `[leads/process] Scoring result (${scoringSource}):`,
     `\n  Score: ${scoringResult.score}`,
     `\n  Level: ${scoringResult.level}`,
     `\n  Category: ${scoringResult.category}`,
-    `\n  Matched keywords: [${scoringResult.matchedKeywords.join(", ")}]`
+    `\n  Matched keywords: [${scoringResult.matchedKeywords.join(", ")}]`,
+    aiResult ? `\n  AI Summary: ${aiResult.leadSummary}` : ""
   );
 
   // --- Insert lead ---
@@ -103,6 +110,7 @@ export async function POST(request: NextRequest) {
       matched_keywords: scoringResult.matchedKeywords,
       detected_at: timestamp || new Date().toISOString(),
       user_id: session.userId,
+      ...(aiResult ? { ai_qualification: aiResult } : {}),
     })
     .select("id, intent_score, intent_level")
     .single();
@@ -114,9 +122,9 @@ export async function POST(request: NextRequest) {
 
   console.log(`[leads/process] Lead inserted — ID: ${lead.id}, Score: ${lead.intent_score}, Level: ${lead.intent_level}`);
 
-  // --- Smart alert for high-intent leads (batched, deduped, rate-limited) ---
-  if (scoringResult.score >= 65) {
-    console.log(`[leads/process] High intent (${scoringResult.score}) — enqueuing alert`);
+  // --- Smart alert for High + Medium intent leads (skip Low) ---
+  if (scoringResult.level === "High" || scoringResult.level === "Medium") {
+    console.log(`[leads/process] ${scoringResult.level} intent (${scoringResult.score}) — enqueuing alert`);
     alertEngine.enqueue({
       author_name: username,
       message: text.slice(0, 500),
@@ -130,7 +138,7 @@ export async function POST(request: NextRequest) {
       created_time: timestamp || new Date().toISOString(),
     });
   } else {
-    console.log(`[leads/process] Score ${scoringResult.score} < 65 — no alert`);
+    console.log(`[leads/process] Low intent (${scoringResult.score}) — no alert`);
   }
 
   console.log("[leads/process] ---- Request complete ----");

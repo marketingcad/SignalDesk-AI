@@ -55,7 +55,7 @@ class AlertEngine {
     }, 3_600_000);
   }
 
-  /** Enqueue a high-intent lead for smart alerting. */
+  /** Enqueue a High or Medium intent lead for smart alerting. */
   enqueue(lead: DiscordLeadAlert): void {
     // Dedup: skip if same author+platform alerted recently
     const key = `${lead.author_name}:${lead.platform}`;
@@ -181,9 +181,9 @@ class AlertEngine {
     const avgScore = Math.round(leads.reduce((s, l) => s + l.score, 0) / leads.length);
 
     const embed = {
-      title: `📊 SignalDesk Lead Digest — ${leads.length} High-Intent Leads`,
+      title: `📊 SignalDesk Lead Digest — ${leads.length} Qualified Leads`,
       description: leadList,
-      color: LEVEL_COLOR.High,
+      color: leads[0].score >= 80 ? LEVEL_COLOR.High : LEVEL_COLOR.Medium,
       fields: [
         {
           name: "📡 Platforms",
