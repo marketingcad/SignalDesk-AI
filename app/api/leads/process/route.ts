@@ -61,17 +61,31 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Missing required fields: platform, text, username, url" }, { status: 400 });
   }
 
-  // --- Deduplication by URL ---
-  const { data: existing } = await supabase
+  // --- Deduplication by URL or post content ---
+  const { data: existingByUrl } = await supabase
     .from("leads")
     .select("id")
     .eq("url", url)
     .maybeSingle();
 
-  if (existing) {
-    console.log(`[leads/process] Duplicate detected — existing lead ID: ${existing.id}`);
+  if (existingByUrl) {
+    console.log(`[leads/process] Duplicate URL detected — existing lead ID: ${existingByUrl.id}`);
     return NextResponse.json(
-      { success: true, duplicate: true, leadId: existing.id },
+      { success: true, duplicate: true, reason: "url", leadId: existingByUrl.id },
+      { status: 200 }
+    );
+  }
+
+  const { data: existingByText } = await supabase
+    .from("leads")
+    .select("id")
+    .eq("text", text.slice(0, 5000))
+    .maybeSingle();
+
+  if (existingByText) {
+    console.log(`[leads/process] Duplicate content detected — existing lead ID: ${existingByText.id}`);
+    return NextResponse.json(
+      { success: true, duplicate: true, reason: "content", leadId: existingByText.id },
       { status: 200 }
     );
   }

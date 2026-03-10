@@ -52,19 +52,27 @@ export async function POST(request: NextRequest) {
 
   console.log(`[leads/batch] Processing ${posts.length} posts for user ${session.userId}`);
 
-  // --- Bulk dedup: single query for all URLs ---
+  // --- Bulk dedup: by URL and by post content ---
   const urls = posts.map((p) => p.url).filter(Boolean);
-  const { data: existingLeads } = await supabase
-    .from("leads")
-    .select("id, url")
-    .in("url", urls);
+  const texts = posts.map((p) => p.text?.slice(0, 5000)).filter(Boolean);
+
+  const [{ data: existingByUrl }, { data: existingByText }] = await Promise.all([
+    supabase.from("leads").select("id, url").in("url", urls),
+    supabase.from("leads").select("id, text").in("text", texts),
+  ]);
 
   const existingUrlMap = new Map<string, string>();
-  for (const lead of existingLeads || []) {
+  for (const lead of existingByUrl || []) {
     existingUrlMap.set(lead.url, lead.id);
   }
 
-  console.log(`[leads/batch] ${existingUrlMap.size} duplicates found out of ${urls.length} URLs`);
+  const existingTextMap = new Map<string, string>();
+  for (const lead of existingByText || []) {
+    existingTextMap.set(lead.text, lead.id);
+  }
+
+  const dupCount = existingUrlMap.size + existingTextMap.size;
+  console.log(`[leads/batch] ${dupCount} duplicates found (${existingUrlMap.size} by URL, ${existingTextMap.size} by content)`);
 
   // --- Filter valid, non-duplicate posts ---
   const results: BatchResult[] = [];
@@ -72,6 +80,8 @@ export async function POST(request: NextRequest) {
   const scoredLeads: Array<{ post: IncomingPost; score: number; level: string; category: string; matchedKeywords: string[]; aiResult: AIQualificationResult | null }> = [];
 
   const validPosts: IncomingPost[] = [];
+  const seenTexts = new Set<string>(); // also dedup within the batch itself
+
   for (const post of posts) {
     if (!post.platform || !post.text || !post.username || !post.url) {
       results.push({ url: post.url || "unknown", error: "Missing required fields" });
@@ -82,6 +92,18 @@ export async function POST(request: NextRequest) {
       results.push({ url: post.url, duplicate: true, leadId: existingId });
       continue;
     }
+    const textKey = post.text.slice(0, 5000);
+    const existingTextId = existingTextMap.get(textKey);
+    if (existingTextId) {
+      results.push({ url: post.url, duplicate: true, leadId: existingTextId });
+      continue;
+    }
+    // Dedup within current batch (same content from different URLs)
+    if (seenTexts.has(textKey)) {
+      results.push({ url: post.url, duplicate: true, error: "Duplicate content in batch" });
+      continue;
+    }
+    seenTexts.add(textKey);
     validPosts.push(post);
   }
 
