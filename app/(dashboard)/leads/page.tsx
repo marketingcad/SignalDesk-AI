@@ -38,6 +38,9 @@ import {
   ChevronsRight,
   MoreHorizontal,
   ArrowUpRight,
+  Link2,
+  Loader2,
+  Globe,
 } from "lucide-react";
 
 type FilterPlatform = Platform | "All";
@@ -65,6 +68,51 @@ export default function LeadsPage() {
     onConfirm: () => void;
   } | null>(null);
   const actionRef = useRef<HTMLDivElement>(null);
+
+  // URL Scraper state
+  const [scrapeUrl, setScrapeUrl] = useState("");
+  const [scrapeLoading, setScrapeLoading] = useState(false);
+  const [scrapeResult, setScrapeResult] = useState<{
+    success?: boolean;
+    platform?: string;
+    postsFound?: number;
+    inserted?: number;
+    duplicates?: number;
+    error?: string;
+    scrapedPosts?: { author: string; text: string; url: string; platform: string }[];
+  } | null>(null);
+  const [scrapeOpen, setScrapeOpen] = useState(false);
+
+  const handleScrapeUrl = async () => {
+    if (!scrapeUrl.trim()) return;
+    setScrapeLoading(true);
+    setScrapeResult(null);
+    try {
+      const res = await fetch("/api/leads/scrape-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: scrapeUrl.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setScrapeResult({ error: data.error || "Failed to scrape URL" });
+      } else {
+        setScrapeResult({
+          success: true,
+          platform: data.platform,
+          postsFound: data.postsFound,
+          inserted: data.batch?.inserted ?? 0,
+          duplicates: data.batch?.duplicates ?? 0,
+          scrapedPosts: data.scrapedPosts || [],
+        });
+        if (data.postsFound > 0) fetchLeads();
+      }
+    } catch {
+      setScrapeResult({ error: "Could not reach scraper service" });
+    } finally {
+      setScrapeLoading(false);
+    }
+  };
 
   // Close action dropdown on outside click
   useEffect(() => {
@@ -399,6 +447,130 @@ export default function LeadsPage() {
               </div>
             </div>
           </div>
+        </Card>
+
+        {/* URL Scraper */}
+        <Card className="border-border bg-card overflow-hidden">
+          <button
+            onClick={() => setScrapeOpen((o) => !o)}
+            className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-muted/30"
+          >
+            <div className="flex items-center gap-2">
+              <Globe className="h-4 w-4 text-primary" />
+              <span className="text-sm font-medium text-foreground">Scrape URL</span>
+              <span className="text-xs text-muted-foreground">Paste a link to scrape leads directly</span>
+            </div>
+            <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", scrapeOpen && "rotate-180")} />
+          </button>
+          {scrapeOpen && (
+            <div className="border-t border-border px-4 py-3 space-y-3">
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Link2 className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    type="url"
+                    placeholder="https://facebook.com/groups/... or any supported URL"
+                    value={scrapeUrl}
+                    onChange={(e) => { setScrapeUrl(e.target.value); setScrapeResult(null); }}
+                    onKeyDown={(e) => { if (e.key === "Enter" && !scrapeLoading) handleScrapeUrl(); }}
+                    className="pl-9 bg-secondary/50 border-border"
+                    disabled={scrapeLoading}
+                  />
+                </div>
+                <Button
+                  onClick={handleScrapeUrl}
+                  disabled={scrapeLoading || !scrapeUrl.trim()}
+                  size="sm"
+                  className="gap-2 px-4 shrink-0"
+                >
+                  {scrapeLoading ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Scraping...
+                    </>
+                  ) : (
+                    <>
+                      <Search className="h-3.5 w-3.5" />
+                      Scrape
+                    </>
+                  )}
+                </Button>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Supports: Facebook groups/pages, LinkedIn posts, Reddit threads/subreddits, X/Twitter profiles
+              </p>
+              {scrapeResult && (
+                <div className="space-y-2">
+                  <div className={cn(
+                    "rounded-md px-3 py-2 text-xs",
+                    scrapeResult.error
+                      ? "bg-rose-500/10 text-rose-400 border border-rose-500/20"
+                      : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                  )}>
+                    {scrapeResult.error ? (
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                        {scrapeResult.error}
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-3">
+                        <span>
+                          Found <strong>{scrapeResult.postsFound}</strong> posts from <strong>{scrapeResult.platform}</strong>
+                        </span>
+                        <span className="text-muted-foreground">|</span>
+                        <span>{scrapeResult.inserted} new leads</span>
+                        {(scrapeResult.duplicates ?? 0) > 0 && (
+                          <span className="text-muted-foreground">{scrapeResult.duplicates} duplicates</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Scraped posts with clickable URLs */}
+                  {scrapeResult.scrapedPosts && scrapeResult.scrapedPosts.length > 0 && (
+                    <div className="rounded-md border border-border bg-secondary/30 max-h-64 overflow-y-auto">
+                      <div className="px-3 py-2 border-b border-border">
+                        <span className="text-xs font-medium text-muted-foreground">
+                          Scraped Posts ({scrapeResult.scrapedPosts.length})
+                        </span>
+                      </div>
+                      <div className="divide-y divide-border">
+                        {scrapeResult.scrapedPosts.map((post, idx) => (
+                          <div key={idx} className="px-3 py-2 hover:bg-muted/30 transition-colors">
+                            <div className="flex items-start gap-2">
+                              <span className="text-[10px] text-muted-foreground font-mono mt-0.5 shrink-0">
+                                {idx + 1}.
+                              </span>
+                              <div className="min-w-0 flex-1 space-y-1">
+                                <div className="flex items-center gap-2">
+                                  <User className="h-3 w-3 text-muted-foreground shrink-0" />
+                                  <span className="text-xs font-medium text-foreground truncate">{post.author}</span>
+                                </div>
+                                <p className="text-[11px] text-muted-foreground line-clamp-2 leading-relaxed">
+                                  {post.text}
+                                </p>
+                                {post.url && (
+                                  <a
+                                    href={post.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 text-[11px] text-primary hover:text-primary/80 hover:underline transition-colors"
+                                  >
+                                    <ExternalLink className="h-3 w-3 shrink-0" />
+                                    <span className="truncate max-w-[400px]">{post.url}</span>
+                                  </a>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </Card>
 
         {/* Card View */}

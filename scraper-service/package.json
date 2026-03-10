@@ -1,0 +1,36 @@
+{
+  "name": "signaldesk-scraper-service",
+  "version": "1.0.0",
+  "description": "SignalDesk AI — Playwright + Crawlee scraper service for VA lead detection",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "ts-node src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "scrape": "ts-node -e \"require('./src/crawler/crawlerManager').runAllPlatforms()\"",
+    "scrape:reddit": "ts-node -e \"require('./src/crawler/crawlerManager').runPlatform('Reddit')\"",
+    "scrape:x": "ts-node -e \"require('./src/crawler/crawlerManager').runPlatform('X')\"",
+    "scrape:linkedin": "ts-node -e \"require('./src/crawler/crawlerManager').runPlatform('LinkedIn')\"",
+    "scrape:facebook": "ts-node -e \"require('./src/crawler/crawlerManager').runPlatform('Facebook')\"",
+    "auth:login": "ts-node src/crawler/browserAuth.ts"
+  },
+  "keywords": ["scraper", "playwright", "crawlee", "virtual-assistant", "lead-detection"],
+  "author": "SignalDesk AI",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "axios": "^1.13.6",
+    "crawlee": "^3.16.0",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "node-cron": "^4.2.1",
+    "playwright": "^1.58.2"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.4.0",
+    "@types/node-cron": "^3.0.11",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}
