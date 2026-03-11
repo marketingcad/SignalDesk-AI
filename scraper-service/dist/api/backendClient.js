@@ -22,8 +22,18 @@ async function sendLeadsBatch(posts) {
     }
     console.log(`[backend] Sending ${posts.length} posts to ${config_1.config.backendApiUrl}/api/leads/batch`);
     try {
+        // Map scraper fields to what the batch API expects
+        const mapped = posts.map((p) => ({
+            platform: p.platform,
+            username: p.author,
+            text: p.text,
+            url: p.url,
+            timestamp: p.timestamp,
+            engagement: p.engagement,
+            source: p.source,
+        }));
         const { data } = await client.post("/api/leads/batch", {
-            posts,
+            posts: mapped,
         });
         console.log(`[backend] Response: ${data.inserted} inserted, ${data.duplicates} duplicates`);
         return data;

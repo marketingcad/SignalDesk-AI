@@ -17,6 +17,7 @@ import {
   LogOut,
   Menu,
   X,
+  Globe,
 } from "lucide-react";
 import { cn, timeAgo } from "@/lib/utils";
 import type { Platform } from "@/lib/types";
@@ -31,6 +32,7 @@ const ALL_PLATFORMS: Platform[] = ["Facebook", "LinkedIn", "Reddit", "X"];
 const baseNavItems = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Overview" },
   { href: "/leads", icon: Users, label: "Leads" },
+  { href: "/scrape-url", icon: Globe, label: "Scrape URL" },
   { href: "/alerts", icon: Bell, label: "Alerts" },
   { href: "/reports", icon: FileBarChart, label: "Reports" },
   { href: "/users", icon: UserCog, label: "Users" },

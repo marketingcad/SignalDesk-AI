@@ -3,6 +3,50 @@ import { config } from "../config";
 import { hasSavedCookies, getProfileDir } from "../crawler/browserAuth";
 import type { Platform, ScrapedPost, ScrapeResult } from "../types";
 
+// ---------------------------------------------------------------------------
+// Date helpers — filter posts to current month only
+// ---------------------------------------------------------------------------
+
+function isCurrentMonth(ts: string | null | undefined): boolean {
+  if (!ts) return true; // no date found → keep post (don't discard valid leads)
+  const now = new Date();
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return true; // unparseable → keep
+  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+}
+
+/**
+ * Parse relative time strings ("2h", "3 days ago", "1w", "just now") → ISO string.
+ * Returns null if the string can't be parsed.
+ */
+function parseRelativeTs(text: string): string | null {
+  if (!text) return null;
+  const now = new Date();
+  const s = text.toLowerCase().trim();
+  if (/^(just now|now|moment|seconds? ago)/.test(s)) return now.toISOString();
+  if (s === "yesterday") {
+    const d = new Date(now);
+    d.setDate(d.getDate() - 1);
+    return d.toISOString();
+  }
+  const m = s.match(/(\d+)\s*(s(?:ec)?|m(?:in)?(?!o)|h(?:r|our)?|d(?:ay)?|w(?:k|eek)?|mo(?:nth)?|y(?:r|ear)?)/);
+  if (!m) return null;
+  const n = parseInt(m[1]);
+  const unit = m[2];
+  const d = new Date(now);
+  if (/^s/.test(unit))       d.setSeconds(d.getSeconds() - n);
+  else if (/^m/.test(unit))  d.setMinutes(d.getMinutes() - n);
+  else if (/^h/.test(unit))  d.setHours(d.getHours() - n);
+  else if (/^d/.test(unit))  d.setDate(d.getDate() - n);
+  else if (/^w/.test(unit))  d.setDate(d.getDate() - n * 7);
+  else if (/^mo/.test(unit)) d.setMonth(d.getMonth() - n);
+  else if (/^y/.test(unit))  d.setFullYear(d.getFullYear() - n);
+  else return null;
+  return d.toISOString();
+}
+
+// ---------------------------------------------------------------------------
+
 /**
  * Detect platform from a URL.
  */
@@ -29,7 +73,7 @@ async function extractFacebook(page: import("playwright").Page): Promise<Omit<Sc
   }
 
   const posts = await page.evaluate(() => {
-    const results: { author: string; text: string; url: string }[] = [];
+    const results: { author: string; text: string; url: string; rawTs: string }[] = [];
 
     // Strategy 1: div[role="article"] — group/feed posts
     const articles = document.querySelectorAll('div[role="article"]');
@@ -56,7 +100,21 @@ async function extractFacebook(page: import("playwright").Page): Promise<Omit<Sc
       );
       const url = (timeLink as HTMLAnchorElement)?.href || "";
 
-      results.push({ author, text, url });
+      // Timestamp — try abbr[data-utime] (unix seconds), then time[datetime], then relative text
+      const abbrEl = article.querySelector('abbr[data-utime]') as HTMLElement | null;
+      const timeEl = article.querySelector('time[datetime]') as HTMLElement | null;
+      let rawTs = "";
+      if (abbrEl?.dataset?.utime) {
+        rawTs = new Date(parseInt(abbrEl.dataset.utime) * 1000).toISOString();
+      } else if (timeEl?.getAttribute("datetime")) {
+        rawTs = timeEl.getAttribute("datetime") || "";
+      } else {
+        // Relative time text as fallback ("2 hours ago", "Yesterday", etc.)
+        const relEl = article.querySelector('abbr, time, [aria-label*="ago"], [title*="ago"]') as HTMLElement | null;
+        rawTs = relEl?.getAttribute("aria-label") || relEl?.getAttribute("title") || relEl?.textContent?.trim() || "";
+      }
+
+      results.push({ author, text, url, rawTs });
     });
 
     // Strategy 2: Fallback — text blocks for pages/simpler layouts
@@ -65,7 +123,7 @@ async function extractFacebook(page: import("playwright").Page): Promise<Omit<Sc
       blocks.forEach((block) => {
         const text = block.textContent?.trim() || "";
         if (text.length >= 30) {
-          results.push({ author: "unknown", text, url: "" });
+          results.push({ author: "unknown", text, url: "", rawTs: "" });
         }
       });
     }
@@ -73,16 +131,24 @@ async function extractFacebook(page: import("playwright").Page): Promise<Omit<Sc
     return results;
   });
 
-  console.log(`[url-scraper] Facebook: found ${posts.length} articles`);
-  posts.forEach((p, i) => {
+  // Resolve relative timestamps and filter to current month
+  const filtered = posts
+    .map((p) => {
+      const ts = /^\d{4}-/.test(p.rawTs) ? p.rawTs : (parseRelativeTs(p.rawTs) ?? "");
+      return { ...p, resolvedTs: ts };
+    })
+    .filter((p) => isCurrentMonth(p.resolvedTs));
+
+  console.log(`[url-scraper] Facebook: found ${posts.length} articles, ${filtered.length} from current month`);
+  filtered.forEach((p, i) => {
     console.log(`[url-scraper]   ${i + 1}. [${p.author}] "${p.text.slice(0, 120)}..." url=${p.url.slice(0, 80)}`);
   });
 
-  return posts.map((p) => ({
+  return filtered.map((p) => ({
     author: p.author,
     text: p.text,
     url: p.url,
-    timestamp: new Date().toISOString(),
+    timestamp: p.resolvedTs || new Date().toISOString(),
     engagement: 0,
   }));
 }
@@ -96,18 +162,20 @@ async function extractReddit(page: import("playwright").Page): Promise<Omit<Scra
   }
 
   const posts = await page.evaluate(() => {
-    const results: { author: string; text: string; url: string; engagement: number }[] = [];
+    const results: { author: string; text: string; url: string; engagement: number; rawTs: string }[] = [];
 
     // old.reddit.com
     document.querySelectorAll('.thing.link').forEach((thing) => {
       const titleEl = thing.querySelector('a.title');
       const authorEl = thing.querySelector('a.author');
       const scoreEl = thing.querySelector('.score.unvoted');
+      const timeEl = thing.querySelector('time[datetime], time[title]') as HTMLElement | null;
       const title = titleEl?.textContent?.trim() || "";
       const url = (titleEl as HTMLAnchorElement)?.href || "";
       const author = authorEl?.textContent?.trim() || "unknown";
       const score = parseInt(scoreEl?.textContent?.replace(/[^0-9-]/g, "") || "0", 10) || 0;
-      if (title) results.push({ author, text: title, url, engagement: score });
+      const rawTs = timeEl?.getAttribute("datetime") || timeEl?.getAttribute("title") || "";
+      if (title) results.push({ author, text: title, url, engagement: score, rawTs });
     });
 
     // new.reddit.com
@@ -115,25 +183,39 @@ async function extractReddit(page: import("playwright").Page): Promise<Omit<Scra
       document.querySelectorAll('article, shreddit-post, [data-testid="post-container"]').forEach((card) => {
         const titleEl = card.querySelector('h3, a[slot="title"], [data-testid="post-title"]');
         const authorEl = card.querySelector('a[href*="/user/"]');
+        // faceplate-timeago has a `ts` attribute (unix ms) or `datetime`; also try <time datetime>
+        const timeEl = card.querySelector('faceplate-timeago, time[datetime]') as HTMLElement | null;
         const text = titleEl?.textContent?.trim() || "";
         const author = authorEl?.textContent?.trim() || "unknown";
-        if (text.length > 10) results.push({ author, text, url: "", engagement: 0 });
+        const tsAttr = timeEl?.getAttribute("ts");
+        const rawTs = tsAttr
+          ? new Date(parseInt(tsAttr)).toISOString()
+          : (timeEl?.getAttribute("datetime") || "");
+        if (text.length > 10) results.push({ author, text, url: "", engagement: 0, rawTs });
       });
     }
 
     return results;
   });
 
-  console.log(`[url-scraper] Reddit: found ${posts.length} posts`);
-  posts.forEach((p, i) => {
+  // Filter to current month
+  const filtered = posts
+    .map((p) => {
+      const ts = /^\d{4}-/.test(p.rawTs) ? p.rawTs : (parseRelativeTs(p.rawTs) ?? "");
+      return { ...p, resolvedTs: ts };
+    })
+    .filter((p) => isCurrentMonth(p.resolvedTs));
+
+  console.log(`[url-scraper] Reddit: found ${posts.length} posts, ${filtered.length} from current month`);
+  filtered.forEach((p, i) => {
     console.log(`[url-scraper]   ${i + 1}. [${p.author}] "${p.text.slice(0, 120)}..."`);
   });
 
-  return posts.map((p) => ({
+  return filtered.map((p) => ({
     author: p.author,
     text: p.text,
     url: p.url,
-    timestamp: new Date().toISOString(),
+    timestamp: p.resolvedTs || new Date().toISOString(),
     engagement: p.engagement,
   }));
 }
@@ -148,31 +230,43 @@ async function extractLinkedin(page: import("playwright").Page): Promise<Omit<Sc
   }
 
   const posts = await page.evaluate(() => {
-    const results: { author: string; text: string; url: string }[] = [];
+    const results: { author: string; text: string; url: string; rawTs: string }[] = [];
 
     document.querySelectorAll('.feed-shared-update-v2, .occludable-update, div[data-urn]').forEach((container) => {
       const textEl = container.querySelector('.feed-shared-text, .break-words, .update-components-text');
       const authorEl = container.querySelector('.feed-shared-actor__name, .update-components-actor__name');
       const linkEl = container.querySelector('a[href*="/feed/update/"]');
+      // LinkedIn time: <time datetime="ISO"> or sub-description with relative text
+      const timeEl = container.querySelector('time[datetime]') as HTMLElement | null;
+      const relEl = container.querySelector('.feed-shared-actor__sub-description, .update-components-actor__meta') as HTMLElement | null;
       const text = textEl?.textContent?.trim() || "";
       const author = authorEl?.textContent?.trim() || "unknown";
       const url = (linkEl as HTMLAnchorElement)?.href || "";
-      if (text.length > 20) results.push({ author, text, url });
+      const rawTs = timeEl?.getAttribute("datetime") || relEl?.textContent?.trim() || "";
+      if (text.length > 20) results.push({ author, text, url, rawTs });
     });
 
     return results;
   });
 
-  console.log(`[url-scraper] LinkedIn: found ${posts.length} posts`);
-  posts.forEach((p, i) => {
+  // Filter to current month
+  const filtered = posts
+    .map((p) => {
+      const ts = /^\d{4}-/.test(p.rawTs) ? p.rawTs : (parseRelativeTs(p.rawTs) ?? "");
+      return { ...p, resolvedTs: ts };
+    })
+    .filter((p) => isCurrentMonth(p.resolvedTs));
+
+  console.log(`[url-scraper] LinkedIn: found ${posts.length} posts, ${filtered.length} from current month`);
+  filtered.forEach((p, i) => {
     console.log(`[url-scraper]   ${i + 1}. [${p.author}] "${p.text.slice(0, 120)}..."`);
   });
 
-  return posts.map((p) => ({
+  return filtered.map((p) => ({
     author: p.author,
     text: p.text,
     url: p.url,
-    timestamp: new Date().toISOString(),
+    timestamp: p.resolvedTs || new Date().toISOString(),
     engagement: 0,
   }));
 }
@@ -187,31 +281,42 @@ async function extractX(page: import("playwright").Page): Promise<Omit<ScrapedPo
   }
 
   const posts = await page.evaluate(() => {
-    const results: { author: string; text: string; url: string }[] = [];
+    const results: { author: string; text: string; url: string; rawTs: string }[] = [];
 
     document.querySelectorAll('article[data-testid="tweet"]').forEach((tweet) => {
       const textEl = tweet.querySelector('[data-testid="tweetText"]');
       const authorEl = tweet.querySelector('a[href*="/"] div[dir="ltr"] > span');
       const linkEl = tweet.querySelector('a[href*="/status/"]');
+      // X always has <time datetime="ISO"> inside the tweet
+      const timeEl = tweet.querySelector('time[datetime]') as HTMLElement | null;
       const text = textEl?.textContent?.trim() || "";
       const author = authorEl?.textContent?.trim() || "unknown";
       const url = (linkEl as HTMLAnchorElement)?.href || "";
-      if (text.length > 10) results.push({ author, text, url });
+      const rawTs = timeEl?.getAttribute("datetime") || "";
+      if (text.length > 10) results.push({ author, text, url, rawTs });
     });
 
     return results;
   });
 
-  console.log(`[url-scraper] X: found ${posts.length} tweets`);
-  posts.forEach((p, i) => {
+  // Filter to current month
+  const filtered = posts
+    .map((p) => {
+      const ts = /^\d{4}-/.test(p.rawTs) ? p.rawTs : (parseRelativeTs(p.rawTs) ?? "");
+      return { ...p, resolvedTs: ts };
+    })
+    .filter((p) => isCurrentMonth(p.resolvedTs));
+
+  console.log(`[url-scraper] X: found ${posts.length} tweets, ${filtered.length} from current month`);
+  filtered.forEach((p, i) => {
     console.log(`[url-scraper]   ${i + 1}. [${p.author}] "${p.text.slice(0, 120)}..."`);
   });
 
-  return posts.map((p) => ({
+  return filtered.map((p) => ({
     author: p.author,
     text: p.text,
     url: p.url,
-    timestamp: new Date().toISOString(),
+    timestamp: p.resolvedTs || new Date().toISOString(),
     engagement: 0,
   }));
 }
