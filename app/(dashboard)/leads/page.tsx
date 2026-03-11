@@ -68,7 +68,6 @@ export default function LeadsPage() {
   } | null>(null);
   const actionRef = useRef<HTMLDivElement>(null);
 
-
   // Close action dropdown on outside click
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
@@ -627,7 +626,7 @@ export default function LeadsPage() {
             )}
           </Card>
         </div>
-        {/* Pagination */}
+        {/* Pagination — leads only */}
         {totalPages > 1 && (
           <Card className="border-border bg-card px-4 py-3">
             <div className="flex items-center justify-between">
@@ -703,6 +702,8 @@ export default function LeadsPage() {
             </div>
           </Card>
         )}
+
+
       </div>
 
       {/* Mobile Lead Detail Modal — visible only on < lg screens */}
@@ -788,7 +789,7 @@ const [isShowActions, setIsShowActions] = useState(false);
 
 
 // Handle show actions
-  const toggleActions = (id: string) => {
+  const toggleActions = () => {
     setIsShowActions((prev) => (prev ? false : true));
   };
 
@@ -914,7 +915,7 @@ const [isShowActions, setIsShowActions] = useState(false);
       <div className="flex items-center border-t border-border bg-muted/10 px-5 py-3 overflow-hidden">
 
           {/* Toggle button */}
-          <button onClick={() => toggleActions(lead.id) }
+          <button onClick={() => toggleActions()}
             className="flex items-center gap-2.5 rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
             title={isShowActions ? "Hide actions" : "Show actions"}
           >

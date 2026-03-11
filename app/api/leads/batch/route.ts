@@ -20,6 +20,7 @@ interface BatchResult {
   leadId?: string;
   intentScore?: number;
   intentLevel?: string;
+  matchedKeywords?: string[];
   duplicate?: boolean;
   error?: string;
 }
@@ -180,6 +181,7 @@ export async function POST(request: NextRequest) {
           leadId: row.id,
           intentScore: row.intent_score,
           intentLevel: row.intent_level,
+          matchedKeywords: scored.matchedKeywords,
         });
 
         // Enqueue High + Medium intent leads for alerting (skip Low)

@@ -1,6 +1,6 @@
 import { scrapeReddit, scrapeX, scrapeLinkedin, scrapeFacebook } from "../scrapers";
 import { sendLeadsBatch } from "../api/backendClient";
-import { sendRunSummary, sendErrorAlert } from "../alerts/discord";
+import { sendRunSummary, sendErrorAlert, sendNewLeadsAlert } from "../alerts/discord";
 import type { Platform, ScrapeResult, ScrapedPost } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -80,6 +80,7 @@ export async function runPlatform(platform: Platform): Promise<ScrapeResult> {
       console.log(
         `[crawler] ${platform}: ${response.inserted} new leads, ${response.duplicates} duplicates`
       );
+      await sendNewLeadsAlert(`scheduled:${platform}`, platform, filtered, response);
     }
   }
 

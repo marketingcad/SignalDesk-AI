@@ -1,9 +1,11 @@
-[0311/220759.470:INFO:CONSOLE:255] "
+[0312/051506.680:INFO:CONSOLE:335] "Permissions policy violation: unload is not allowed in this document.", source: https://static.xx.fbcdn.net/rsrc.php/v4/yK/r/kQMM8mQEHTq.js (335)
+[0312/051506.826:INFO:CONSOLE:255] "
 %cStop! font-family:helvetica; font-size:20px; font-size:50px; font-weight:bold; color:red; -webkit-text-stroke:1px black;", source: https://static.xx.fbcdn.net/rsrc.php/v4/yE/r/DWHXOfvkQFW.js (255)
-[0311/220759.471:INFO:CONSOLE:255] "
+[0312/051506.827:INFO:CONSOLE:255] "
 %cThis is a browser feature intended for developers. If someone told you to copy-paste something here to enable a Facebook feature or "hack" someone's account, it's a scam and will give them access to your Facebook account. font-family:helvetica; font-size:20px; ", source: https://static.xx.fbcdn.net/rsrc.php/v4/yE/r/DWHXOfvkQFW.js (255)
-[0311/220759.471:INFO:CONSOLE:255] "
+[0312/051506.827:INFO:CONSOLE:255] "
 %cSee https://www.facebook.com/selfxss for more information. font-family:helvetica; font-size:20px; ", source: https://static.xx.fbcdn.net/rsrc.php/v4/yE/r/DWHXOfvkQFW.js (255)
-[0311/220759.471:INFO:CONSOLE:255] "
+[0312/051506.827:INFO:CONSOLE:255] "
 %c ", source: https://static.xx.fbcdn.net/rsrc.php/v4/yE/r/DWHXOfvkQFW.js (255)
-[0311/220759.499:INFO:CONSOLE:335] "Permissions policy violation: unload is not allowed in this document.", source: https://static.xx.fbcdn.net/rsrc.php/v4/yK/r/kQMM8mQEHTq.js (335)
+[0312/051514.254:INFO:CONSOLE:19] "Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-will-read-frequently", source: https://static.xx.fbcdn.net/rsrc.php/v4iRMN4/yN/l/en_US-j/SnZ2Z50PBKQ.js (19)
+[0312/051514.275:INFO:CONSOLE:19] "Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-will-read-frequently", source: https://static.xx.fbcdn.net/rsrc.php/v4iRMN4/yN/l/en_US-j/SnZ2Z50PBKQ.js (19)

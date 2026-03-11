@@ -1,0 +1,26 @@
+[
+  {
+    "id": "02664257-7d7d-4b48-90b3-1f0309ca6666",
+    "name": "FB VA Group Daily",
+    "url": "https://www.facebook.com/groups/557214564636467",
+    "cron": "*/15 * * * *",
+    "status": "active",
+    "createdAt": "2026-03-11T19:49:02.730Z",
+    "updatedAt": "2026-03-11T21:15:24.314Z",
+    "lastRunAt": "2026-03-11T21:15:24.314Z",
+    "lastRunStatus": "ok",
+    "totalRuns": 5
+  },
+  {
+    "id": "6621b488-7ae1-40c8-866d-bcad59672ec6",
+    "name": "FB VA Group Daily",
+    "url": "https://www.facebook.com/groups/virtualassistantva",
+    "cron": "*/30 * * * *",
+    "status": "active",
+    "createdAt": "2026-03-11T20:46:33.805Z",
+    "updatedAt": "2026-03-11T21:00:28.797Z",
+    "lastRunAt": "2026-03-11T21:00:28.797Z",
+    "lastRunStatus": "ok",
+    "totalRuns": 1
+  }
+]

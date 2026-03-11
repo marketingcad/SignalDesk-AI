@@ -76,12 +76,19 @@ async function extractFacebook(page: import("playwright").Page): Promise<Omit<Sc
     const results: { author: string; text: string; url: string; rawTs: string }[] = [];
 
     // Strategy 1: div[role="article"] — group/feed posts
-    const articles = document.querySelectorAll('div[role="article"]');
+    // Only top-level articles (comments are nested div[role="article"] inside the post)
+    const allArticles = Array.from(document.querySelectorAll('div[role="article"]'));
+    const articles = allArticles.filter(
+      (a) => !a.parentElement?.closest('div[role="article"]')
+    );
     articles.forEach((article) => {
-      // Get all text from the post — Facebook nests text in multiple div[dir="auto"]
+      // Get text only from this post's own div[dir="auto"] elements —
+      // exclude those inside nested articles (comment bubbles are also role="article")
       const textEls = article.querySelectorAll('div[dir="auto"]');
       let text = "";
       textEls.forEach((el) => {
+        // If the nearest article ancestor of this element is not the current post, skip it (it's a comment)
+        if (el.closest('div[role="article"]') !== article) return;
         const t = el.textContent?.trim() || "";
         if (t.length > 15 && !text.includes(t)) {
           text += (text ? "\n" : "") + t;
