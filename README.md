@@ -1,204 +1,339 @@
 # Signal Desk AI
 
-Lead intelligence dashboard for **Virtual Assistant hiring detection**. Scrapes social media posts from Facebook, LinkedIn, Reddit, and X, scores them by VA hiring intent, and alerts you on Discord when qualified leads are detected.
+Lead intelligence dashboard for **Virtual Assistant hiring detection**. Scrapes social media posts from Facebook, LinkedIn, Reddit, and X, scores them by VA hiring intent using AI + keyword analysis, and alerts you on Discord when qualified leads are detected.
+
+---
+
+## Architecture Overview
+
+```
+                        +-------------------+
+                        |  Chrome Extension |
+                        |  (MV3 Content     |
+                        |   Scripts)        |
+                        +--------+----------+
+                                 |
+                                 | POST /api/leads/batch
+                                 v
++------------------+    +-------------------+    +------------------+
+| Apify Service    +--->|  Next.js Backend  |<---+ Scraper Service  |
+| (Cloud Actors)   |    |  (API Routes)     |    | (Playwright +    |
++------------------+    +--------+----------+    |  Crawlee + Cron) |
+                                 |               +------------------+
+                    +------------+------------+
+                    |            |             |
+                    v            v             v
+              +---------+  +---------+  +------------+
+              |Supabase |  | Discord |  | Google     |
+              |(Postgres)|  | Webhook |  | Gemini AI  |
+              +---------+  +---------+  +------------+
+```
 
 ---
 
 ## How It Works
 
-1. **Scrape** — Apify actors crawl Facebook groups, Reddit subreddits, LinkedIn, and X for posts
-2. **Pre-filter** — The Apify service rejects self-promotion and job-seeking posts using negative keyword matching
-3. **Score** — Every qualifying post is scored (0–100) by a weighted keyword engine in [`lib/intent-scoring.ts`](lib/intent-scoring.ts)
-4. **Store** — Leads are saved to Supabase with score, category, and matched keywords
-5. **Alert** — Leads scoring **>= 65** trigger a Discord notification via the Smart Alert Engine
+### End-to-End Pipeline
+
+1. **Scrape** — Posts are collected from Facebook groups, Reddit subreddits, LinkedIn, and X via three methods:
+   - **Chrome Extension** — Content scripts detect posts in real-time as you browse
+   - **Scraper Service** — Playwright + Crawlee crawlers run on a cron schedule
+   - **Apify Service** — Cloud-hosted Apify actors scrape at scale
+2. **Pre-filter** — Self-promotion and job-seeking posts are rejected using negative keyword matching before they reach the backend
+3. **Score** — Every qualifying post is scored (0-100) by a weighted keyword engine in [`lib/intent-scoring.ts`](lib/intent-scoring.ts), optionally enhanced by Google Gemini AI analysis via [`lib/ai-lead-qualifier.ts`](lib/ai-lead-qualifier.ts)
+4. **Deduplicate** — Posts are deduplicated by URL and content hash to prevent duplicates across sources
+5. **Store** — Leads are saved to Supabase with score, category, matched keywords, and AI qualification data
+6. **Alert** — Leads scoring **>= 65** trigger a Discord notification via the Smart Alert Engine in [`lib/alert-engine.ts`](lib/alert-engine.ts)
+7. **Dashboard** — Real-time analytics with filtering, charts, and lead management
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|------------|
+| Frontend | Next.js 16, React 19, TypeScript, Tailwind CSS, Recharts |
+| Backend | Next.js API Routes |
+| Database | Supabase (PostgreSQL) |
+| Auth | bcryptjs (password hashing), jose (JWT signing, 7-day sessions) |
+| Scraping | Playwright + Crawlee (scraper-service), Apify SDK (apify-service) |
+| Scheduling | node-cron (scraper-service), Apify triggers |
+| Notifications | Discord Webhooks, Nodemailer (email) |
+| AI | Google Generative AI (Gemini) for lead qualification |
+| Browser Extension | Chrome MV3, content scripts + service worker |
+| UI Components | Radix UI, Shadcn/ui, Lucide icons |
+
+---
+
+## Project Structure
+
+```
+signal-desk-ai/
+├── app/                    # Next.js app directory
+│   ├── (auth)/             # Login, forgot/reset password pages
+│   ├── (dashboard)/        # Dashboard, leads, alerts, reports, settings, users
+│   └── api/                # API routes (auth, leads, alerts, dashboard, admin)
+├── components/             # React components (sidebar, charts, badges, etc.)
+├── lib/                    # Core logic (scoring, auth, alerts, AI, DB queries)
+├── hooks/                  # Custom React hooks (realtime subscriptions, API fetcher)
+├── scraper-service/        # Standalone Playwright + Crawlee scraper (node-cron)
+├── apify-service/          # Apify actor orchestrator + webhook receiver
+├── extension/              # Chrome MV3 extension (content scripts + popup)
+├── supabase/               # Database migrations and schema
+├── scripts/                # Utility scripts (token generation)
+└── public/                 # Static assets
+```
+
+---
+
+## Data Collection Sources
+
+### 1. Chrome Extension
+
+The Chrome MV3 extension injects content scripts into supported platforms and monitors posts in real-time:
+
+- **Supported sites:** Facebook groups, LinkedIn feed/groups, Reddit subreddits, X home/search
+- **How it works:**
+  1. Content scripts use `MutationObserver` to detect new posts as the page loads
+  2. Extracts author, text, URL, and engagement (likes/comments/shares)
+  3. Pre-filters short or spammy posts client-side
+  4. Batches posts (up to 50 posts, 5-second flush window) in the service worker
+  5. Sends to `POST /api/leads/batch` with JWT Bearer token
+- **Offline support:** Queues posts when offline via IndexedDB buffer
+- **Deduplication:** IndexedDB-based persistent dedup prevents re-sending the same post
+- **Auto-monitoring:** Configurable auto-scroll + timed monitoring (2-minute default interval)
+
+### 2. Scraper Service (Self-Hosted)
+
+A standalone Node.js service using Playwright and Crawlee for automated headless scraping:
+
+- **Platforms:** Reddit, X, LinkedIn, Facebook
+- **Scheduling:** Cron-based via `node-cron`, configurable per-URL schedules
+- **Delivery:** Sends scraped leads to `POST /api/leads/batch`
+- **Discord summaries:** Posts a scrape cycle summary after every run
+
+### 3. Apify Service (Cloud)
+
+Integrates with Apify's cloud scraping platform for managed, scalable scraping:
+
+- **Webhook receiver:** `POST /api/apify/webhook` handles Apify actor completion callbacks
+- **Dataset normalization:** Transforms Apify output to the standard lead format
+- **Manual triggers:** API endpoints to trigger runs per-platform or scrape specific URLs
+- **URL Scheduling:** CRUD API for custom URL scraping schedules with cron expressions
 
 ---
 
 ## Intent Scoring Engine
 
+Every post is scored 0-100 by a weighted keyword engine. The score determines the **intent level** and whether a Discord alert is sent.
+
 ### Intent Levels
 
-| Level      | Score Range | Color          |
-|------------|-------------|----------------|
-| **High**   | 80 – 100    | Green (Emerald)|
-| **Medium** | 50 – 79     | Amber          |
-| **Low**    | 0 – 49      | Gray           |
+| Level | Score Range | Color | Alert? |
+|-------|-------------|-------|--------|
+| **High** | 80 - 100 | Green (Emerald) | Yes |
+| **Medium** | 50 - 79 | Amber | Yes (if >= 65) |
+| **Low** | 0 - 49 | Gray | No |
 
 ### Score Calculation
 
-The score is the sum of **positive signals**, **negative signals**, and **bonuses**, clamped to 0–100.
+The score is the sum of **positive signals**, **negative signals**, and **bonuses**, clamped to 0-100.
 
-#### A. Direct Hiring Intent (+40)
+#### Positive Signals
 
-Explicit statements of hiring a VA.
+| Category | Weight | Example Keywords |
+|----------|--------|-----------------|
+| Direct Hiring Intent | **+40** | "hiring a virtual assistant", "hire a va", "need a va", "outsourcing admin work" |
+| Urgency Boosters | **+20** | "hiring immediately", "urgent va hire", "asap" |
+| Recommendation Requests | **+20** | "any va recommendations", "where to find a va", "should i hire a va" |
+| Budget / Pricing Inquiries | **+20** | "how much does a va cost", "virtual assistant rates" |
+| Overwhelm / Delegation Signals | **+15** | "overwhelmed with admin", "drowning in tasks", "scaling my business" |
+| Tool / Skill Triggers | **+15** | "gohighlevel", "hubspot", "zapier", "crm setup", "funnel building" |
 
-| Weight | Example Keywords |
-|--------|-----------------|
-| **+40** | "hiring a virtual assistant", "hire a va", "need a va", "va needed" |
-| **+40** | "hiring remote assistant", "hiring executive assistant remote" |
-| **+40** | "hiring ghl va", "hiring social media va", "hiring real estate va" |
-| **+40** | "hiring cold caller va", "hiring appointment setter" |
-| **+40** | "need admin support", "need someone to manage my crm" |
-| **+40** | "need help with inbox", "need someone to manage emails" |
-| **+40** | "outsourcing admin work" |
+#### Negative Signals
 
-#### Urgency Boosters (+20)
-
-| Weight | Example Keywords |
-|--------|-----------------|
-| **+20** | "hiring immediately va", "urgent va hire", "urgently need a va" |
-| **+20** | "asap", "urgently", "immediately" |
-
-#### B. Recommendation Requests (+20)
-
-Asking for referrals or suggestions.
-
-| Weight | Example Keywords |
-|--------|-----------------|
-| **+20** | "any va recommendations", "who can recommend a va" |
-| **+20** | "best va service", "where to find a va", "where to hire a va" |
-| **+20** | "thinking of hiring a va", "should i hire a va" |
-| **+20** | "is it worth hiring a va", "has anyone hired a va" |
-
-#### C. Budget / Pricing Inquiries (+20)
-
-| Weight | Example Keywords |
-|--------|-----------------|
-| **+20** | "how much does a va cost", "virtual assistant rates" |
-| **+20** | "va pricing", "va cost", "va rates" |
-
-#### D. Overwhelm / Delegation Signals (+15)
-
-Implicit signals of needing help.
-
-| Weight | Example Keywords |
-|--------|-----------------|
-| **+15** | "overwhelmed with admin", "drowning in tasks" |
-| **+15** | "too many client messages", "need extra help in my business" |
-| **+15** | "need support in my business", "scaling my business and need help" |
-
-#### E. Tool / Skill-Based Triggers (+15)
-
-These increase intent score when paired with hiring language.
-
-| Weight | Example Keywords |
-|--------|-----------------|
-| **+15** | "gohighlevel", "ghl", "clickfunnels", "hubspot", "salesforce", "zapier" |
-| **+15** | "crm setup", "automation setup", "funnel building", "lead management" |
-| **+15** | "appointment booking", "email marketing", "social media management" |
-| **+15** | "facebook ads support", "tiktok management", "bookkeeping", "quickbooks" |
-| **+15** | "data entry", "customer support" |
-
-A post saying *"Looking for someone to manage my GHL account"* classifies as **Virtual Assistant – Technical**.
-
-#### Negative Signals (subtract points)
-
-| Category        | Weight   | Example Keywords                                |
-|-----------------|----------|-------------------------------------------------|
-| Job Seeker      | **-40**  | "i am looking for a va job", "i'm a virtual assistant" |
-| Self-Promotion  | **-30**  | "offering va services", "hire me", "available for hire" |
-| DM Solicitation | **-20**  | "dm me for", "dm for rates" |
-
-These penalize posts from people **offering** VA services rather than **seeking** them.
+| Category | Weight | Example Keywords |
+|----------|--------|-----------------|
+| Job Seeker | **-40** | "i am looking for a va job", "i'm a virtual assistant" |
+| Self-Promotion | **-30** | "offering va services", "hire me", "available for hire" |
+| DM Solicitation | **-20** | "dm me for", "dm for rates" |
 
 #### Bonuses
 
-| Bonus            | Points | Condition                                        |
-|------------------|--------|--------------------------------------------------|
-| Country Match    | **+10**| Post mentions US, UK, Australia, or Canada       |
-| Engagement Boost | **+5** | Post engagement score > 5 (likes + comments + shares) |
+| Bonus | Points | Condition |
+|-------|--------|-----------|
+| Country Match | **+10** | Post mentions US, UK, Australia, or Canada |
+| Engagement Boost | **+5** | Post engagement > 5 (likes + comments + shares) |
 
-### Scoring Examples
+### AI Lead Qualification
 
-**Example 1 — High Intent (70 pts, Discord alert sent):**
-> "Hiring a VA to manage my HubSpot CRM, based in the US"
-- Direct Hiring: +40
-- Tool Trigger (HubSpot): +15
-- Country Match: +10
-- Engagement Boost: +5
+Posts can also be analyzed by Google Gemini AI via [`lib/ai-lead-qualifier.ts`](lib/ai-lead-qualifier.ts), which evaluates:
+- Hiring intent and urgency
+- Budget indicators and spam risk
+- Tasks/skills the poster needs
+- Returns structured qualification data stored as JSONB in the database
 
-**Example 2 — High Intent (95 pts):**
-> "I desperately need to hire a VA ASAP, drowning in admin tasks, any recommendations?"
-- Direct Hiring: +40
-- Urgency (ASAP): +20
-- Delegation Signal: +15
-- Recommendation Request: +20
+---
 
-**Example 3 — Filtered Out (score near 0):**
-> "I'm a virtual assistant offering VA services, DM me for rates"
-- Job Seeker: -40
-- Self-Promotion: -30
-- DM Solicitation: -20
+## Authentication
+
+JWT-based session authentication:
+
+1. **Login** — User submits email/password to `POST /api/auth/login`
+2. **Verification** — Password compared against bcrypt hash in Supabase `users` table
+3. **Session** — JWT token (HS256, 7-day expiry) set as an `httpOnly` cookie
+4. **Middleware** — Protected routes check the session cookie on every request
+5. **Extension auth** — Chrome extension stores the JWT and sends it as a `Bearer` token
+
+### Password Reset Flow
+- `POST /api/auth/forgot-password` generates a 1-hour reset token
+- User clicks the emailed link
+- `POST /api/auth/reset-password` verifies the token and updates the password
+
+---
+
+## API Routes
+
+### Auth
+| Method | Route | Description |
+|--------|-------|-------------|
+| POST | `/api/auth/login` | Login, returns JWT session cookie |
+| POST | `/api/auth/signup` | Create new user (requires auth) |
+| POST | `/api/auth/logout` | Clear session |
+| POST | `/api/auth/forgot-password` | Send password reset email |
+| POST | `/api/auth/reset-password` | Confirm reset with token |
+| GET | `/api/auth/me` | Get current user profile |
+| PATCH | `/api/auth/profile` | Update profile |
+
+### Leads
+| Method | Route | Description |
+|--------|-------|-------------|
+| GET | `/api/leads` | Fetch leads (filterable by platform, intent, status, date) |
+| POST | `/api/leads/process` | Ingest single lead (score + alert) |
+| POST | `/api/leads/batch` | Bulk ingest from extension/scraper |
+| POST | `/api/leads/qualify` | AI qualification |
+| POST | `/api/leads/scrape-url` | Scrape a URL for posts |
+| GET | `/api/leads/scraped-posts` | Manual scrape history |
+| DELETE | `/api/leads/:id` | Delete a lead |
+
+### Dashboard
+| Method | Route | Description |
+|--------|-------|-------------|
+| GET | `/api/dashboard/stats` | KPI stats (total, high-intent, avg score, 7-day trend) |
+| GET | `/api/dashboard/chart` | Time-series lead counts |
+| GET | `/api/dashboard/platform-counts` | Leads by platform breakdown |
+| GET | `/api/dashboard/geography` | Leads by country |
+
+### Webhooks
+| Method | Route | Description |
+|--------|-------|-------------|
+| POST | `/api/apify/webhook` | Apify actor completion callback |
+| POST | `/api/facebook/webhook` | Facebook real-time feed events |
+
+### Admin
+| Method | Route | Description |
+|--------|-------|-------------|
+| GET/POST | `/api/admin/users` | List / create users |
+| GET/PATCH/DELETE | `/api/admin/users/:id` | Manage individual user |
+
+### Schedules
+| Method | Route | Description |
+|--------|-------|-------------|
+| GET/POST | `/api/schedules` | List / create URL scraping schedules |
+| PATCH/DELETE | `/api/schedules/:id` | Update / delete schedule |
+| POST | `/api/schedules/:id/pause` | Pause schedule |
+| POST | `/api/schedules/:id/resume` | Resume schedule |
+| POST | `/api/schedules/:id/run` | Trigger immediate execution |
 
 ---
 
 ## Discord Notifications
 
-Discord alerts are managed by the **Smart Alert Engine** in [`lib/alert-engine.ts`](lib/alert-engine.ts). **Notifications are sent for leads scoring >= 65** (covers all High Intent and strong Medium Intent leads).
+Discord alerts are managed by the **Smart Alert Engine** in [`lib/alert-engine.ts`](lib/alert-engine.ts). Notifications are sent for leads scoring **>= 65**.
 
-### All Conditions Required for a Discord Notification
+### All Conditions Required
 
-| #  | Condition | Where to check |
-|----|-----------|----------------|
-| 1  | `DISCORD_WEBHOOK_URL` env variable is set | `.env` / `.env.local` |
-| 2  | `discord_enabled` is `true` | Dashboard → Settings page |
-| 3  | Lead intent score **>= 65** | Lead must score 65+ |
-| 4  | Not a duplicate (same author + platform not alerted in last 2 hrs) | Automatic dedup |
-| 5  | Within rate limit (max 10 Discord messages/hour) | Automatic |
-| 6  | Outside cooldown (min 5 min between batch sends) | Automatic |
+| # | Condition |
+|---|-----------|
+| 1 | `DISCORD_WEBHOOK_URL` env variable is set |
+| 2 | `discord_enabled` is `true` in Dashboard Settings |
+| 3 | Lead intent score **>= 65** |
+| 4 | Not a duplicate (same author + platform not alerted in last 2 hrs) |
+| 5 | Within rate limit (max 10 Discord messages/hour) |
+| 6 | Outside cooldown (min 5 min between batch sends) |
 
-**If any one of these conditions fails, no notification is sent.**
+**If any condition fails, no notification is sent.**
 
 ### Rate Limiting & Batching
 
-| Setting              | Default  | Description                                    |
-|----------------------|----------|------------------------------------------------|
-| Batch Window         | 60 sec   | Alerts are collected for 60s before sending     |
-| Max Alerts / Hour    | 10       | Hard cap on Discord messages per hour           |
-| Cooldown             | 5 min    | Minimum gap between consecutive sends           |
-| Dedup Window         | 2 hours  | Same author+platform ignored within this window |
-| Digest Threshold     | 3 leads  | 3+ pending leads triggers a combined digest     |
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Batch Window | 60 sec | Alerts collected for 60s before sending |
+| Max Alerts / Hour | 10 | Hard cap on Discord messages per hour |
+| Cooldown | 5 min | Minimum gap between consecutive sends |
+| Dedup Window | 2 hours | Same author+platform ignored within window |
+| Digest Threshold | 3 leads | 3+ pending leads triggers a combined digest |
 
 ### Notification Sources
 
-| Source                | API Route                  | Trigger                                     |
-|-----------------------|----------------------------|---------------------------------------------|
-| Apify Scraper         | `/api/apify/webhook`       | Apify actor completes, leads scored >= 65   |
-| Facebook Webhook      | `/api/facebook/webhook`    | Real-time Facebook feed event classified    |
-| Single Lead Upload    | `/api/leads/process`       | Manual single lead submitted via API        |
-| Batch Lead Upload     | `/api/leads/batch`         | Bulk lead import via API                    |
+| Source | Trigger |
+|--------|---------|
+| Apify Scraper | Apify actor completes, leads scored >= 65 |
+| Facebook Webhook | Real-time Facebook feed event classified |
+| Chrome Extension | Batch of leads submitted via extension |
+| Manual Upload | Single lead submitted via API |
 
-The **Apify Service** also sends a **scrape cycle summary** to Discord after every run (regardless of intent score) via [`apify-service/src/discord.js`](apify-service/src/discord.js).
+---
+
+## Dashboard Pages
+
+| Page | Description |
+|------|-------------|
+| **Dashboard** | KPI cards, lead trend chart, platform distribution, high-intent previews |
+| **Leads** | Full leads table with filtering (platform, intent, status, date range, search) |
+| **Alerts** | Real-time high-intent alerts feed |
+| **Reports** | Daily/weekly lead reporting |
+| **Scrape URL** | Manual URL scraping interface |
+| **Settings** | Platform toggles, keywords, Discord webhook config, notification preferences |
+| **Users** | User management (admin only) |
+
+---
+
+## Database Schema (Supabase)
+
+### leads
+Core table storing all detected leads:
+- `id`, `platform`, `source`, `username`, `text`, `url`
+- `intent_score`, `intent_level`, `intent_category`, `matched_keywords[]`
+- `status` (New, Contacted, Qualified, Dismissed)
+- `engagement`, `location`, `detected_at`
+- `ai_qualification` (JSONB from Gemini analysis)
+- Unique constraint on `url`; indexes on platform, intent, status, score
+
+### facebook_post_logs
+Audit trail for Facebook webhook events: post_id, author, message, classification, notified flag.
+
+### scrape_url_history
+Tracks manual URL scraping requests and their results.
+
+### auto_delete_old_leads
+Database function to auto-delete leads older than a configurable number of days.
 
 ---
 
 ## Troubleshooting: Leads But No Discord Notifications?
 
-Check these causes in order of likelihood:
+Check these causes in order:
 
-### 1. Most leads score below 65
-Discord only fires for leads with **score >= 65**. Check your dashboard — filter by intent level and see how many reach that threshold.
-
-### 2. `DISCORD_WEBHOOK_URL` is missing or invalid
-Verify your `.env` / `.env.local` has:
-```
-DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/YOUR_ID/YOUR_TOKEN
-```
-
-### 3. Discord notifications are disabled in Settings
-Go to **Dashboard → Settings** and confirm the toggle is **ON**.
-
-### 4. Leads were inserted directly into the database
-If leads were imported into Supabase manually (not through the API routes), the scoring and alert pipeline was never triggered. Only leads processed through `/api/leads/process`, `/api/leads/batch`, `/api/apify/webhook`, or `/api/facebook/webhook` trigger alerts.
-
-### 5. Deduplication suppressed the alerts
-Same author + platform within a 2-hour window = only the first alert goes through.
-
-### 6. Rate limit was reached
-10 messages/hour cap + 5-minute cooldown. A large batch could exceed this.
+1. **Most leads score below 65** — Discord only fires for score >= 65. Check your dashboard filters.
+2. **`DISCORD_WEBHOOK_URL` is missing or invalid** — Verify in `.env` / `.env.local`.
+3. **Discord notifications are disabled in Settings** — Confirm the toggle is ON.
+4. **Leads were inserted directly into the database** — Only leads processed through the API routes trigger the alert pipeline.
+5. **Deduplication suppressed the alerts** — Same author + platform within 2 hours = only first alert fires.
+6. **Rate limit was reached** — 10 messages/hour cap + 5-minute cooldown.
 
 ### Quick Diagnostic Checklist
-- [ ] Verify `DISCORD_WEBHOOK_URL` is set in your environment
+- [ ] Verify `DISCORD_WEBHOOK_URL` is set
 - [ ] Verify Discord is enabled on the Settings page
 - [ ] Count how many leads score >= 65
 - [ ] Test webhook manually: `curl -X POST YOUR_WEBHOOK_URL -H "Content-Type: application/json" -d '{"content": "Test from Signal Desk"}'`
@@ -213,11 +348,32 @@ NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 
+# Auth (required)
+JWT_SECRET=
+
 # Discord (required for notifications)
 DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/YOUR_ID/YOUR_TOKEN
 
-# Apify (required for scraping)
+# Apify (required for cloud scraping)
 APIFY_API_TOKEN=
+APIFY_WEBHOOK_SECRET=
+
+# Facebook (required for Facebook webhook)
+FB_VERIFY_TOKEN=
+FB_APP_SECRET=
+
+# Google AI (required for AI qualification)
+GOOGLE_API_KEY=
+
+# Email (required for password reset emails)
+SMTP_HOST=
+SMTP_PORT=
+SMTP_USER=
+SMTP_PASS=
+
+# Services (for scraper-service integration)
+SCRAPER_SERVICE_URL=
+SCRAPER_SERVICE_AUTH_TOKEN=
 ```
 
 ---
@@ -237,3 +393,27 @@ npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) to view the dashboard.
+
+### Running the Scraper Service
+
+```bash
+cd scraper-service
+npm install
+npm start
+```
+
+### Running the Apify Service
+
+```bash
+cd apify-service
+npm install
+npm start
+```
+
+### Loading the Chrome Extension
+
+1. Build the extension: `cd extension && npm run build`
+2. Open `chrome://extensions` in Chrome
+3. Enable "Developer mode"
+4. Click "Load unpacked" and select the `extension/dist` directory
+5. Configure your API URL and login token in the extension popup

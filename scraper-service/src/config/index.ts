@@ -38,15 +38,15 @@ export const config = {
   targets: {
     redditSubreddits: envList(
       "REDDIT_SUBREDDITS",
-      "virtualassistant,hiring,forhire,smallbusiness,entrepreneur"
+      "virtualassistant,hiring,forhire,smallbusiness,entrepreneur,RemoteWork,WorkOnline,sidehustle,ecommerce,realestateinvesting,Bookkeeping,socialmediamarketing"
     ),
     xSearchQueries: envList(
       "X_SEARCH_QUERIES",
-      "hiring virtual assistant,need a VA,looking for VA"
+      "hiring virtual assistant,need a VA,looking for VA,hire a va,va needed,hiring remote assistant,hiring executive assistant remote,hiring ghl va,hiring social media va,hiring real estate va,hiring cold caller va,hiring appointment setter,need admin support,need someone to manage my crm,any va recommendations,recommend a good va,where to hire a va,overwhelmed with admin,scaling my business and need help"
     ),
     linkedinSearchQueries: envList(
       "LINKEDIN_SEARCH_QUERIES",
-      "hiring virtual assistant,need VA for business"
+      "hiring virtual assistant,need VA for business,looking for a virtual assistant,hire a virtual assistant,virtual assistant needed,hiring remote assistant,hiring executive assistant remote,need admin support,outsourcing admin work,where to find a va,thinking of hiring a va"
     ),
     facebookGroupUrls: envList("FACEBOOK_GROUP_URLS", ""),
   },
