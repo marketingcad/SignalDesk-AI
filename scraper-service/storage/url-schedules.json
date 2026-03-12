@@ -1,1 +1,50 @@
-[]
+[
+  {
+    "id": "f22338ab-cc97-4810-80f6-84f5441af745",
+    "name": "FB VA GROUP (#1)",
+    "url": "https://www.facebook.com/groups/1638444529751821",
+    "cron": "*/15 * * * *",
+    "status": "active",
+    "createdAt": "2026-03-12T21:29:34.224Z",
+    "updatedAt": "2026-03-12T21:45:26.576Z",
+    "lastRunAt": "2026-03-12T21:45:26.576Z",
+    "lastRunStatus": "ok",
+    "totalRuns": 2
+  },
+  {
+    "id": "fad14b0e-9bd8-4eb9-a907-59c97e34baac",
+    "name": "FB VA GROUP (#2)",
+    "url": "https://www.facebook.com/groups/virtualassistantva",
+    "cron": "*/15 * * * *",
+    "status": "active",
+    "createdAt": "2026-03-12T21:29:34.268Z",
+    "updatedAt": "2026-03-12T21:45:25.954Z",
+    "lastRunAt": "2026-03-12T21:45:25.954Z",
+    "lastRunStatus": "ok",
+    "totalRuns": 2
+  },
+  {
+    "id": "6c958fe7-b2a5-46bb-8bbd-7d6bb8036c85",
+    "name": "FB VA GROUP (#3)",
+    "url": "https://www.facebook.com/groups/filvaph",
+    "cron": "*/15 * * * *",
+    "status": "active",
+    "createdAt": "2026-03-12T21:29:34.291Z",
+    "updatedAt": "2026-03-12T21:45:27.488Z",
+    "lastRunAt": "2026-03-12T21:45:27.488Z",
+    "lastRunStatus": "ok",
+    "totalRuns": 2
+  },
+  {
+    "id": "fad53afb-f775-4e9f-98c7-69ab69a92e54",
+    "name": "FB VA GROUP (#4)",
+    "url": "https://www.facebook.com/groups/557214564636467",
+    "cron": "*/15 * * * *",
+    "status": "active",
+    "createdAt": "2026-03-12T21:29:34.319Z",
+    "updatedAt": "2026-03-12T21:45:25.290Z",
+    "lastRunAt": "2026-03-12T21:45:25.290Z",
+    "lastRunStatus": "ok",
+    "totalRuns": 2
+  }
+]
