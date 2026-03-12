@@ -62,6 +62,7 @@ async function runPlatform(platform) {
         const response = await (0, backendClient_1.sendLeadsBatch)(filtered);
         if (response) {
             console.log(`[crawler] ${platform}: ${response.inserted} new leads, ${response.duplicates} duplicates`);
+            await (0, discord_1.sendNewLeadsAlert)(`scheduled:${platform}`, platform, filtered, response);
         }
     }
     if (result.errors.length > 0) {

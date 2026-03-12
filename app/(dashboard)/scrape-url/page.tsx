@@ -481,7 +481,7 @@ export default function ScrapeUrlPage() {
   const [runningId, setRunningId] = useState<string | null>(null);
   const [newSched, setNewSched] = useState({
     name: "",
-    url: "",
+    urls: [""] as string[],
     cron: "*/30 * * * *",
     customCron: "",
     status: "active" as "active" | "paused",
@@ -607,32 +607,49 @@ export default function ScrapeUrlPage() {
     }
   };
 
+  // ── Schedule URL list helpers ────────────────────────────
+  const addSchedUrl = () => setNewSched((s) => ({ ...s, urls: [...s.urls, ""] }));
+  const removeSchedUrl = (i: number) =>
+    setNewSched((s) => ({ ...s, urls: s.urls.length === 1 ? [""] : s.urls.filter((_, j) => j !== i) }));
+  const updateSchedUrl = (i: number, v: string) =>
+    setNewSched((s) => ({ ...s, urls: s.urls.map((u, j) => (j === i ? v : u)) }));
+
   // ── Schedule actions ─────────────────────────────────────
   const handleCreateSchedule = async () => {
     const effectiveCron = newSched.cron === "custom" ? newSched.customCron.trim() : newSched.cron;
     setSchedError(null);
     if (!newSched.name.trim()) { setSchedError("Schedule name is required"); return; }
-    if (!newSched.url.trim()) { setSchedError("Target URL is required"); return; }
-    try { new URL(newSched.url); } catch { setSchedError("Please enter a valid URL"); return; }
+    const validUrls = newSched.urls.map((u) => u.trim()).filter(Boolean);
+    if (validUrls.length === 0) { setSchedError("At least one target URL is required"); return; }
+    for (const u of validUrls) {
+      try { new URL(u); } catch { setSchedError(`Invalid URL: ${u}`); return; }
+    }
     if (!effectiveCron) { setSchedError("Please enter a cron expression"); return; }
 
     setSchedCreating(true);
     try {
-      const res = await fetch("/api/schedules", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: newSched.name.trim(), url: newSched.url.trim(),
-          cron: effectiveCron, status: newSched.status,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setSchedError(data.error || "Failed to create schedule");
-      } else {
-        setNewSched({ name: "", url: "", cron: "*/30 * * * *", customCron: "", status: "active" });
-        loadSchedules();
+      const errors: string[] = [];
+      for (let i = 0; i < validUrls.length; i++) {
+        const name = validUrls.length > 1
+          ? `${newSched.name.trim()} (#${i + 1})`
+          : newSched.name.trim();
+        const res = await fetch("/api/schedules", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name, url: validUrls[i],
+            cron: effectiveCron, status: newSched.status,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) errors.push(data.error || `Failed to create schedule for ${validUrls[i]}`);
       }
+      if (errors.length > 0) {
+        setSchedError(errors.join("; "));
+      } else {
+        setNewSched({ name: "", urls: [""], cron: "*/30 * * * *", customCron: "", status: "active" });
+      }
+      loadSchedules();
     } catch {
       setSchedError("Could not reach scraper service");
     } finally {
@@ -950,27 +967,59 @@ export default function ScrapeUrlPage() {
                   <p className="text-[11px] text-muted-foreground">A short name to identify this schedule</p>
                 </div>
 
-                {/* URL field */}
+                {/* URL fields */}
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-foreground">
-                    Target URL <span className="text-rose-400">*</span>
+                    Target URL{newSched.urls.length > 1 ? "s" : ""} <span className="text-rose-400">*</span>
                   </label>
-                  <div className="relative">
-                    <Link2 className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      type="url"
-                      placeholder="https://www.facebook.com/groups/…"
-                      value={newSched.url}
-                      onChange={(e) => setNewSched((s) => ({ ...s, url: e.target.value }))}
-                      className="h-9 pl-9 pr-28 text-sm bg-secondary/50 border-border"
-                    />
-                    {newSched.url && (
-                      <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
-                        <PlatformBadge platform={detectPlatform(newSched.url)} />
-                      </div>
+                  <div className="space-y-2">
+                    {newSched.urls.map((urlVal, idx) => {
+                      const platform = detectPlatform(urlVal);
+                      return (
+                        <div key={idx} className="flex items-center gap-2">
+                          <div className="relative flex-1">
+                            <Link2 className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                            <Input
+                              type="url"
+                              placeholder="https://www.facebook.com/groups/…"
+                              value={urlVal}
+                              onChange={(e) => updateSchedUrl(idx, e.target.value)}
+                              className="h-9 pl-9 pr-28 text-sm bg-secondary/50 border-border"
+                            />
+                            {platform && (
+                              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                                <PlatformBadge platform={platform} />
+                              </div>
+                            )}
+                          </div>
+                          {newSched.urls.length > 1 && (
+                            <button
+                              onClick={() => removeSchedUrl(idx)}
+                              className="h-9 w-9 flex items-center justify-center rounded-md text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10 transition-colors shrink-0"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="flex items-center gap-2 pt-0.5">
+                    <Button variant="outline" size="sm" onClick={addSchedUrl} className="gap-1.5 text-xs h-7">
+                      <Plus className="h-3 w-3" />
+                      Add URL
+                    </Button>
+                    {newSched.urls.filter((u) => u.trim()).length > 1 && (
+                      <span className="text-[10px] text-muted-foreground">
+                        {newSched.urls.filter((u) => u.trim()).length} URLs — one schedule per URL
+                      </span>
                     )}
                   </div>
-                  <p className="text-[11px] text-muted-foreground">The page that will be scraped automatically</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {newSched.urls.length > 1
+                      ? "Each URL will create a separate schedule with the same frequency"
+                      : "The page that will be scraped automatically"}
+                  </p>
                 </div>
 
                 <Separator />
@@ -1062,6 +1111,145 @@ export default function ScrapeUrlPage() {
             </Card>
 
           </div>
+
+          {/* ── Schedule list (right 3 cols) ───────────────── */}
+          <div className="col-span-3">
+            <Card className="border-border bg-card overflow-hidden">
+              <div className="border-b border-border px-5 py-3 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-semibold text-foreground">Active Schedules</span>
+                  {schedules.length > 0 && (
+                    <Badge variant="secondary" className="text-[10px]">{schedules.length}</Badge>
+                  )}
+                </div>
+                <Button variant="ghost" size="sm" className="gap-1.5 h-7 text-xs text-muted-foreground"
+                  onClick={() => loadSchedules()}>
+                  <RefreshCw className={cn("h-3 w-3", schedulesLoading && "animate-spin")} />
+                  Refresh
+                </Button>
+              </div>
+
+              {schedulesLoading ? (
+                <div className="flex items-center justify-center py-12 gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">Loading schedules…</span>
+                </div>
+              ) : schedules.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-muted/60">
+                    <Calendar className="h-6 w-6 text-muted-foreground/40" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">No schedules yet</p>
+                    <p className="text-xs text-muted-foreground mt-1">Create your first schedule using the form on the left</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="divide-y divide-border max-h-130 overflow-y-auto">
+                  {schedules.map((s) => {
+                    const platform = detectPlatform(s.url);
+                    const isRunningNow = runningId === s.id;
+                    return (
+                      <div key={s.id} className="px-4 py-3.5 space-y-2 hover:bg-muted/20 transition-colors">
+                        {/* Row 1 — name + status */}
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <PlatformBadge platform={platform} />
+                            <span className="text-sm font-semibold text-foreground truncate">{s.name}</span>
+                          </div>
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              "text-[10px] px-1.5 rounded-full h-5 whitespace-nowrap shrink-0",
+                              s.status === "active"
+                                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+                                : "border-border bg-muted/30 text-muted-foreground"
+                            )}
+                          >
+                            <span className={cn(
+                              "mr-1 h-1.5 w-1.5 rounded-full inline-block shrink-0",
+                              s.status === "active" ? "bg-emerald-400 animate-pulse" : "bg-muted-foreground"
+                            )} />
+                            {s.status === "active" ? "Active" : "Paused"}
+                          </Badge>
+                        </div>
+
+                        {/* Row 2 — URL */}
+                        <p className="text-[11px] text-muted-foreground font-mono truncate" title={s.url}>
+                          {s.url}
+                        </p>
+
+                        {/* Row 3 — metadata + actions */}
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="inline-flex items-center gap-1 rounded-md bg-muted/60 border border-border px-2 py-0.5 text-[11px] font-mono text-foreground whitespace-nowrap">
+                              <Timer className="h-3 w-3 text-muted-foreground shrink-0" />
+                              {cronLabel(s.cron)}
+                            </span>
+                            {s.totalRuns > 0 && (
+                              <span className="text-[11px] text-muted-foreground">{s.totalRuns} runs</span>
+                            )}
+                            {s.lastRunAt && (
+                              <span className="text-[11px] text-muted-foreground">Last: {formatTs(s.lastRunAt)}</span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-0 shrink-0">
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-primary"
+                                    onClick={() => handleRunNow(s.id)} disabled={isRunningNow}>
+                                    {isRunningNow ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Run now</TooltipContent>
+                              </Tooltip>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  {s.status === "active" ? (
+                                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-amber-400"
+                                      onClick={() => handlePause(s.id)}>
+                                      <Pause className="h-3.5 w-3.5" />
+                                    </Button>
+                                  ) : (
+                                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-emerald-400"
+                                      onClick={() => handleResume(s.id)}>
+                                      <Play className="h-3.5 w-3.5" />
+                                    </Button>
+                                  )}
+                                </TooltipTrigger>
+                                <TooltipContent>{s.status === "active" ? "Pause" : "Resume"}</TooltipContent>
+                              </Tooltip>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-rose-400"
+                                    onClick={() => handleDelete(s.id)}>
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Delete</TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Footer */}
+              {schedules.length > 0 && (
+                <div className="border-t border-border px-4 py-3 bg-muted/20 flex items-center justify-between">
+                  <p className="text-[11px] text-muted-foreground">
+                    {schedules.filter((s) => s.status === "active").length} of {schedules.length} active
+                  </p>
+                </div>
+              )}
+            </Card>
+          </div>
         </div>
       )}
 
@@ -1075,7 +1263,7 @@ export default function ScrapeUrlPage() {
           <div className="space-y-3">
             {/* Summary stats */}
             {!schedulesLoading && schedules.length > 0 && (
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 {[
                   { label: "Total",  value: schedules.length,                                      icon: Calendar, cls: "bg-primary/10 text-primary" },
                   { label: "Active", value: schedules.filter((s) => s.status === "active").length,  icon: Play,     cls: "bg-emerald-500/10 text-emerald-400" },

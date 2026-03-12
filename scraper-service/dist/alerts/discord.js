@@ -4,15 +4,56 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.sendRunSummary = sendRunSummary;
+exports.sendNewLeadsAlert = sendNewLeadsAlert;
 exports.sendErrorAlert = sendErrorAlert;
 const axios_1 = __importDefault(require("axios"));
 const config_1 = require("../config");
-const PLATFORM_EMOJI = {
-    Facebook: "📘",
-    LinkedIn: "💼",
-    Reddit: "🟠",
-    X: "𝕏",
+// ---------------------------------------------------------------------------
+// Platform identity — color + icon shown in every embed
+// ---------------------------------------------------------------------------
+const PLATFORM_COLOR = {
+    Facebook: 0x1877f2,
+    LinkedIn: 0x0a66c2,
+    Reddit: 0xff4500,
+    X: 0x14171a,
 };
+const PLATFORM_ICON = {
+    Reddit: "https://www.redditstatic.com/desktop2x/img/favicon/android-icon-192x192.png",
+    Facebook: "https://www.facebook.com/favicon.ico",
+    LinkedIn: "https://static.licdn.com/aero-v1/sc/h/al2o9zrvru7ym1pttyabrktfx",
+    X: "https://abs.twimg.com/favicons/twitter.3.ico",
+};
+const PLATFORM_LABEL = {
+    Facebook: "Facebook",
+    LinkedIn: "LinkedIn",
+    Reddit: "Reddit",
+    X: "X (Twitter)",
+};
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+/** First non-empty line of a post, capped at 80 chars — used as embed title */
+function postTitle(text) {
+    const first = text.split("\n").find((l) => l.trim().length > 0) ?? text;
+    return first.length > 80 ? first.slice(0, 79) + "…" : first;
+}
+/** Post body without the first line, trimmed, capped at 300 chars */
+function postBody(text) {
+    const lines = text.split("\n");
+    const body = lines.length > 1 ? lines.slice(1).join("\n").trim() : "";
+    if (!body)
+        return text.length > 300 ? text.slice(0, 299) + "…" : text;
+    return body.length > 300 ? body.slice(0, 299) + "…" : body;
+}
+function platformAuthor(platform) {
+    return {
+        name: PLATFORM_LABEL[platform],
+        icon_url: PLATFORM_ICON[platform],
+    };
+}
+// ---------------------------------------------------------------------------
+// sendRunSummary — fired once after a full scheduled run across all platforms
+// ---------------------------------------------------------------------------
 async function sendRunSummary(results) {
     if (!config_1.config.discordWebhookUrl) {
         console.log("[discord] No webhook URL configured — skipping summary");
@@ -23,29 +64,24 @@ async function sendRunSummary(results) {
     const totalDuration = results.reduce((sum, r) => sum + r.duration, 0);
     const platformLines = results
         .map((r) => {
-        const emoji = PLATFORM_EMOJI[r.platform] || "📌";
-        const errorTag = r.errors.length > 0 ? ` (⚠️ ${r.errors.length} errors)` : "";
-        return `${emoji} **${r.platform}**: ${r.posts.length} posts${errorTag}`;
+        const errorTag = r.errors.length > 0 ? ` — ⚠️ ${r.errors.length} error${r.errors.length !== 1 ? "s" : ""}` : "";
+        return `**${PLATFORM_LABEL[r.platform]}** · ${r.posts.length} lead${r.posts.length !== 1 ? "s" : ""}${errorTag}`;
     })
         .join("\n");
     const embed = {
-        title: "🤖 SignalDesk Scraper Run Complete",
-        description: platformLines,
+        author: {
+            name: "SignalDesk AI · Scheduled Scraper",
+            icon_url: "https://cdn.discordapp.com/embed/avatars/0.png",
+        },
+        title: totalErrors > 0 ? "⚠️ Scraper Run Complete — with errors" : "✅ Scraper Run Complete",
+        description: platformLines || "No platforms ran.",
         color: totalErrors > 0 ? 0xf59e0b : 0x22c55e,
         fields: [
-            { name: "📋 Total Posts", value: `**${totalPosts}**`, inline: true },
-            {
-                name: "⏱️ Duration",
-                value: `**${(totalDuration / 1000).toFixed(1)}s**`,
-                inline: true,
-            },
-            {
-                name: "⚠️ Errors",
-                value: `**${totalErrors}**`,
-                inline: true,
-            },
+            { name: "Total Leads", value: `**${totalPosts}**`, inline: true },
+            { name: "Duration", value: `**${(totalDuration / 1000).toFixed(1)}s**`, inline: true },
+            { name: "Errors", value: `**${totalErrors}**`, inline: true },
         ],
-        footer: { text: "SignalDesk AI • Playwright Scraper" },
+        footer: { text: "SignalDesk AI · Playwright Scraper" },
         timestamp: new Date().toISOString(),
     };
     try {
@@ -59,6 +95,94 @@ async function sendRunSummary(results) {
         console.error("[discord] Failed to send summary:", err);
     }
 }
+// ---------------------------------------------------------------------------
+// sendNewLeadsAlert — fired immediately when new leads are inserted
+// Works for both manual scrape-url and per-platform scheduled runs
+// ---------------------------------------------------------------------------
+async function sendNewLeadsAlert(sourceUrl, platform, posts, batch) {
+    if (!config_1.config.discordWebhookUrl)
+        return;
+    if (batch.inserted === 0)
+        return;
+    // Identify which posts are NEW (not duplicates)
+    const newUrls = new Set(batch.results
+        .filter((r) => !r.duplicate && r.leadId)
+        .map((r) => r.url));
+    const newPosts = posts.filter((p) => newUrls.has(p.url));
+    // Fallback: if URL matching fails, show first N posts up to inserted count
+    const postsToShow = (newPosts.length > 0 ? newPosts : posts).slice(0, 5);
+    const extra = batch.inserted - postsToShow.length;
+    const color = PLATFORM_COLOR[platform];
+    const isScheduled = sourceUrl.startsWith("scheduled:");
+    const sourceLabel = isScheduled
+        ? `Scheduled scan · ${PLATFORM_LABEL[platform]}`
+        : sourceUrl.length > 80
+            ? sourceUrl.slice(0, 79) + "…"
+            : sourceUrl;
+    const sourceLink = isScheduled ? null : sourceUrl;
+    // ── Summary embed (same Reddit-preview structure) ──────────────────────────
+    const summaryEmbed = {
+        author: platformAuthor(platform),
+        title: `${batch.inserted} New ${PLATFORM_LABEL[platform]} Lead${batch.inserted !== 1 ? "s" : ""} Found`,
+        description: sourceLink
+            ? `Scraped from [${sourceLabel}](${sourceLink})`
+            : `Scraped via ${sourceLabel}`,
+        color,
+        fields: [
+            { name: "New Leads", value: `**${batch.inserted}**`, inline: true },
+            { name: "Duplicates", value: `**${batch.duplicates}**`, inline: true },
+            { name: "Total Scraped", value: `**${batch.processed ?? posts.length}**`, inline: true },
+        ],
+        footer: { text: "SignalDesk AI · Scraper" },
+        timestamp: new Date().toISOString(),
+    };
+    // ── Per-post embeds (Reddit-link-preview style) ────────────────────────────
+    const postEmbeds = postsToShow.map((p) => {
+        const batchResult = batch.results.find((r) => r.url === p.url);
+        const keywords = (batchResult?.matchedKeywords ?? []).map((k) => `\`${k}\``).join("  ");
+        const intent = batchResult?.intentLevel ?? "";
+        const score = batchResult?.intentScore != null
+            ? ` (${Math.round(batchResult.intentScore * 100)}%)`
+            : "";
+        const fields = [];
+        if (keywords)
+            fields.push({ name: "Keywords", value: keywords, inline: false });
+        if (intent)
+            fields.push({ name: "Intent", value: `**${intent}**${score}`, inline: true });
+        return {
+            author: platformAuthor(platform),
+            title: postTitle(p.text),
+            url: p.url || undefined,
+            description: postBody(p.text),
+            color,
+            fields,
+            footer: { text: `Posted by ${p.author || "Unknown"} · SignalDesk AI` },
+            timestamp: p.timestamp || new Date().toISOString(),
+        };
+    });
+    // ── Trailing "N more" embed ────────────────────────────────────────────────
+    if (extra > 0) {
+        postEmbeds.push({
+            description: `_…and **${extra}** more new lead${extra !== 1 ? "s" : ""}. Open SignalDesk to view all._`,
+            color: 0x334155,
+            footer: { text: "SignalDesk AI · Scraper" },
+            timestamp: new Date().toISOString(),
+        });
+    }
+    try {
+        await axios_1.default.post(config_1.config.discordWebhookUrl, {
+            username: "SignalDesk Scraper",
+            embeds: [summaryEmbed, ...postEmbeds],
+        });
+        console.log(`[discord] New leads alert sent: ${batch.inserted} ${platform} leads`);
+    }
+    catch (err) {
+        console.error("[discord] Failed to send new leads alert:", err);
+    }
+}
+// ---------------------------------------------------------------------------
+// sendErrorAlert — consistent structure, same author/footer pattern
+// ---------------------------------------------------------------------------
 async function sendErrorAlert(platform, error) {
     if (!config_1.config.discordWebhookUrl)
         return;
@@ -67,9 +191,11 @@ async function sendErrorAlert(platform, error) {
             username: "SignalDesk Scraper",
             embeds: [
                 {
-                    title: `❌ Scraper Error — ${platform}`,
-                    description: `\`\`\`${error.slice(0, 1000)}\`\`\``,
+                    author: platformAuthor(platform),
+                    title: "Scraper Error",
+                    description: `\`\`\`\n${error.slice(0, 1000)}\n\`\`\``,
                     color: 0xef4444,
+                    footer: { text: "SignalDesk AI · Scraper" },
                     timestamp: new Date().toISOString(),
                 },
             ],

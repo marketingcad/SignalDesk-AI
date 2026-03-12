@@ -1,11 +1,72 @@
-[0312/051506.680:INFO:CONSOLE:335] "Permissions policy violation: unload is not allowed in this document.", source: https://static.xx.fbcdn.net/rsrc.php/v4/yK/r/kQMM8mQEHTq.js (335)
-[0312/051506.826:INFO:CONSOLE:255] "
-%cStop! font-family:helvetica; font-size:20px; font-size:50px; font-weight:bold; color:red; -webkit-text-stroke:1px black;", source: https://static.xx.fbcdn.net/rsrc.php/v4/yE/r/DWHXOfvkQFW.js (255)
-[0312/051506.827:INFO:CONSOLE:255] "
-%cThis is a browser feature intended for developers. If someone told you to copy-paste something here to enable a Facebook feature or "hack" someone's account, it's a scam and will give them access to your Facebook account. font-family:helvetica; font-size:20px; ", source: https://static.xx.fbcdn.net/rsrc.php/v4/yE/r/DWHXOfvkQFW.js (255)
-[0312/051506.827:INFO:CONSOLE:255] "
-%cSee https://www.facebook.com/selfxss for more information. font-family:helvetica; font-size:20px; ", source: https://static.xx.fbcdn.net/rsrc.php/v4/yE/r/DWHXOfvkQFW.js (255)
-[0312/051506.827:INFO:CONSOLE:255] "
-%c ", source: https://static.xx.fbcdn.net/rsrc.php/v4/yE/r/DWHXOfvkQFW.js (255)
-[0312/051514.254:INFO:CONSOLE:19] "Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-will-read-frequently", source: https://static.xx.fbcdn.net/rsrc.php/v4iRMN4/yN/l/en_US-j/SnZ2Z50PBKQ.js (19)
-[0312/051514.275:INFO:CONSOLE:19] "Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-will-read-frequently", source: https://static.xx.fbcdn.net/rsrc.php/v4iRMN4/yN/l/en_US-j/SnZ2Z50PBKQ.js (19)
+[0312/223000.929:ERROR:net\disk_cache\cache_util_win.cc:25] Unable to move the cache: Access is denied. (0x5)
+[0312/223000.929:ERROR:net\disk_cache\cache_util_win.cc:25] Unable to move the cache: Access is denied. (0x5)
+[0312/223000.929:ERROR:net\disk_cache\disk_cache.cc:272] Unable to create cache
+[0312/223000.929:ERROR:gpu\ipc\host\gpu_disk_cache.cc:725] Gpu Cache Creation failed: -2
+[0312/223000.929:ERROR:net\disk_cache\disk_cache.cc:272] Unable to create cache
+[0312/223000.929:ERROR:gpu\ipc\host\gpu_disk_cache.cc:725] Gpu Cache Creation failed: -2
+[0312/223000.929:ERROR:net\disk_cache\cache_util_win.cc:25] Unable to move the cache: Access is denied. (0x5)
+[0312/223000.930:ERROR:net\disk_cache\cache_util_win.cc:25] Unable to move the cache: Access is denied. (0x5)
+[0312/223000.930:ERROR:net\disk_cache\cache_util_win.cc:25] Unable to move the cache: Access is denied. (0x5)
+[0312/223000.930:ERROR:net\disk_cache\cache_util_win.cc:25] Unable to move the cache: Access is denied. (0x5)
+[0312/223000.930:ERROR:net\disk_cache\cache_util_win.cc:25] Unable to move the cache: Access is denied. (0x5)
+[0312/223000.930:ERROR:net\disk_cache\cache_util_win.cc:25] Unable to move the cache: Access is denied. (0x5)
+[0312/223000.930:ERROR:net\disk_cache\cache_util_win.cc:25] Unable to move the cache: Access is denied. (0x5)
+[0312/223000.930:ERROR:net\disk_cache\disk_cache.cc:272] Unable to create cache
+[0312/223000.930:ERROR:net\disk_cache\disk_cache.cc:272] Unable to create cache
+[0312/223000.930:ERROR:net\disk_cache\disk_cache.cc:272] Unable to create cache
+[0312/223000.930:ERROR:gpu\ipc\host\gpu_disk_cache.cc:725] Gpu Cache Creation failed: -2
+[0312/223000.930:ERROR:gpu\ipc\host\gpu_disk_cache.cc:725] Gpu Cache Creation failed: -2
+[0312/223000.930:ERROR:gpu\ipc\host\gpu_disk_cache.cc:725] Gpu Cache Creation failed: -2
+[0312/223000.930:ERROR:net\disk_cache\disk_cache.cc:272] Unable to create cache
+[0312/223000.930:ERROR:net\disk_cache\disk_cache.cc:272] Unable to create cache
+[0312/223000.930:ERROR:gpu\ipc\host\gpu_disk_cache.cc:725] Gpu Cache Creation failed: -2
+[0312/223000.930:ERROR:gpu\ipc\host\gpu_disk_cache.cc:725] Gpu Cache Creation failed: -2
+[0312/223000.930:ERROR:net\disk_cache\disk_cache.cc:272] Unable to create cache
+[0312/223000.930:ERROR:gpu\ipc\host\gpu_disk_cache.cc:725] Gpu Cache Creation failed: -2
+[0312/223000.930:ERROR:net\disk_cache\disk_cache.cc:272] Unable to create cache
+[0312/223000.930:ERROR:gpu\ipc\host\gpu_disk_cache.cc:725] Gpu Cache Creation failed: -2
+[0312/223001.092:WARNING:content\browser\btm\btm_database.cc:128] Failed to initialize the DIPS SQLite database.
+[0312/223001.093:WARNING:content\browser\btm\btm_database.cc:128] Failed to initialize the DIPS SQLite database.
+[0312/223001.093:WARNING:content\browser\btm\btm_database.cc:128] Failed to initialize the DIPS SQLite database.
+[0312/223002.926:WARNING:components\leveldb_proto\internal\leveldb_database.cc:124] Unable to open C:\Users\hecew\signal-desk-ai\scraper-service\auth\browser-profile\Default\shared_proto_db\metadata: IO error: C:\Users\hecew\signal-desk-ai\scraper-service\auth\browser-profile\Default\shared_proto_db\metadata/LOCK: Access denied. (ChromeMethodBFE: 15::LockFile::5)
+[0312/223002.926:WARNING:components\leveldb_proto\internal\leveldb_database.cc:124] Unable to open C:\Users\hecew\signal-desk-ai\scraper-service\auth\browser-profile\Default\shared_proto_db\metadata: IO error: C:\Users\hecew\signal-desk-ai\scraper-service\auth\browser-profile\Default\shared_proto_db\metadata/LOCK: Access denied. (ChromeMethodBFE: 15::LockFile::5)
+[0312/223002.942:WARNING:components\leveldb_proto\internal\leveldb_database.cc:124] Unable to open C:\Users\hecew\signal-desk-ai\scraper-service\auth\browser-profile\Default\shared_proto_db\metadata: IO error: C:\Users\hecew\signal-desk-ai\scraper-service\auth\browser-profile\Default\shared_proto_db\metadata/LOCK: Access denied. (ChromeMethodBFE: 15::LockFile::5)
+[0312/223003.914:ERROR:components\services\storage\service_worker\service_worker_storage.cc:1808] Failed to delete the database: Database IO error
+[0312/223003.914:ERROR:components\services\storage\service_worker\service_worker_storage.cc:1808] Failed to delete the database: Database IO error
+[0312/223003.931:ERROR:components\services\storage\service_worker\service_worker_storage.cc:1808] Failed to delete the database: Database IO error
+[0312/223004.938:WARNING:components\leveldb_proto\internal\leveldb_database.cc:124] Unable to open C:\Users\hecew\signal-desk-ai\scraper-service\auth\browser-profile\Default\shared_proto_db\metadata: IO error: C:\Users\hecew\signal-desk-ai\scraper-service\auth\browser-profile\Default\shared_proto_db\metadata/LOCK: Access denied. (ChromeMethodBFE: 15::LockFile::5)
+[0312/223004.938:WARNING:components\leveldb_proto\internal\leveldb_database.cc:124] Unable to open C:\Users\hecew\signal-desk-ai\scraper-service\auth\browser-profile\Default\shared_proto_db\metadata: IO error: C:\Users\hecew\signal-desk-ai\scraper-service\auth\browser-profile\Default\shared_proto_db\metadata/LOCK: Access denied. (ChromeMethodBFE: 15::LockFile::5)
+[0312/223004.954:WARNING:components\leveldb_proto\internal\leveldb_database.cc:124] Unable to open C:\Users\hecew\signal-desk-ai\scraper-service\auth\browser-profile\Default\shared_proto_db\metadata: IO error: C:\Users\hecew\signal-desk-ai\scraper-service\auth\browser-profile\Default\shared_proto_db\metadata/LOCK: Access denied. (ChromeMethodBFE: 15::LockFile::5)
+[0312/223005.315:ERROR:net\disk_cache\cache_util_win.cc:25] Unable to move the cache: Access is denied. (0x5)
+[0312/223005.315:ERROR:net\disk_cache\disk_cache.cc:272] Unable to create cache
+[0312/223005.316:ERROR:gpu\ipc\host\gpu_disk_cache.cc:725] Gpu Cache Creation failed: -2
+[0312/223005.316:ERROR:net\disk_cache\cache_util_win.cc:25] Unable to move the cache: Access is denied. (0x5)
+[0312/223005.316:ERROR:net\disk_cache\disk_cache.cc:272] Unable to create cache
+[0312/223005.316:ERROR:gpu\ipc\host\gpu_disk_cache.cc:725] Gpu Cache Creation failed: -2
+[0312/223005.317:ERROR:net\disk_cache\cache_util_win.cc:25] Unable to move the cache: Access is denied. (0x5)
+[0312/223005.317:ERROR:net\disk_cache\disk_cache.cc:272] Unable to create cache
+[0312/223005.317:ERROR:gpu\ipc\host\gpu_disk_cache.cc:725] Gpu Cache Creation failed: -2
+[0312/223006.511:INFO:CONSOLE:336] "Permissions policy violation: unload is not allowed in this document.", source: https://static.xx.fbcdn.net/rsrc.php/v4/yl/r/JZCU1esmjZJ.js (336)
+[0312/223006.961:WARNING:components\leveldb_proto\internal\leveldb_database.cc:124] Unable to open C:\Users\hecew\signal-desk-ai\scraper-service\auth\browser-profile\Default\shared_proto_db\metadata: IO error: C:\Users\hecew\signal-desk-ai\scraper-service\auth\browser-profile\Default\shared_proto_db\metadata/LOCK: Access denied. (ChromeMethodBFE: 15::LockFile::5)
+[0312/223006.961:WARNING:components\leveldb_proto\internal\leveldb_database.cc:124] Unable to open C:\Users\hecew\signal-desk-ai\scraper-service\auth\browser-profile\Default\shared_proto_db\metadata: IO error: C:\Users\hecew\signal-desk-ai\scraper-service\auth\browser-profile\Default\shared_proto_db\metadata/LOCK: Access denied. (ChromeMethodBFE: 15::LockFile::5)
+[0312/223006.976:WARNING:components\leveldb_proto\internal\leveldb_database.cc:124] Unable to open C:\Users\hecew\signal-desk-ai\scraper-service\auth\browser-profile\Default\shared_proto_db\metadata: IO error: C:\Users\hecew\signal-desk-ai\scraper-service\auth\browser-profile\Default\shared_proto_db\metadata/LOCK: Access denied. (ChromeMethodBFE: 15::LockFile::5)
+[0312/223007.940:INFO:CONSOLE:256] "
+%cStop! font-family:helvetica; font-size:20px; font-size:50px; font-weight:bold; color:red; -webkit-text-stroke:1px black;", source: https://static.xx.fbcdn.net/rsrc.php/v4/ys/r/mN1sJOdfxsZ.js (256)
+[0312/223007.941:INFO:CONSOLE:256] "
+%cThis is a browser feature intended for developers. If someone told you to copy-paste something here to enable a Facebook feature or "hack" someone's account, it's a scam and will give them access to your Facebook account. font-family:helvetica; font-size:20px; ", source: https://static.xx.fbcdn.net/rsrc.php/v4/ys/r/mN1sJOdfxsZ.js (256)
+[0312/223007.941:INFO:CONSOLE:256] "
+%cSee https://www.facebook.com/selfxss for more information. font-family:helvetica; font-size:20px; ", source: https://static.xx.fbcdn.net/rsrc.php/v4/ys/r/mN1sJOdfxsZ.js (256)
+[0312/223007.941:INFO:CONSOLE:256] "
+%c ", source: https://static.xx.fbcdn.net/rsrc.php/v4/ys/r/mN1sJOdfxsZ.js (256)
+[0312/223008.972:WARNING:components\leveldb_proto\internal\leveldb_database.cc:124] Unable to open C:\Users\hecew\signal-desk-ai\scraper-service\auth\browser-profile\Default\shared_proto_db\metadata: IO error: C:\Users\hecew\signal-desk-ai\scraper-service\auth\browser-profile\Default\shared_proto_db\metadata/LOCK: Access denied. (ChromeMethodBFE: 15::LockFile::5)
+[0312/223008.972:WARNING:components\leveldb_proto\internal\leveldb_database.cc:124] Unable to open C:\Users\hecew\signal-desk-ai\scraper-service\auth\browser-profile\Default\shared_proto_db\metadata: IO error: C:\Users\hecew\signal-desk-ai\scraper-service\auth\browser-profile\Default\shared_proto_db\metadata/LOCK: Access denied. (ChromeMethodBFE: 15::LockFile::5)
+[0312/223008.987:WARNING:components\leveldb_proto\internal\leveldb_database.cc:124] Unable to open C:\Users\hecew\signal-desk-ai\scraper-service\auth\browser-profile\Default\shared_proto_db\metadata: IO error: C:\Users\hecew\signal-desk-ai\scraper-service\auth\browser-profile\Default\shared_proto_db\metadata/LOCK: Access denied. (ChromeMethodBFE: 15::LockFile::5)
+[0312/223013.372:ERROR:storage\browser\file_system\sandbox_origin_database.cc:198] SandboxOriginDatabase failed at: Init@storage\browser\file_system\sandbox_origin_database.cc:95 with error: IO error: C:\Users\hecew\signal-desk-ai\scraper-service\auth\browser-profile\Default\File System\Origins/LOCK: Access denied. (ChromeMethodBFE: 15::LockFile::5)
+[0312/223013.372:WARNING:storage\browser\file_system\sandbox_origin_database.cc:107] Attempting to repair SandboxOriginDatabase.
+[0312/223013.379:ERROR:storage\browser\file_system\sandbox_origin_database.cc:198] SandboxOriginDatabase failed at: Init@storage\browser\file_system\sandbox_origin_database.cc:95 with error: IO error: C:\Users\hecew\signal-desk-ai\scraper-service\auth\browser-profile\Default\File System\Origins/LOCK: Access denied. (ChromeMethodBFE: 15::LockFile::5)
+[0312/223013.379:WARNING:storage\browser\file_system\sandbox_origin_database.cc:107] Attempting to repair SandboxOriginDatabase.
+[0312/223013.425:ERROR:storage\browser\file_system\sandbox_origin_database.cc:198] SandboxOriginDatabase failed at: Init@storage\browser\file_system\sandbox_origin_database.cc:95 with error: IO error: C:\Users\hecew\signal-desk-ai\scraper-service\auth\browser-profile\Default\File System\Origins/LOCK: Access denied. (ChromeMethodBFE: 15::LockFile::5)
+[0312/223013.425:WARNING:storage\browser\file_system\sandbox_origin_database.cc:107] Attempting to repair SandboxOriginDatabase.
+[0312/223017.425:WARNING:storage\browser\file_system\sandbox_origin_database.cc:141] Failed to repair SandboxOriginDatabase.
+[0312/223017.472:WARNING:storage\browser\file_system\sandbox_origin_database.cc:141] Failed to repair SandboxOriginDatabase.
+[0312/223018.436:WARNING:storage\browser\file_system\sandbox_origin_database.cc:114] Repairing SandboxOriginDatabase completed.

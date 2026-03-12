@@ -1,26 +1,50 @@
 [
   {
-    "id": "02664257-7d7d-4b48-90b3-1f0309ca6666",
-    "name": "FB VA Group Daily",
+    "id": "890bfb09-06fd-40d9-8ffc-52a6e53be145",
+    "name": "FB VA - Group (#1)",
+    "url": "https://www.facebook.com/groups/1638444529751821",
+    "cron": "*/15 * * * *",
+    "status": "active",
+    "createdAt": "2026-03-12T14:15:52.161Z",
+    "updatedAt": "2026-03-12T14:30:18.467Z",
+    "lastRunAt": "2026-03-12T14:30:18.467Z",
+    "lastRunStatus": "error",
+    "totalRuns": 1
+  },
+  {
+    "id": "20bc8fcf-adb7-4ce2-9b22-38042d7df1e8",
+    "name": "FB VA - Group (#2)",
+    "url": "https://www.facebook.com/groups/virtualassistantva",
+    "cron": "*/15 * * * *",
+    "status": "active",
+    "createdAt": "2026-03-12T14:15:52.188Z",
+    "updatedAt": "2026-03-12T14:30:18.087Z",
+    "lastRunAt": "2026-03-12T14:30:18.086Z",
+    "lastRunStatus": "ok",
+    "totalRuns": 1
+  },
+  {
+    "id": "a51d5844-483e-45c8-baea-92914b7262f8",
+    "name": "FB VA - Group (#3)",
+    "url": "https://www.facebook.com/groups/filvaph",
+    "cron": "*/15 * * * *",
+    "status": "active",
+    "createdAt": "2026-03-12T14:15:52.213Z",
+    "updatedAt": "2026-03-12T14:30:18.864Z",
+    "lastRunAt": "2026-03-12T14:30:18.864Z",
+    "lastRunStatus": "error",
+    "totalRuns": 1
+  },
+  {
+    "id": "c5797795-27ce-4f21-af00-a3703dc195cd",
+    "name": "FB VA - Group (#4)",
     "url": "https://www.facebook.com/groups/557214564636467",
     "cron": "*/15 * * * *",
     "status": "active",
-    "createdAt": "2026-03-11T19:49:02.730Z",
-    "updatedAt": "2026-03-11T21:15:24.314Z",
-    "lastRunAt": "2026-03-11T21:15:24.314Z",
-    "lastRunStatus": "ok",
-    "totalRuns": 5
-  },
-  {
-    "id": "6621b488-7ae1-40c8-866d-bcad59672ec6",
-    "name": "FB VA Group Daily",
-    "url": "https://www.facebook.com/groups/virtualassistantva",
-    "cron": "*/30 * * * *",
-    "status": "active",
-    "createdAt": "2026-03-11T20:46:33.805Z",
-    "updatedAt": "2026-03-11T21:00:28.797Z",
-    "lastRunAt": "2026-03-11T21:00:28.797Z",
-    "lastRunStatus": "ok",
+    "createdAt": "2026-03-12T14:15:52.231Z",
+    "updatedAt": "2026-03-12T14:30:18.402Z",
+    "lastRunAt": "2026-03-12T14:30:18.402Z",
+    "lastRunStatus": "error",
     "totalRuns": 1
   }
 ]

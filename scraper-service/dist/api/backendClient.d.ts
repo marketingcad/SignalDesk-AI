@@ -9,6 +9,7 @@ export interface BatchResponse {
         leadId?: string;
         intentScore?: number;
         intentLevel?: string;
+        matchedKeywords?: string[];
         duplicate?: boolean;
         error?: string;
     }>;
