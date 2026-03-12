@@ -50,6 +50,7 @@ const crypto_1 = require("crypto");
 const scrapers_1 = require("../scrapers");
 const backendClient_1 = require("../api/backendClient");
 const discord_1 = require("../alerts/discord");
+const postFilter_1 = require("../utils/postFilter");
 const crawlerManager_1 = require("../crawler/crawlerManager");
 // ---------------------------------------------------------------------------
 // Persistence — JSON file store
@@ -93,15 +94,21 @@ async function runSchedule(id) {
     let runStatus = "ok";
     try {
         const result = await (0, scrapers_1.scrapeUrl)(schedule.url);
-        if (result.posts.length > 0) {
-            const batchResult = await (0, backendClient_1.sendLeadsBatch)(result.posts);
+        // Pre-filter: reject job seekers (same as crawlerManager + url-scraper)
+        const filtered = (0, postFilter_1.filterPosts)(result.posts, "[url-scheduler]");
+        console.log(`[url-scheduler] ${filtered.length} posts after filtering (${result.posts.length - filtered.length} rejected)`);
+        if (filtered.length > 0) {
+            const batchResult = await (0, backendClient_1.sendLeadsBatch)(filtered);
             if (batchResult) {
-                await (0, discord_1.sendNewLeadsAlert)(schedule.url, result.platform, result.posts, batchResult);
+                await (0, discord_1.sendNewLeadsAlert)(schedule.url, result.platform, filtered, batchResult);
             }
         }
         if (result.errors.length > 0) {
             runStatus = "error";
-            await (0, discord_1.sendErrorAlert)(result.platform, result.errors.join("\n"));
+            const discordErrors = result.errors.filter((e) => !e.includes("requires login"));
+            if (discordErrors.length > 0) {
+                await (0, discord_1.sendErrorAlert)(result.platform, discordErrors.join("\n"));
+            }
         }
     }
     catch (err) {

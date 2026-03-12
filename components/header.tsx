@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Bell, Search, X } from "lucide-react";
+import { Bell, Search, Sparkles, X } from "lucide-react";
 import { cn, timeAgo } from "@/lib/utils";
 import { useRealtime } from "@/hooks/use-realtime";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import { PlatformBadge } from "@/components/platform-badge";
 import type { Lead } from "@/lib/types";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useAskAi } from "@/components/ask-ai-context";
 
 interface HeaderProps {
   title: string;
@@ -23,6 +24,7 @@ interface HeaderProps {
 
 export function Header({ title, subtitle, actions }: HeaderProps) {
   const router = useRouter();
+  const { askAiOpen, toggleAskAi } = useAskAi();
   const [alertCount, setAlertCount] = useState(0);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -149,6 +151,19 @@ export function Header({ title, subtitle, actions }: HeaderProps) {
         )}
       </div>
       <div className="flex items-center gap-2">
+        {/* Ask AI */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={toggleAskAi}
+          className={cn(
+            "gap-2 font-medium",
+            askAiOpen && "bg-primary/10 text-primary border-primary/30"
+          )}
+        >
+          <Sparkles className="h-3.5 w-3.5" />
+          <span className="hidden sm:inline">Ask AI</span>
+        </Button>
         {/* Search */}
         <div ref={searchContainerRef} className="relative">
           {!searchOpen ? (

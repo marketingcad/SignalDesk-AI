@@ -54,7 +54,7 @@ export function PlatformChart() {
   }, []);
 
   return (
-    <div className="flex items-center gap-6">
+    <div className="flex flex-col items-center gap-4 lg:flex-row lg:items-center lg:gap-6">
       <div className="h-[160px] w-[160px] shrink-0">
         {!mounted ? (
           <div className="h-full w-full animate-pulse rounded-full bg-muted/50" />
@@ -83,7 +83,7 @@ export function PlatformChart() {
         </ResponsiveContainer>
         )}
       </div>
-      <div className="flex-1 space-y-3">
+      <div className="w-full flex-1 space-y-3">
         {platformBreakdown.map((p) => (
           <div key={p.platform} className="flex items-center gap-3">
             <div
@@ -91,7 +91,7 @@ export function PlatformChart() {
               style={{ background: getPlatformColor(p.platform) }}
             />
             <span className="text-sm text-foreground/80 w-20">{p.platform}</span>
-            <div className="flex-1">
+            <div className="flex-1 min-w-0">
               <div className="h-1.5 w-full rounded-full bg-muted">
                 <div
                   className="h-1.5 rounded-full transition-all"

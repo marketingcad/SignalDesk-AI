@@ -82,20 +82,63 @@ async function extractFacebook(page) {
         await page.waitForTimeout(1500);
         console.log(`[url-scraper]   Scroll ${i + 1}/5`);
     }
+    // Click "See more" buttons to expand truncated post text.
+    // Without this, long posts are hidden and we'd only get comment text.
+    try {
+        const seeMoreButtons = await page.$$('div[role="button"]');
+        let expanded = 0;
+        for (const btn of seeMoreButtons) {
+            const text = await btn.textContent().catch(() => "");
+            if (text && /^see more$/i.test(text.trim())) {
+                await btn.click().catch(() => { });
+                expanded++;
+                await page.waitForTimeout(300);
+            }
+        }
+        if (expanded > 0) {
+            console.log(`[url-scraper] Expanded ${expanded} "See more" buttons`);
+            await page.waitForTimeout(1000);
+        }
+    }
+    catch {
+        console.log(`[url-scraper] "See more" expansion skipped (non-critical)`);
+    }
     const posts = await page.evaluate(() => {
         const results = [];
+        // Helper: check if an element is inside the comments section.
+        // Facebook comments live inside: nested div[role="article"], elements below
+        // the comment form, or inside list items (ul > li) after the post content.
+        function isInsideCommentSection(el, postArticle) {
+            // Inside a nested article (comment bubble)
+            const closestArticle = el.closest('div[role="article"]');
+            if (closestArticle && closestArticle !== postArticle)
+                return true;
+            // Inside a form (comment input area)
+            if (el.closest("form"))
+                return true;
+            // Inside a list that contains comments (ul with role="list" or plain ul after content)
+            const parentList = el.closest('ul[role="list"], ul');
+            if (parentList && postArticle.contains(parentList)) {
+                // Check if this list contains nested articles (comment list)
+                if (parentList.querySelector('div[role="article"]'))
+                    return true;
+            }
+            // Inside an element with comment-related aria labels
+            const commentContainer = el.closest('[aria-label*="comment" i], [aria-label*="Comment" i], [aria-label*="reply" i], [aria-label*="Reply" i]');
+            if (commentContainer && postArticle.contains(commentContainer))
+                return true;
+            return false;
+        }
         // Strategy 1: div[role="article"] — group/feed posts
         // Only top-level articles (comments are nested div[role="article"] inside the post)
         const allArticles = Array.from(document.querySelectorAll('div[role="article"]'));
         const articles = allArticles.filter((a) => !a.parentElement?.closest('div[role="article"]'));
         articles.forEach((article) => {
-            // Get text only from this post's own div[dir="auto"] elements —
-            // exclude those inside nested articles (comment bubbles are also role="article")
+            // Collect text from div[dir="auto"] that belong to the POST, not comments.
             const textEls = article.querySelectorAll('div[dir="auto"]');
             let text = "";
             textEls.forEach((el) => {
-                // If the nearest article ancestor of this element is not the current post, skip it (it's a comment)
-                if (el.closest('div[role="article"]') !== article)
+                if (isInsideCommentSection(el, article))
                     return;
                 const t = el.textContent?.trim() || "";
                 if (t.length > 15 && !text.includes(t)) {
@@ -104,8 +147,8 @@ async function extractFacebook(page) {
             });
             if (text.length < 20)
                 return;
-            // Author
-            const authorEl = article.querySelector('strong a, h2 a, h3 a, h4 a, a[role="link"] strong');
+            // Author — try heading links first (most reliable), then strong inside links
+            const authorEl = article.querySelector('h2 a, h3 a, h4 a, strong a, a[role="link"] > strong, a[role="link"] span[dir="auto"]');
             const author = authorEl?.textContent?.trim() || "unknown";
             // Post permalink
             const timeLink = article.querySelector('a[href*="/posts/"], a[href*="/permalink/"], a[href*="story_fbid"], a[href*="/p/"]');
@@ -160,17 +203,27 @@ async function extractFacebook(page) {
 }
 async function extractReddit(page) {
     console.log(`[url-scraper] Extracting Reddit posts...`);
-    for (let i = 0; i < 3; i++) {
+    // Check for Reddit block / interstitial pages
+    const pageContent = await page.content();
+    const isBlocked = pageContent.includes("whoa there, pardner") ||
+        pageContent.includes("you've been blocked") ||
+        pageContent.includes("cdn-cgi/challenge") ||
+        pageContent.includes("Request blocked");
+    if (isBlocked) {
+        console.warn(`[url-scraper] Reddit appears to be blocking the request (anti-bot page detected)`);
+    }
+    for (let i = 0; i < 5; i++) {
         await page.evaluate(() => window.scrollBy(0, window.innerHeight));
         await page.waitForTimeout(1000);
     }
     const posts = await page.evaluate(() => {
         const results = [];
-        // old.reddit.com
-        document.querySelectorAll('.thing.link').forEach((thing) => {
-            const titleEl = thing.querySelector('a.title');
+        // old.reddit.com — subreddit listing + search results
+        // .thing.link matches posts on both listing pages and search result pages
+        document.querySelectorAll('.thing.link, div.search-result-link').forEach((thing) => {
+            const titleEl = thing.querySelector('a.title, a.search-title');
             const authorEl = thing.querySelector('a.author');
-            const scoreEl = thing.querySelector('.score.unvoted');
+            const scoreEl = thing.querySelector('.score.unvoted, span.search-score');
             const timeEl = thing.querySelector('time[datetime], time[title]');
             const title = titleEl?.textContent?.trim() || "";
             const url = titleEl?.href || "";
@@ -180,12 +233,25 @@ async function extractReddit(page) {
             if (title)
                 results.push({ author, text: title, url, engagement: score, rawTs });
         });
-        // new.reddit.com
+        // new.reddit.com fallback — try to read shreddit-post attributes directly
+        // (shadow DOM prevents querySelector from reaching inside, but attributes are on the host element)
         if (results.length === 0) {
-            document.querySelectorAll('article, shreddit-post, [data-testid="post-container"]').forEach((card) => {
+            document.querySelectorAll('shreddit-post').forEach((post) => {
+                const text = post.getAttribute("post-title") || "";
+                const author = post.getAttribute("author") || "unknown";
+                const permalink = post.getAttribute("permalink") || post.getAttribute("content-href") || "";
+                const score = parseInt(post.getAttribute("score") || "0", 10) || 0;
+                const createdTs = post.getAttribute("created-timestamp") || "";
+                const url = permalink ? `https://www.reddit.com${permalink}` : "";
+                if (text.length > 5)
+                    results.push({ author, text, url, engagement: score, rawTs: createdTs });
+            });
+        }
+        // new.reddit.com fallback 2 — article / data-testid containers
+        if (results.length === 0) {
+            document.querySelectorAll('article, [data-testid="post-container"]').forEach((card) => {
                 const titleEl = card.querySelector('h3, a[slot="title"], [data-testid="post-title"]');
                 const authorEl = card.querySelector('a[href*="/user/"]');
-                // faceplate-timeago has a `ts` attribute (unix ms) or `datetime`; also try <time datetime>
                 const timeEl = card.querySelector('faceplate-timeago, time[datetime]');
                 const text = titleEl?.textContent?.trim() || "";
                 const author = authorEl?.textContent?.trim() || "unknown";
@@ -199,18 +265,16 @@ async function extractReddit(page) {
         }
         return results;
     });
-    // Filter to current month
-    const filtered = posts
-        .map((p) => {
+    // Resolve timestamps (no month filter — manual URL scraping should return all visible posts)
+    const resolved = posts.map((p) => {
         const ts = /^\d{4}-/.test(p.rawTs) ? p.rawTs : (parseRelativeTs(p.rawTs) ?? "");
         return { ...p, resolvedTs: ts };
-    })
-        .filter((p) => isCurrentMonth(p.resolvedTs));
-    console.log(`[url-scraper] Reddit: found ${posts.length} posts, ${filtered.length} from current month`);
-    filtered.forEach((p, i) => {
+    });
+    console.log(`[url-scraper] Reddit: found ${resolved.length} posts`);
+    resolved.forEach((p, i) => {
         console.log(`[url-scraper]   ${i + 1}. [${p.author}] "${p.text.slice(0, 120)}..."`);
     });
-    return filtered.map((p) => ({
+    return resolved.map((p) => ({
         author: p.author,
         text: p.text,
         url: p.url,
@@ -305,6 +369,163 @@ async function extractX(page) {
         engagement: 0,
     }));
 }
+async function extractGeneric(page) {
+    console.log(`[url-scraper] Extracting posts from generic page...`);
+    // Scroll to load dynamic content
+    for (let i = 0; i < 5; i++) {
+        await page.evaluate(() => window.scrollBy(0, window.innerHeight));
+        await page.waitForTimeout(1500);
+    }
+    const posts = await page.evaluate(() => {
+        const results = [];
+        const seen = new Set();
+        // Strategy 1: article elements (blogs, news, forums)
+        document.querySelectorAll('article, [role="article"]').forEach((article) => {
+            const headingEl = article.querySelector('h1, h2, h3, h4, a');
+            const textEls = article.querySelectorAll('p, div[dir="auto"], .post-content, .entry-content');
+            let text = "";
+            textEls.forEach((el) => {
+                const t = el.textContent?.trim() || "";
+                if (t.length > 20 && !text.includes(t)) {
+                    text += (text ? "\n" : "") + t;
+                }
+            });
+            if (!text && headingEl)
+                text = headingEl.textContent?.trim() || "";
+            if (text.length < 20)
+                return;
+            const textKey = text.slice(0, 200);
+            if (seen.has(textKey))
+                return;
+            seen.add(textKey);
+            const linkEl = article.querySelector('a[href]');
+            const url = linkEl?.href || "";
+            const authorEl = article.querySelector('[rel="author"], .author, .byline, .username, a[href*="/user/"], a[href*="/profile/"]');
+            const author = authorEl?.textContent?.trim() || "unknown";
+            const timeEl = article.querySelector('time[datetime]');
+            const rawTs = timeEl?.getAttribute("datetime") || "";
+            results.push({ author, text, url, rawTs });
+        });
+        // Strategy 2: post-like containers (forums, community pages)
+        if (results.length === 0) {
+            document.querySelectorAll('.post, .comment, .entry, .thread, .message, [class*="post-"], [class*="Post"]').forEach((container) => {
+                const text = container.textContent?.trim() || "";
+                if (text.length < 30 || text.length > 10000)
+                    return;
+                const textKey = text.slice(0, 200);
+                if (seen.has(textKey))
+                    return;
+                seen.add(textKey);
+                const linkEl = container.querySelector('a[href]');
+                const authorEl = container.querySelector('.author, .username, .user, [class*="author"], [class*="user"]');
+                const timeEl = container.querySelector('time[datetime]');
+                results.push({
+                    author: authorEl?.textContent?.trim() || "unknown",
+                    text: text.slice(0, 2000),
+                    url: linkEl?.href || "",
+                    rawTs: timeEl?.getAttribute("datetime") || "",
+                });
+            });
+        }
+        // Strategy 3: heading + paragraph blocks (general pages)
+        if (results.length === 0) {
+            document.querySelectorAll('h1, h2, h3').forEach((heading) => {
+                const title = heading.textContent?.trim() || "";
+                if (title.length < 10)
+                    return;
+                // Gather sibling paragraphs
+                let body = "";
+                let sibling = heading.nextElementSibling;
+                while (sibling && !['H1', 'H2', 'H3'].includes(sibling.tagName)) {
+                    if (sibling.tagName === 'P' || sibling.tagName === 'DIV') {
+                        const t = sibling.textContent?.trim() || "";
+                        if (t.length > 15)
+                            body += (body ? "\n" : "") + t;
+                    }
+                    sibling = sibling.nextElementSibling;
+                }
+                const text = body ? `${title}\n\n${body}` : title;
+                if (text.length < 30)
+                    return;
+                const textKey = text.slice(0, 200);
+                if (seen.has(textKey))
+                    return;
+                seen.add(textKey);
+                const linkEl = heading.querySelector('a[href]');
+                results.push({
+                    author: "unknown",
+                    text: text.slice(0, 2000),
+                    url: linkEl?.href || "",
+                    rawTs: "",
+                });
+            });
+        }
+        return results;
+    });
+    console.log(`[url-scraper] Generic: found ${posts.length} content blocks`);
+    posts.forEach((p, i) => {
+        console.log(`[url-scraper]   ${i + 1}. [${p.author}] "${p.text.slice(0, 120)}..."`);
+    });
+    return posts.map((p) => ({
+        author: p.author,
+        text: p.text,
+        url: p.url,
+        timestamp: p.rawTs || new Date().toISOString(),
+        engagement: 0,
+    }));
+}
+// ---------------------------------------------------------------------------
+// Reddit JSON API fallback — works when old.reddit.com blocks the browser
+// ---------------------------------------------------------------------------
+async function extractRedditViaJson(originalUrl) {
+    // Normalize to www.reddit.com and append .json
+    let jsonUrl = originalUrl.replace(/old\.reddit\.com/i, "www.reddit.com");
+    // Remove trailing slash, then append .json
+    jsonUrl = jsonUrl.replace(/\/+$/, "") + ".json";
+    console.log(`[url-scraper] Reddit JSON fallback: ${jsonUrl}`);
+    try {
+        const resp = await fetch(jsonUrl, {
+            headers: {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            },
+            signal: AbortSignal.timeout(15_000),
+        });
+        if (!resp.ok) {
+            console.warn(`[url-scraper] Reddit JSON API returned ${resp.status}`);
+            return [];
+        }
+        const json = await resp.json();
+        // Subreddit listing: json.data.children[]
+        const listing = json?.data?.children ?? (Array.isArray(json) ? json[0]?.data?.children : null) ?? [];
+        const results = [];
+        for (const child of listing) {
+            const d = child?.data;
+            if (!d || child.kind !== "t3")
+                continue; // t3 = link/post
+            const title = d.title || "";
+            const selftext = d.selftext || "";
+            const text = selftext ? `${title}\n\n${selftext}` : title;
+            if (text.length < 5)
+                continue;
+            const permalink = d.permalink ? `https://www.reddit.com${d.permalink}` : "";
+            const createdUtc = d.created_utc ? new Date(d.created_utc * 1000).toISOString() : "";
+            results.push({
+                author: d.author || "unknown",
+                text,
+                url: permalink,
+                timestamp: createdUtc || new Date().toISOString(),
+                engagement: d.score ?? 0,
+            });
+        }
+        console.log(`[url-scraper] Reddit JSON fallback: found ${results.length} posts`);
+        return results;
+    }
+    catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`[url-scraper] Reddit JSON fallback failed: ${msg}`);
+        return [];
+    }
+}
 // ---------------------------------------------------------------------------
 // Main: scrape a specific URL using Playwright with saved cookies
 // ---------------------------------------------------------------------------
@@ -312,15 +533,7 @@ async function scrapeUrl(targetUrl) {
     const start = Date.now();
     const posts = [];
     const errors = [];
-    const platform = detectPlatform(targetUrl);
-    if (!platform) {
-        return {
-            platform: "Facebook",
-            posts: [],
-            duration: Date.now() - start,
-            errors: [`Unsupported URL. Must be Facebook, LinkedIn, Reddit, or X. Got: ${targetUrl}`],
-        };
-    }
+    const platform = detectPlatform(targetUrl) ?? "Other";
     const cookiesExist = (0, browserAuth_1.hasSavedCookies)();
     console.log(`\n[url-scraper] ========================================`);
     console.log(`[url-scraper] Target URL: ${targetUrl}`);
@@ -328,7 +541,7 @@ async function scrapeUrl(targetUrl) {
     console.log(`[url-scraper] Cookies:    ${cookiesExist ? "YES — using saved login session" : "NO — scraping without login (limited)"}`);
     console.log(`[url-scraper] Headless:   ${config_1.config.headless}`);
     console.log(`[url-scraper] ========================================\n`);
-    if (!cookiesExist && platform !== "Reddit") {
+    if (!cookiesExist && platform !== "Reddit" && platform !== "Other") {
         console.warn(`[url-scraper] WARNING: No saved cookies. ${platform} requires login to see posts.`);
         console.warn(`[url-scraper] Run: cd scraper-service && npx ts-node src/crawler/browserAuth.ts`);
         console.warn(`[url-scraper] to open a browser, log in, and save cookies.\n`);
@@ -337,8 +550,22 @@ async function scrapeUrl(targetUrl) {
     let browser = null;
     try {
         let page;
-        if (cookiesExist) {
-            // Use persistent profile — contains saved login sessions
+        if (cookiesExist && (0, browserAuth_1.shouldUseStorageState)()) {
+            // Server mode — use portable storageState (env var or JSON file)
+            const statePath = (0, browserAuth_1.getStorageState)();
+            console.log(`[url-scraper] Using storageState: ${statePath ? "yes" : "none"}`);
+            browser = await playwright_1.chromium.launch({
+                headless: config_1.config.headless,
+                args: ["--disable-blink-features=AutomationControlled"],
+            });
+            context = await browser.newContext({
+                storageState: statePath,
+                userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            });
+            page = await context.newPage();
+        }
+        else if (cookiesExist) {
+            // Local dev — use persistent browser profile
             console.log(`[url-scraper] Using persistent profile: ${(0, browserAuth_1.getProfileDir)()}`);
             context = await playwright_1.chromium.launchPersistentContext((0, browserAuth_1.getProfileDir)(), {
                 headless: config_1.config.headless,
@@ -358,9 +585,16 @@ async function scrapeUrl(targetUrl) {
             });
             page = await context.newPage();
         }
+        // Rewrite Reddit URLs to old.reddit.com for reliable scraping
+        // (new Reddit uses Shadow DOM web components that selectors can't pierce)
+        let navigateUrl = targetUrl;
+        if (platform === "Reddit" && /www\.reddit\.com/i.test(targetUrl)) {
+            navigateUrl = targetUrl.replace(/www\.reddit\.com/i, "old.reddit.com");
+            console.log(`[url-scraper] Rewriting Reddit URL to old.reddit.com for reliable scraping`);
+        }
         // Navigate
-        console.log(`[url-scraper] Navigating to: ${targetUrl}`);
-        await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
+        console.log(`[url-scraper] Navigating to: ${navigateUrl}`);
+        await page.goto(navigateUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
         await page.waitForTimeout(3000);
         // Log page state
         const pageTitle = await page.title();
@@ -385,12 +619,20 @@ async function scrapeUrl(targetUrl) {
                     break;
                 case "Reddit":
                     extracted = await extractReddit(page);
+                    // If old.reddit.com returned 0 posts, try Reddit JSON API as fallback
+                    if (extracted.length === 0) {
+                        console.log(`[url-scraper] old.reddit.com returned 0 posts, trying Reddit JSON API fallback...`);
+                        extracted = await extractRedditViaJson(targetUrl);
+                    }
                     break;
                 case "LinkedIn":
                     extracted = await extractLinkedin(page);
                     break;
                 case "X":
                     extracted = await extractX(page);
+                    break;
+                case "Other":
+                    extracted = await extractGeneric(page);
                     break;
             }
             for (const item of extracted) {

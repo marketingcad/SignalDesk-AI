@@ -16,18 +16,21 @@ const PLATFORM_COLOR = {
     LinkedIn: 0x0a66c2,
     Reddit: 0xff4500,
     X: 0x14171a,
+    Other: 0x10b981,
 };
 const PLATFORM_ICON = {
     Reddit: "https://www.redditstatic.com/desktop2x/img/favicon/android-icon-192x192.png",
     Facebook: "https://www.facebook.com/favicon.ico",
     LinkedIn: "https://static.licdn.com/aero-v1/sc/h/al2o9zrvru7ym1pttyabrktfx",
     X: "https://abs.twimg.com/favicons/twitter.3.ico",
+    Other: "https://www.google.com/s2/favicons?sz=64&domain=example.com",
 };
 const PLATFORM_LABEL = {
     Facebook: "Facebook",
     LinkedIn: "LinkedIn",
     Reddit: "Reddit",
     X: "X (Twitter)",
+    Other: "Website",
 };
 // ---------------------------------------------------------------------------
 // Helpers

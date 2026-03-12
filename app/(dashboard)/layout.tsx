@@ -3,6 +3,8 @@
 import { useState, useCallback, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { Sidebar } from "@/components/sidebar";
+import { AiAssistantPanel } from "@/components/ai-assistant-panel";
+import { AskAiContext } from "@/components/ask-ai-context";
 import { PageTransition } from "@/components/page-transition";
 import { cn } from "@/lib/utils";
 
@@ -13,6 +15,8 @@ export default function DashboardLayout({
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [askAiOpen, setAskAiOpen] = useState(false);
+  const [aiPanelWidth, setAiPanelWidth] = useState(420);
   const pathname = usePathname();
 
   // Auto-close sidebar on route change (mobile)
@@ -31,6 +35,7 @@ export default function DashboardLayout({
   }, []);
 
   const toggleMobile = useCallback(() => setMobileOpen((v) => !v), []);
+  const toggleAskAi = useCallback(() => setAskAiOpen((v) => !v), []);
 
   return (
     <div className="min-h-screen bg-background">
@@ -42,6 +47,14 @@ export default function DashboardLayout({
         />
       )}
 
+      {/* AI Panel overlay backdrop */}
+      {askAiOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/30 backdrop-blur-[2px]"
+          onClick={() => setAskAiOpen(false)}
+        />
+      )}
+
       <Sidebar
         collapsed={collapsed}
         onToggle={() => setCollapsed(!collapsed)}
@@ -50,17 +63,26 @@ export default function DashboardLayout({
         onMobileToggle={toggleMobile}
       />
 
-      <main
-        className={cn(
-          "min-h-screen transition-all duration-300",
-          // Desktop: offset by sidebar width
-          collapsed ? "md:ml-[68px]" : "md:ml-[260px]",
-          // Mobile: no margin
-          "ml-0"
-        )}
-      >
-        <PageTransition>{children}</PageTransition>
-      </main>
+      <AiAssistantPanel
+        open={askAiOpen}
+        onClose={() => setAskAiOpen(false)}
+        onWidthChange={setAiPanelWidth}
+      />
+
+      <AskAiContext.Provider value={{ askAiOpen, toggleAskAi }}>
+        <main
+          className={cn(
+            "min-h-screen transition-all duration-300",
+            collapsed ? "md:ml-[68px]" : "md:ml-[260px]",
+            "ml-0"
+          )}
+          style={{
+            marginRight: askAiOpen ? `${aiPanelWidth}px` : undefined,
+          }}
+        >
+          <PageTransition>{children}</PageTransition>
+        </main>
+      </AskAiContext.Provider>
     </div>
   );
 }

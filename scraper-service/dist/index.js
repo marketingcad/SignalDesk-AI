@@ -46,6 +46,7 @@ const scrapers_1 = require("./scrapers");
 const backendClient_1 = require("./api/backendClient");
 const discord_1 = require("./alerts/discord");
 const browserAuth_1 = require("./crawler/browserAuth");
+const postFilter_1 = require("./utils/postFilter");
 const app = (0, express_1.default)();
 app.use(express_1.default.json());
 // ---------------------------------------------------------------------------
@@ -87,7 +88,7 @@ app.post("/api/run", async (req, res) => {
 // ---------------------------------------------------------------------------
 // Manual trigger: run single platform
 // ---------------------------------------------------------------------------
-const VALID_PLATFORMS = ["Reddit", "X", "LinkedIn", "Facebook"];
+const VALID_PLATFORMS = ["Reddit", "X", "LinkedIn", "Facebook", "Other"];
 app.post("/api/run/:platform", async (req, res) => {
     if (!checkAuth(req, res))
         return;
@@ -144,14 +145,18 @@ app.post("/api/scrape-url", async (req, res) => {
     for (const targetUrl of rawUrls) {
         try {
             const result = await (0, scrapers_1.scrapeUrl)(targetUrl);
-            if (result.errors.length > 0) {
-                await (0, discord_1.sendErrorAlert)(result.platform, result.errors.join("\n"));
+            const discordErrors = result.errors.filter((e) => !e.includes("requires login"));
+            if (discordErrors.length > 0) {
+                await (0, discord_1.sendErrorAlert)(result.platform, discordErrors.join("\n"));
             }
+            // Pre-filter: reject job seekers and too-short posts (same as crawlerManager)
+            const filtered = (0, postFilter_1.filterPosts)(result.posts, "[url-scraper]");
+            console.log(`[url-scraper] ${filtered.length} posts after filtering (${result.posts.length - filtered.length} rejected)`);
             let batchResult = null;
-            if (result.posts.length > 0) {
-                batchResult = await (0, backendClient_1.sendLeadsBatch)(result.posts);
+            if (filtered.length > 0) {
+                batchResult = await (0, backendClient_1.sendLeadsBatch)(filtered);
                 if (batchResult) {
-                    await (0, discord_1.sendNewLeadsAlert)(targetUrl, result.platform, result.posts, batchResult);
+                    await (0, discord_1.sendNewLeadsAlert)(targetUrl, result.platform, filtered, batchResult);
                 }
             }
             const keywordsByUrl = new Map();
@@ -163,7 +168,7 @@ app.post("/api/scrape-url", async (req, res) => {
                 url: targetUrl,
                 success: true,
                 platform: result.platform,
-                postsFound: result.posts.length,
+                postsFound: filtered.length,
                 duration: result.duration,
                 errors: result.errors,
                 batch: batchResult
@@ -173,7 +178,7 @@ app.post("/api/scrape-url", async (req, res) => {
                         results: batchResult.results,
                     }
                     : null,
-                scrapedPosts: result.posts.map((p) => ({
+                scrapedPosts: filtered.map((p) => ({
                     author: p.author,
                     text: p.text.slice(0, 200),
                     url: p.url,
