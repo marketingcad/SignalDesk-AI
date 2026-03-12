@@ -1,41 +1,8 @@
 import { scrapeReddit, scrapeX, scrapeLinkedin, scrapeFacebook } from "../scrapers";
 import { sendLeadsBatch } from "../api/backendClient";
 import { sendRunSummary, sendErrorAlert, sendNewLeadsAlert } from "../alerts/discord";
-import type { Platform, ScrapeResult, ScrapedPost } from "../types";
-
-// ---------------------------------------------------------------------------
-// Pre-filter: reject obvious job seekers and self-promotion before sending
-// ---------------------------------------------------------------------------
-
-const REJECT_PATTERNS = [
-  /\bi(?:'m| am) a virtual assistant\b/i,
-  /\blooking for (?:va |virtual assistant )(?:work|job|position|role)/i,
-  /\bhire me\b/i,
-  /\bva available\b/i,
-  /\bfreelance va here\b/i,
-  /\bavailable for hire\b/i,
-  /\bopen for clients\b/i,
-  /\bi provide va services\b/i,
-  /\bmy services include\b/i,
-  /\b\[for hire\]\b/i,
-  /\boffering va services\b/i,
-  /\bdm me for rates\b/i,
-];
-
-function isJobSeeker(text: string): boolean {
-  return REJECT_PATTERNS.some((pattern) => pattern.test(text));
-}
-
-function filterPosts(posts: ScrapedPost[]): ScrapedPost[] {
-  return posts.filter((post) => {
-    if (!post.text || post.text.trim().length < 20) return false;
-    if (isJobSeeker(post.text)) {
-      console.log(`[crawler] Filtered job seeker: "${post.text.slice(0, 80)}..."`);
-      return false;
-    }
-    return true;
-  });
-}
+import { filterPosts } from "../utils/postFilter";
+import type { Platform, ScrapeResult } from "../types";
 
 // ---------------------------------------------------------------------------
 // Run individual platform
@@ -48,6 +15,7 @@ const SCRAPERS: Record<Platform, ScraperFn> = {
   X: scrapeX,
   LinkedIn: scrapeLinkedin,
   Facebook: scrapeFacebook,
+  Other: async () => ({ platform: "Other" as const, posts: [], duration: 0, errors: [] }),
 };
 
 let runInProgress = false;
@@ -68,7 +36,7 @@ export async function runPlatform(platform: Platform): Promise<ScrapeResult> {
   );
 
   // Pre-filter
-  const filtered = filterPosts(result.posts);
+  const filtered = filterPosts(result.posts, "[crawler]");
   console.log(
     `[crawler] ${platform}: ${filtered.length} posts after filtering (${result.posts.length - filtered.length} rejected)`
   );
@@ -86,7 +54,10 @@ export async function runPlatform(platform: Platform): Promise<ScrapeResult> {
 
   if (result.errors.length > 0) {
     console.warn(`[crawler] ${platform}: ${result.errors.length} errors`);
-    await sendErrorAlert(platform, result.errors.join("\n"));
+    const discordErrors = result.errors.filter((e) => !e.includes("requires login"));
+    if (discordErrors.length > 0) {
+      await sendErrorAlert(platform, discordErrors.join("\n"));
+    }
   }
 
   return { ...result, posts: filtered };

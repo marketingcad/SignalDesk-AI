@@ -300,7 +300,7 @@ export const dailyReports: DailyReport[] = [
     highIntent: 9,
     mediumIntent: 17,
     lowIntent: 12,
-    platforms: { Facebook: 15, LinkedIn: 10, Reddit: 8, X: 5 },
+    platforms: { Facebook: 15, LinkedIn: 10, Reddit: 8, X: 5, Other: 0 },
     topLeads: leads.slice(0, 3),
   },
   {
@@ -309,7 +309,7 @@ export const dailyReports: DailyReport[] = [
     highIntent: 12,
     mediumIntent: 20,
     lowIntent: 13,
-    platforms: { Facebook: 18, LinkedIn: 12, Reddit: 9, X: 6 },
+    platforms: { Facebook: 18, LinkedIn: 12, Reddit: 9, X: 6, Other: 0 },
     topLeads: leads.slice(2, 5),
   },
   {
@@ -318,7 +318,7 @@ export const dailyReports: DailyReport[] = [
     highIntent: 10,
     mediumIntent: 16,
     lowIntent: 12,
-    platforms: { Facebook: 14, LinkedIn: 11, Reddit: 8, X: 5 },
+    platforms: { Facebook: 14, LinkedIn: 11, Reddit: 8, X: 5, Other: 0 },
     topLeads: leads.slice(4, 7),
   },
   {
@@ -327,7 +327,7 @@ export const dailyReports: DailyReport[] = [
     highIntent: 14,
     mediumIntent: 15,
     lowIntent: 12,
-    platforms: { Facebook: 16, LinkedIn: 10, Reddit: 10, X: 5 },
+    platforms: { Facebook: 16, LinkedIn: 10, Reddit: 10, X: 5, Other: 0 },
     topLeads: leads.slice(1, 4),
   },
   {
@@ -336,7 +336,7 @@ export const dailyReports: DailyReport[] = [
     highIntent: 6,
     mediumIntent: 10,
     lowIntent: 6,
-    platforms: { Facebook: 9, LinkedIn: 6, Reddit: 4, X: 3 },
+    platforms: { Facebook: 9, LinkedIn: 6, Reddit: 4, X: 3, Other: 0 },
     topLeads: leads.slice(5, 8),
   },
   {
@@ -345,7 +345,7 @@ export const dailyReports: DailyReport[] = [
     highIntent: 11,
     mediumIntent: 14,
     lowIntent: 10,
-    platforms: { Facebook: 13, LinkedIn: 9, Reddit: 8, X: 5 },
+    platforms: { Facebook: 13, LinkedIn: 9, Reddit: 8, X: 5, Other: 0 },
     topLeads: leads.slice(3, 6),
   },
   {
@@ -354,7 +354,7 @@ export const dailyReports: DailyReport[] = [
     highIntent: 8,
     mediumIntent: 12,
     lowIntent: 8,
-    platforms: { Facebook: 11, LinkedIn: 8, Reddit: 5, X: 4 },
+    platforms: { Facebook: 11, LinkedIn: 8, Reddit: 5, X: 4, Other: 0 },
     topLeads: leads.slice(6, 9),
   },
 ];

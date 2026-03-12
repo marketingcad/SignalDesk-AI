@@ -1,4 +1,4 @@
-export type Platform = "Facebook" | "LinkedIn" | "Reddit" | "X";
+export type Platform = "Facebook" | "LinkedIn" | "Reddit" | "X" | "Other";
 
 export type IntentLevel = "High" | "Medium" | "Low";
 

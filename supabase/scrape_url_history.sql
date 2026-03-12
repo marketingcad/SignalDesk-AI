@@ -18,7 +18,7 @@ create table if not exists public.scrape_url_sessions (
   scraped_url     text        not null,
 
   -- Platform detected by the scraper service (Facebook, LinkedIn, Reddit, X)
-  platform        text        check (platform in ('Facebook', 'LinkedIn', 'Reddit', 'X')),
+  platform        text        check (platform in ('Facebook', 'LinkedIn', 'Reddit', 'X', 'Other')),
 
   -- Outcome counters
   posts_found     integer     not null default 0,
@@ -72,7 +72,7 @@ create table if not exists public.scraped_posts (
   post_url          text        not null,           -- direct link to the post
 
   -- Platform the post belongs to
-  platform          text        check (platform in ('Facebook', 'LinkedIn', 'Reddit', 'X')),
+  platform          text        check (platform in ('Facebook', 'LinkedIn', 'Reddit', 'X', 'Other')),
 
   -- Date & time the post was originally published (may be null if scraper can't detect it)
   post_date         timestamptz,

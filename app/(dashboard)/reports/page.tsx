@@ -44,7 +44,7 @@ export default function ReportsPage() {
               highIntent: 0,
               mediumIntent: 0,
               lowIntent: 0,
-              platforms: { Facebook: 0, LinkedIn: 0, Reddit: 0, X: 0 },
+              platforms: { Facebook: 0, LinkedIn: 0, Reddit: 0, X: 0, Other: 0 },
               topLeads: [],
             };
           }

@@ -12,6 +12,7 @@ const platformLabels: Record<Platform, string> = {
   LinkedIn: "LI",
   Reddit: "RD",
   X: "X",
+  Other: "Web",
 };
 
 export function PlatformBadge({ platform, size = "md" }: PlatformBadgeProps) {

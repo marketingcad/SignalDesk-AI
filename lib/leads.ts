@@ -204,6 +204,7 @@ export async function getDailyReports(days = 7): Promise<DailyReport[]> {
       LinkedIn: 0,
       Reddit: 0,
       X: 0,
+      Other: 0,
     };
     for (const lead of dayLeads) {
       platforms[lead.platform]++;

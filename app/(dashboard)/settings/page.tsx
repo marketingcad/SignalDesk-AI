@@ -24,15 +24,15 @@ import {
 type KeywordCategory = "high_intent" | "medium_intent" | "negative";
 type KeywordsState = Record<KeywordCategory, string[]>;
 
-const ALL_PLATFORMS: Platform[] = ["Facebook", "LinkedIn", "Reddit", "X"];
+const ALL_PLATFORMS: Platform[] = ["Facebook", "LinkedIn", "Reddit", "X", "Other"];
 
 export default function SettingsPage() {
   // --- Platform state ---
   const [platformToggles, setPlatformToggles] = useState<Record<Platform, boolean>>({
-    Facebook: true, LinkedIn: true, Reddit: true, X: false,
+    Facebook: true, LinkedIn: true, Reddit: true, X: false, Other: true,
   });
   const [platformCounts, setPlatformCounts] = useState<Record<Platform, number>>({
-    Facebook: 0, LinkedIn: 0, Reddit: 0, X: 0,
+    Facebook: 0, LinkedIn: 0, Reddit: 0, X: 0, Other: 0,
   });
 
   // --- Keywords state ---
@@ -80,7 +80,7 @@ export default function SettingsPage() {
 
         if (countsRes.ok) {
           const counts = await countsRes.json();
-          const mapped: Record<Platform, number> = { Facebook: 0, LinkedIn: 0, Reddit: 0, X: 0 };
+          const mapped: Record<Platform, number> = { Facebook: 0, LinkedIn: 0, Reddit: 0, X: 0, Other: 0 };
           for (const p of ALL_PLATFORMS) {
             mapped[p] = counts[p]?.total ?? 0;
           }

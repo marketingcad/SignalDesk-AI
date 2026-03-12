@@ -27,7 +27,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { AuthTransition } from "@/components/auth-transition";
 
-const ALL_PLATFORMS: Platform[] = ["Facebook", "LinkedIn", "Reddit", "X"];
+const ALL_PLATFORMS: Platform[] = ["Facebook", "LinkedIn", "Reddit", "X", "Other"];
 
 const baseNavItems = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Overview" },

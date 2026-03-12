@@ -115,6 +115,7 @@ const PLATFORM_META: Record<string, { color: string; bg: string; border: string;
   LinkedIn: { color: "text-sky-400",    bg: "bg-sky-500/10",    border: "border-sky-500/20",    dot: "bg-sky-400",    accent: "border-l-sky-500" },
   Reddit:   { color: "text-orange-400", bg: "bg-orange-500/10", border: "border-orange-500/20", dot: "bg-orange-400", accent: "border-l-orange-500" },
   X:        { color: "text-zinc-300",   bg: "bg-zinc-500/10",   border: "border-zinc-500/20",   dot: "bg-zinc-300",   accent: "border-l-zinc-500" },
+  Other:    { color: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/20", dot: "bg-emerald-400", accent: "border-l-emerald-500" },
 };
 
 const PLATFORM_EXAMPLES = [
@@ -122,6 +123,7 @@ const PLATFORM_EXAMPLES = [
   { name: "LinkedIn", tip: "Professional hiring/outsourcing posts", examples: ["https://www.linkedin.com/posts/..."] },
   { name: "Reddit",   tip: "Subreddits about hiring or delegation", examples: ["https://www.reddit.com/r/entrepreneur/"] },
   { name: "X",        tip: "Profiles & tweets needing VAs", examples: ["https://x.com/username"] },
+  { name: "Other",    tip: "Any website — blogs, forums, job boards", examples: ["https://example.com/jobs"] },
 ];
 
 const CRON_PRESETS = [
@@ -144,7 +146,8 @@ function detectPlatform(url: string): string | null {
   if (/linkedin\.com/i.test(url)) return "LinkedIn";
   if (/reddit\.com/i.test(url)) return "Reddit";
   if (/x\.com|twitter\.com/i.test(url)) return "X";
-  return null;
+  // Any valid URL is supported via generic extraction
+  try { new URL(url); return "Other"; } catch { return null; }
 }
 
 function cronLabel(expr: string): string {
@@ -152,7 +155,21 @@ function cronLabel(expr: string): string {
 }
 
 function cronIntervalMs(expr: string): number {
-  return CRON_PRESETS.find((p) => p.value === expr)?.intervalMs ?? 0;
+  const preset = CRON_PRESETS.find((p) => p.value === expr);
+  if (preset) return preset.intervalMs;
+  // Parse common cron patterns: */N for minutes/hours
+  const parts = expr.trim().split(/\s+/);
+  if (parts.length !== 5) return 0;
+  const [min, hour] = parts;
+  // */N * * * * → every N minutes
+  const minStep = min.match(/^\*\/(\d+)$/);
+  if (minStep && hour === "*") return parseInt(minStep[1], 10) * 60 * 1000;
+  // 0 */N * * * → every N hours
+  const hourStep = hour.match(/^\*\/(\d+)$/);
+  if (hourStep && (min === "0" || min === "00")) return parseInt(hourStep[1], 10) * 60 * 60 * 1000;
+  // 0 N * * * → daily at hour N (24h interval)
+  if (/^\d+$/.test(min) && /^\d+$/.test(hour) && parts[2] === "*") return 24 * 60 * 60 * 1000;
+  return 0;
 }
 
 function formatMs(ms: number): string {
@@ -304,18 +321,19 @@ function ScheduleTableRow({
   const intervalMs = cronIntervalMs(schedule.cron);
 
   useEffect(() => {
-    if (schedule.status !== "active" || !schedule.lastRunAt || !intervalMs) {
+    const baseTime = schedule.lastRunAt ?? schedule.createdAt;
+    if (schedule.status !== "active" || !baseTime || !intervalMs) {
       setMsLeft(null);
       return;
     }
     const compute = () => {
-      const next = new Date(schedule.lastRunAt!).getTime() + intervalMs;
+      const next = new Date(baseTime).getTime() + intervalMs;
       setMsLeft(Math.max(0, next - Date.now()));
     };
     compute();
     const t = setInterval(compute, 1000);
     return () => clearInterval(t);
-  }, [schedule.lastRunAt, schedule.status, intervalMs]);
+  }, [schedule.lastRunAt, schedule.createdAt, schedule.status, intervalMs]);
 
   const progress =
     msLeft !== null && intervalMs > 0
@@ -399,17 +417,18 @@ function ScheduleTableRow({
         ) : null}
       </div>
 
-      {/* Col 5 — View runs */}
+      {/* Col 5 — Runs count + view */}
       <div className="flex items-start justify-end pt-0.5">
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-primary"
+              <Button size="sm" variant="ghost" className="h-7 gap-1 px-1.5 text-muted-foreground hover:text-primary"
                 onClick={() => onViewRuns(schedule.id)}>
                 <Activity className="h-3.5 w-3.5" />
+                <span className="text-[11px] font-medium">{schedule.totalRuns}</span>
               </Button>
             </TooltipTrigger>
-            <TooltipContent>View runs</TooltipContent>
+            <TooltipContent>View {schedule.totalRuns} run{schedule.totalRuns !== 1 ? "s" : ""}</TooltipContent>
           </Tooltip>
         </TooltipProvider>
       </div>
@@ -674,7 +693,7 @@ export default function ScrapeUrlPage() {
     <div className="flex flex-col gap-6 p-6">
       <Header
         title="Scrape URL"
-        subtitle="Extract leads from any supported platform — instantly or on a custom auto-schedule"
+        subtitle="Extract leads from any URL — social platforms, forums, blogs, job boards & more"
       />
 
       {/* Tabs */}
@@ -1108,146 +1127,6 @@ export default function ScrapeUrlPage() {
                 </Button>
                 </div>
               </div>
-            </Card>
-
-          </div>
-
-          {/* ── Schedule list (right 3 cols) ───────────────── */}
-          <div className="col-span-3">
-            <Card className="border-border bg-card overflow-hidden">
-              <div className="border-b border-border px-5 py-3 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Calendar className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm font-semibold text-foreground">Active Schedules</span>
-                  {schedules.length > 0 && (
-                    <Badge variant="secondary" className="text-[10px]">{schedules.length}</Badge>
-                  )}
-                </div>
-                <Button variant="ghost" size="sm" className="gap-1.5 h-7 text-xs text-muted-foreground"
-                  onClick={() => loadSchedules()}>
-                  <RefreshCw className={cn("h-3 w-3", schedulesLoading && "animate-spin")} />
-                  Refresh
-                </Button>
-              </div>
-
-              {schedulesLoading ? (
-                <div className="flex items-center justify-center py-12 gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                  <span className="text-xs text-muted-foreground">Loading schedules…</span>
-                </div>
-              ) : schedules.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-muted/60">
-                    <Calendar className="h-6 w-6 text-muted-foreground/40" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-foreground">No schedules yet</p>
-                    <p className="text-xs text-muted-foreground mt-1">Create your first schedule using the form on the left</p>
-                  </div>
-                </div>
-              ) : (
-                <div className="divide-y divide-border max-h-130 overflow-y-auto">
-                  {schedules.map((s) => {
-                    const platform = detectPlatform(s.url);
-                    const isRunningNow = runningId === s.id;
-                    return (
-                      <div key={s.id} className="px-4 py-3.5 space-y-2 hover:bg-muted/20 transition-colors">
-                        {/* Row 1 — name + status */}
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <PlatformBadge platform={platform} />
-                            <span className="text-sm font-semibold text-foreground truncate">{s.name}</span>
-                          </div>
-                          <Badge
-                            variant="outline"
-                            className={cn(
-                              "text-[10px] px-1.5 rounded-full h-5 whitespace-nowrap shrink-0",
-                              s.status === "active"
-                                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
-                                : "border-border bg-muted/30 text-muted-foreground"
-                            )}
-                          >
-                            <span className={cn(
-                              "mr-1 h-1.5 w-1.5 rounded-full inline-block shrink-0",
-                              s.status === "active" ? "bg-emerald-400 animate-pulse" : "bg-muted-foreground"
-                            )} />
-                            {s.status === "active" ? "Active" : "Paused"}
-                          </Badge>
-                        </div>
-
-                        {/* Row 2 — URL */}
-                        <p className="text-[11px] text-muted-foreground font-mono truncate" title={s.url}>
-                          {s.url}
-                        </p>
-
-                        {/* Row 3 — metadata + actions */}
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="inline-flex items-center gap-1 rounded-md bg-muted/60 border border-border px-2 py-0.5 text-[11px] font-mono text-foreground whitespace-nowrap">
-                              <Timer className="h-3 w-3 text-muted-foreground shrink-0" />
-                              {cronLabel(s.cron)}
-                            </span>
-                            {s.totalRuns > 0 && (
-                              <span className="text-[11px] text-muted-foreground">{s.totalRuns} runs</span>
-                            )}
-                            {s.lastRunAt && (
-                              <span className="text-[11px] text-muted-foreground">Last: {formatTs(s.lastRunAt)}</span>
-                            )}
-                          </div>
-
-                          <div className="flex items-center gap-0 shrink-0">
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-primary"
-                                    onClick={() => handleRunNow(s.id)} disabled={isRunningNow}>
-                                    {isRunningNow ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>Run now</TooltipContent>
-                              </Tooltip>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  {s.status === "active" ? (
-                                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-amber-400"
-                                      onClick={() => handlePause(s.id)}>
-                                      <Pause className="h-3.5 w-3.5" />
-                                    </Button>
-                                  ) : (
-                                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-emerald-400"
-                                      onClick={() => handleResume(s.id)}>
-                                      <Play className="h-3.5 w-3.5" />
-                                    </Button>
-                                  )}
-                                </TooltipTrigger>
-                                <TooltipContent>{s.status === "active" ? "Pause" : "Resume"}</TooltipContent>
-                              </Tooltip>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-rose-400"
-                                    onClick={() => handleDelete(s.id)}>
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>Delete</TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* Footer */}
-              {schedules.length > 0 && (
-                <div className="border-t border-border px-4 py-3 bg-muted/20 flex items-center justify-between">
-                  <p className="text-[11px] text-muted-foreground">
-                    {schedules.filter((s) => s.status === "active").length} of {schedules.length} active
-                  </p>
-                </div>
-              )}
             </Card>
           </div>
         </div>

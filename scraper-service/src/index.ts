@@ -23,6 +23,7 @@ import { scrapeUrl } from "./scrapers";
 import { sendLeadsBatch } from "./api/backendClient";
 import { sendErrorAlert, sendNewLeadsAlert } from "./alerts/discord";
 import { loginAndSave, hasSavedCookies } from "./crawler/browserAuth";
+import { filterPosts } from "./utils/postFilter";
 import type { Platform, UrlScrapeItemResult } from "./types";
 
 const app = express();
@@ -78,7 +79,7 @@ app.post("/api/run", async (req, res) => {
 // Manual trigger: run single platform
 // ---------------------------------------------------------------------------
 
-const VALID_PLATFORMS: Platform[] = ["Reddit", "X", "LinkedIn", "Facebook"];
+const VALID_PLATFORMS: Platform[] = ["Reddit", "X", "LinkedIn", "Facebook", "Other"];
 
 app.post("/api/run/:platform", async (req, res) => {
   if (!checkAuth(req, res)) return;
@@ -146,15 +147,22 @@ app.post("/api/scrape-url", async (req, res) => {
     try {
       const result = await scrapeUrl(targetUrl);
 
-      if (result.errors.length > 0) {
-        await sendErrorAlert(result.platform, result.errors.join("\n"));
+      const discordErrors = result.errors.filter((e) => !e.includes("requires login"));
+      if (discordErrors.length > 0) {
+        await sendErrorAlert(result.platform, discordErrors.join("\n"));
       }
 
+      // Pre-filter: reject job seekers and too-short posts (same as crawlerManager)
+      const filtered = filterPosts(result.posts, "[url-scraper]");
+      console.log(
+        `[url-scraper] ${filtered.length} posts after filtering (${result.posts.length - filtered.length} rejected)`
+      );
+
       let batchResult = null;
-      if (result.posts.length > 0) {
-        batchResult = await sendLeadsBatch(result.posts);
+      if (filtered.length > 0) {
+        batchResult = await sendLeadsBatch(filtered);
         if (batchResult) {
-          await sendNewLeadsAlert(targetUrl, result.platform, result.posts, batchResult);
+          await sendNewLeadsAlert(targetUrl, result.platform, filtered, batchResult);
         }
       }
 
@@ -167,7 +175,7 @@ app.post("/api/scrape-url", async (req, res) => {
         url: targetUrl,
         success: true,
         platform: result.platform,
-        postsFound: result.posts.length,
+        postsFound: filtered.length,
         duration: result.duration,
         errors: result.errors,
         batch: batchResult
@@ -177,7 +185,7 @@ app.post("/api/scrape-url", async (req, res) => {
               results: batchResult.results,
             }
           : null,
-        scrapedPosts: result.posts.map((p) => ({
+        scrapedPosts: filtered.map((p) => ({
           author: p.author,
           text: p.text.slice(0, 200),
           url: p.url,

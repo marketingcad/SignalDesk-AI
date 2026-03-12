@@ -5,7 +5,7 @@
 
 create table if not exists public.leads (
   id               uuid primary key default gen_random_uuid(),
-  platform         text not null check (platform in ('Facebook', 'LinkedIn', 'Reddit', 'X')),
+  platform         text not null check (platform in ('Facebook', 'LinkedIn', 'Reddit', 'X', 'Other')),
   source           text not null,
   username         text not null,
   text             text not null,

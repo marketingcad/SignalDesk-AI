@@ -5,6 +5,7 @@ import { randomUUID } from "crypto";
 import { scrapeUrl } from "../scrapers";
 import { sendLeadsBatch } from "../api/backendClient";
 import { sendNewLeadsAlert, sendErrorAlert } from "../alerts/discord";
+import { filterPosts } from "../utils/postFilter";
 import { isRunning } from "../crawler/crawlerManager";
 import type {
   UrlSchedule,
@@ -61,16 +62,25 @@ async function runSchedule(id: string): Promise<void> {
   try {
     const result = await scrapeUrl(schedule.url);
 
-    if (result.posts.length > 0) {
-      const batchResult = await sendLeadsBatch(result.posts);
+    // Pre-filter: reject job seekers (same as crawlerManager + url-scraper)
+    const filtered = filterPosts(result.posts, "[url-scheduler]");
+    console.log(
+      `[url-scheduler] ${filtered.length} posts after filtering (${result.posts.length - filtered.length} rejected)`
+    );
+
+    if (filtered.length > 0) {
+      const batchResult = await sendLeadsBatch(filtered);
       if (batchResult) {
-        await sendNewLeadsAlert(schedule.url, result.platform, result.posts, batchResult);
+        await sendNewLeadsAlert(schedule.url, result.platform, filtered, batchResult);
       }
     }
 
     if (result.errors.length > 0) {
       runStatus = "error";
-      await sendErrorAlert(result.platform, result.errors.join("\n"));
+      const discordErrors = result.errors.filter((e) => !e.includes("requires login"));
+      if (discordErrors.length > 0) {
+        await sendErrorAlert(result.platform, discordErrors.join("\n"));
+      }
     }
   } catch (err) {
     runStatus = "error";
