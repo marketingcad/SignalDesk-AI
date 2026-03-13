@@ -6,10 +6,10 @@
     "cron": "*/30 * * * *",
     "status": "active",
     "createdAt": "2026-03-13T13:41:41.110Z",
-    "updatedAt": "2026-03-13T16:30:24.956Z",
-    "lastRunAt": "2026-03-13T16:30:24.956Z",
-    "lastRunStatus": "ok",
-    "totalRuns": 6
+    "updatedAt": "2026-03-13T18:30:09.447Z",
+    "lastRunAt": "2026-03-13T18:30:09.447Z",
+    "lastRunStatus": "error",
+    "totalRuns": 8
   },
   {
     "id": "1d9c408a-e0bd-4ff3-8fdf-03f0ef52ba0e",
@@ -18,10 +18,10 @@
     "cron": "*/30 * * * *",
     "status": "active",
     "createdAt": "2026-03-13T13:41:41.157Z",
-    "updatedAt": "2026-03-13T16:30:25.247Z",
-    "lastRunAt": "2026-03-13T16:30:25.247Z",
-    "lastRunStatus": "ok",
-    "totalRuns": 6
+    "updatedAt": "2026-03-13T18:30:09.696Z",
+    "lastRunAt": "2026-03-13T18:30:09.696Z",
+    "lastRunStatus": "error",
+    "totalRuns": 9
   },
   {
     "id": "017a716f-c7f4-4bdf-a470-e01840b8a2a5",
@@ -30,10 +30,10 @@
     "cron": "*/30 * * * *",
     "status": "active",
     "createdAt": "2026-03-13T13:41:41.189Z",
-    "updatedAt": "2026-03-13T16:30:25.476Z",
-    "lastRunAt": "2026-03-13T16:30:25.476Z",
-    "lastRunStatus": "ok",
-    "totalRuns": 6
+    "updatedAt": "2026-03-13T18:30:09.451Z",
+    "lastRunAt": "2026-03-13T18:30:09.451Z",
+    "lastRunStatus": "error",
+    "totalRuns": 8
   },
   {
     "id": "d1d442a9-100c-4e06-bff5-5aea7654ca55",
@@ -42,10 +42,10 @@
     "cron": "*/30 * * * *",
     "status": "active",
     "createdAt": "2026-03-13T13:41:41.211Z",
-    "updatedAt": "2026-03-13T16:30:25.240Z",
-    "lastRunAt": "2026-03-13T16:30:25.240Z",
-    "lastRunStatus": "ok",
-    "totalRuns": 6
+    "updatedAt": "2026-03-13T18:30:09.442Z",
+    "lastRunAt": "2026-03-13T18:30:09.442Z",
+    "lastRunStatus": "error",
+    "totalRuns": 9
   },
   {
     "id": "afc1e055-0c32-431b-8277-bbd4ea39c508",

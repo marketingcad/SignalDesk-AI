@@ -1,4 +1,5 @@
 import { chromium } from "playwright";
+import type { Page, Response as PlaywrightResponse } from "playwright";
 import { config } from "../config";
 import { hasSavedCookies, getProfileDir, getStorageState, shouldUseStorageState } from "../crawler/browserAuth";
 import { isCurrentWeek, isOlderThanCurrentWeek, resolveTimestamp } from "../utils/dateHelpers";
@@ -17,23 +18,266 @@ function detectPlatform(url: string): Platform | null {
 }
 
 // ---------------------------------------------------------------------------
-// Facebook extractor — permalink-focused extraction
+// Facebook: detect if URL is a search URL
 // ---------------------------------------------------------------------------
 
-async function extractFacebook(page: import("playwright").Page, groupUrl: string): Promise<Omit<ScrapedPost, "platform" | "source">[]> {
-  console.log(`[url-scraper] Extracting Facebook posts with permalink detection...`);
+export function isFacebookSearchUrl(url: string): boolean {
+  return /facebook\.com\/search\/(posts|top|groups)/i.test(url);
+}
 
+export function buildFacebookSearchUrl(keyword: string): string {
+  return `https://www.facebook.com/search/posts/?q=${encodeURIComponent(keyword)}`;
+}
+
+// ---------------------------------------------------------------------------
+// Facebook: GraphQL response parser
+// ---------------------------------------------------------------------------
+
+interface GraphQLPost {
+  postId: string;
+  author: string;
+  text: string;
+  timestamp: string;
+  permalink: string;
+  groupId: string;
+  groupName: string;
+}
+
+/**
+ * Recursively walk a parsed JSON object looking for Facebook post data.
+ * Facebook GraphQL responses nest posts in various structures — we search
+ * for any object that has recognisable post fields (message, creation_time,
+ * actors, post_id / id with comet_sections, etc.).
+ */
+function extractPostsFromGraphQL(obj: unknown, baseUrl: string): GraphQLPost[] {
+  const results: GraphQLPost[] = [];
+  const seen = new Set<string>();
+
+  function walk(node: unknown): void {
+    if (node === null || node === undefined) return;
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item);
+      return;
+    }
+    if (typeof node !== "object") return;
+
+    const n = node as Record<string, unknown>;
+
+    // ── Pattern 1: story node with message + actors ──
+    // Common in group_feed edges: { message: { text }, actors: [{ name }], post_id, creation_time }
+    if (typeof n.message === "object" && n.message !== null) {
+      const msg = n.message as Record<string, unknown>;
+      const text = typeof msg.text === "string" ? msg.text : "";
+
+      if (text.length > 10) {
+        const postId = String(n.post_id ?? n.id ?? n.story_id ?? "");
+        if (postId && !seen.has(postId)) {
+          seen.add(postId);
+
+          // Author
+          let author = "unknown";
+          if (Array.isArray(n.actors) && n.actors.length > 0) {
+            const actor = n.actors[0] as Record<string, unknown>;
+            author = typeof actor.name === "string" ? actor.name : "unknown";
+          } else if (typeof n.author === "object" && n.author !== null) {
+            const a = n.author as Record<string, unknown>;
+            author = typeof a.name === "string" ? a.name : "unknown";
+          }
+
+          // Timestamp
+          let timestamp = "";
+          if (typeof n.creation_time === "number") {
+            timestamp = new Date(n.creation_time * 1000).toISOString();
+          } else if (typeof n.created_time === "number") {
+            timestamp = new Date(n.created_time * 1000).toISOString();
+          } else if (typeof n.publish_time === "number") {
+            timestamp = new Date(n.publish_time * 1000).toISOString();
+          }
+
+          // Group context
+          let groupId = "";
+          let groupName = "";
+          if (typeof n.to === "object" && n.to !== null) {
+            const to = n.to as Record<string, unknown>;
+            if (typeof to.id === "string") groupId = to.id;
+            if (typeof to.name === "string") groupName = to.name;
+          }
+
+          // Permalink
+          let permalink = "";
+          if (typeof n.url === "string" && n.url.includes("facebook.com")) {
+            permalink = n.url;
+          } else if (typeof n.permalink_url === "string") {
+            permalink = n.permalink_url;
+          } else if (groupId && postId) {
+            permalink = `${baseUrl}/groups/${groupId}/posts/${postId}`;
+          } else if (postId) {
+            permalink = `${baseUrl}/${postId}`;
+          }
+
+          results.push({ postId, author, text, timestamp, permalink, groupId, groupName });
+        }
+      }
+    }
+
+    // ── Pattern 2: comet_sections pattern (CometFeedStory) ──
+    if (typeof n.comet_sections === "object" && n.comet_sections !== null) {
+      const sections = n.comet_sections as Record<string, unknown>;
+      // Walk into content.story, context_layout.story, etc.
+      walk(sections);
+    }
+
+    // ── Pattern 3: creation_story wrapper ──
+    if (typeof n.creation_story === "object" && n.creation_story !== null) {
+      walk(n.creation_story);
+    }
+
+    // ── Pattern 4: node.story or node.attached_story ──
+    if (typeof n.story === "object" && n.story !== null) {
+      walk(n.story);
+    }
+    if (typeof n.attached_story === "object" && n.attached_story !== null) {
+      walk(n.attached_story);
+    }
+
+    // ── Pattern 5: edges array (relay-style pagination) ──
+    if (Array.isArray(n.edges)) {
+      for (const edge of n.edges) {
+        if (typeof edge === "object" && edge !== null) {
+          walk((edge as Record<string, unknown>).node ?? edge);
+        }
+      }
+    }
+
+    // ── Pattern 6: feed_units, group_feed, search_results ──
+    for (const key of ["feed_units", "group_feed", "search_results", "results", "nodes", "items"]) {
+      if (n[key] !== undefined) walk(n[key]);
+    }
+
+    // Recurse into all object values to catch deeply nested posts
+    for (const key of Object.keys(n)) {
+      if (["message", "actors", "edges", "comet_sections", "creation_story", "story", "attached_story"].includes(key)) continue; // already handled
+      const val = n[key];
+      if (typeof val === "object" && val !== null) {
+        walk(val);
+      }
+    }
+  }
+
+  walk(obj);
+  return results;
+}
+
+/**
+ * Parse a GraphQL response body. Facebook often sends multiple JSON objects
+ * concatenated (one per line) or wrapped in `for (;;);` prefix.
+ */
+function parseGraphQLResponseBody(body: string, baseUrl: string): GraphQLPost[] {
+  const results: GraphQLPost[] = [];
+
+  // Strip Facebook's anti-XSSI prefix
+  let cleaned = body.replace(/^for\s*\(;;\);?\s*/, "");
+
+  // Try parsing as single JSON first
+  try {
+    const json = JSON.parse(cleaned);
+    results.push(...extractPostsFromGraphQL(json, baseUrl));
+    return results;
+  } catch {
+    // Not a single JSON object — try line-by-line
+  }
+
+  // Facebook often sends newline-delimited JSON
+  for (const line of cleaned.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || !trimmed.startsWith("{")) continue;
+    try {
+      const json = JSON.parse(trimmed);
+      results.push(...extractPostsFromGraphQL(json, baseUrl));
+    } catch {
+      // skip unparseable lines
+    }
+  }
+
+  return results;
+}
+
+// ---------------------------------------------------------------------------
+// Facebook: keyword / NLP matching
+// ---------------------------------------------------------------------------
+
+const DEFAULT_KEYWORDS = config.targets.facebookSearchQueries;
+
+/**
+ * Check if a post's text matches any of the given keywords.
+ * Uses case-insensitive substring + word-boundary matching for accuracy.
+ * Returns the list of matched keywords (empty = no match).
+ */
+export function matchKeywords(text: string, keywords: string[]): string[] {
+  const lower = text.toLowerCase();
+  const matched: string[] = [];
+  for (const kw of keywords) {
+    const kwLower = kw.toLowerCase().trim();
+    if (!kwLower) continue;
+    // Check both simple substring and word-boundary match
+    if (lower.includes(kwLower)) {
+      matched.push(kw.trim());
+    } else {
+      // Try individual significant words (2+ word keywords)
+      const words = kwLower.split(/\s+/).filter((w) => w.length > 2);
+      if (words.length >= 2) {
+        const wordMatches = words.filter((w) => lower.includes(w));
+        if (wordMatches.length >= Math.ceil(words.length * 0.7)) {
+          matched.push(kw.trim());
+        }
+      }
+    }
+  }
+  return matched;
+}
+
+// ---------------------------------------------------------------------------
+// Facebook extractor — GraphQL interception + DOM fallback
+// ---------------------------------------------------------------------------
+
+async function extractFacebook(page: Page, groupUrl: string): Promise<Omit<ScrapedPost, "platform" | "source">[]> {
+  console.log(`[url-scraper] Extracting Facebook posts via GraphQL interception + DOM fallback...`);
+
+  const baseUrl = new URL(groupUrl).origin; // https://www.facebook.com
+  const graphqlPosts: GraphQLPost[] = [];
+  let graphqlResponseCount = 0;
+
+  // ── Step 1: Set up GraphQL response interception ──
+  const responseHandler = async (response: PlaywrightResponse) => {
+    const url = response.url();
+    if (!url.includes("/api/graphql") && !url.includes("graphql")) return;
+
+    try {
+      const body = await response.text();
+      graphqlResponseCount++;
+      const posts = parseGraphQLResponseBody(body, baseUrl);
+      if (posts.length > 0) {
+        graphqlPosts.push(...posts);
+        console.log(`[url-scraper]   GraphQL response #${graphqlResponseCount}: extracted ${posts.length} posts (total: ${graphqlPosts.length})`);
+      }
+    } catch {
+      // Response may not be readable (e.g. binary, streaming)
+    }
+  };
+
+  page.on("response", responseHandler);
+
+  // ── Step 2: Scroll to trigger dynamic content & GraphQL requests ──
   let hitOldPost = false;
 
-  // Scroll to load posts, stop early if we hit old posts
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < 10; i++) {
     if (hitOldPost) {
       console.log(`[url-scraper]   Stopping scroll — detected posts older than current week`);
       break;
     }
     await page.evaluate(() => window.scrollBy(0, window.innerHeight));
-    await page.waitForTimeout(1500);
-    console.log(`[url-scraper]   Scroll ${i + 1}/8`);
+    await page.waitForTimeout(2000); // slightly longer wait to let GraphQL responses arrive
+    console.log(`[url-scraper]   Scroll ${i + 1}/10 (GraphQL posts so far: ${graphqlPosts.length})`);
 
     // Quick check: do we have timestamps indicating old posts?
     const oldPostDetected = await page.evaluate(() => {
@@ -55,6 +299,70 @@ async function extractFacebook(page: import("playwright").Page, groupUrl: string
     });
     if (oldPostDetected) hitOldPost = true;
   }
+
+  // Remove listener after scrolling is done
+  page.off("response", responseHandler);
+
+  console.log(`[url-scraper] GraphQL interception complete: ${graphqlResponseCount} responses, ${graphqlPosts.length} posts extracted`);
+
+  // ── Step 3: Process GraphQL posts ──
+  if (graphqlPosts.length > 0) {
+    const seen = new Set<string>();
+    const deduped = graphqlPosts.filter((p) => {
+      if (seen.has(p.postId)) return false;
+      seen.add(p.postId);
+      return true;
+    });
+
+    // Resolve timestamps and filter to current week
+    const withTs = deduped.map((p) => ({
+      ...p,
+      resolvedTs: resolveTimestamp(p.timestamp),
+    }));
+
+    const currentWeek = withTs.filter((p) => isCurrentWeek(p.resolvedTs));
+    const oldCount = withTs.filter((p) => isOlderThanCurrentWeek(p.resolvedTs)).length;
+
+    console.log(`[url-scraper] Facebook GraphQL: ${deduped.length} unique posts, ${currentWeek.length} current week, ${oldCount} older (skipped)`);
+
+    // ── Step 4: Keyword/NLP filtering ──
+    const keywords = DEFAULT_KEYWORDS;
+    const keywordFiltered = currentWeek.map((p) => ({
+      ...p,
+      matchedKeywords: matchKeywords(p.text, keywords),
+    }));
+
+    // Log keyword matches
+    const withMatches = keywordFiltered.filter((p) => p.matchedKeywords.length > 0);
+    const noMatches = keywordFiltered.filter((p) => p.matchedKeywords.length === 0);
+
+    console.log(`[url-scraper] Keyword filtering: ${withMatches.length} matched, ${noMatches.length} unmatched`);
+    keywordFiltered.forEach((p, i) => {
+      const kwTag = p.matchedKeywords.length > 0 ? ` [KW: ${p.matchedKeywords.join(", ")}]` : " [no keyword match]";
+      console.log(`[url-scraper]   ${i + 1}. [${p.author}] "${p.text.slice(0, 120)}..."${kwTag} -> ${p.permalink.slice(0, 100)}`);
+    });
+
+    // Return ALL current-week posts (keyword info is logged; backend AI scoring handles prioritisation)
+    return keywordFiltered.map((p) => ({
+      author: p.author,
+      text: p.text,
+      url: p.permalink,
+      timestamp: p.resolvedTs || new Date().toISOString(),
+      engagement: 0,
+    }));
+  }
+
+  // ── Step 5: DOM fallback — if GraphQL yielded nothing ──
+  console.log(`[url-scraper] GraphQL yielded 0 posts — falling back to DOM extraction...`);
+  return extractFacebookDOM(page, groupUrl);
+}
+
+// ---------------------------------------------------------------------------
+// Facebook DOM extractor (original approach, used as fallback)
+// ---------------------------------------------------------------------------
+
+async function extractFacebookDOM(page: Page, groupUrl: string): Promise<Omit<ScrapedPost, "platform" | "source">[]> {
+  console.log(`[url-scraper] DOM fallback: extracting Facebook posts from div[role="article"]...`);
 
   // Click "See more" buttons to expand truncated post text
   try {
@@ -100,13 +408,6 @@ async function extractFacebook(page: import("playwright").Page, groupUrl: string
 
     /**
      * Extract permalink from a post article element.
-     * Facebook uses several URL patterns for post permalinks:
-     *   /posts/{postId}
-     *   /permalink/{postId}
-     *   story_fbid=...
-     *   /p/{postId}
-     *   /groups/{groupId}/posts/{postId}
-     * We look for <a> tags containing these patterns.
      */
     function extractPermalink(article: Element): string {
       function toFullUrl(href: string): string {
@@ -114,7 +415,6 @@ async function extractFacebook(page: import("playwright").Page, groupUrl: string
         catch { return href.startsWith("http") ? href : `${baseUrlArg}${href}`; }
       }
 
-      // Strategy 1: Direct permalink selectors (most reliable)
       const permalinkSelectors = [
         'a[href*="/posts/"]',
         'a[href*="/permalink/"]',
@@ -128,7 +428,6 @@ async function extractFacebook(page: import("playwright").Page, groupUrl: string
         if (link?.href) return toFullUrl(link.href);
       }
 
-      // Strategy 2: Timestamp links — Facebook often makes the timestamp a permalink
       const allAnchors = article.querySelectorAll('a[href]');
       for (const link of allAnchors) {
         const href = (link as HTMLAnchorElement).href || "";
@@ -147,7 +446,6 @@ async function extractFacebook(page: import("playwright").Page, groupUrl: string
         }
       }
 
-      // Strategy 3: Any link with a Facebook post ID pattern
       for (const link of article.querySelectorAll('a[href*="facebook.com"]')) {
         const href = (link as HTMLAnchorElement).href;
         if (/\/(?:posts|permalink|p)\/\d+/.test(href) || /story_fbid=\d+/.test(href)) {
@@ -155,11 +453,9 @@ async function extractFacebook(page: import("playwright").Page, groupUrl: string
         }
       }
 
-      // Strategy 4: Aria-label links — FB wraps timestamps in links with aria-label
       for (const link of allAnchors) {
         const href = (link as HTMLAnchorElement).href || "";
         const ariaLabel = link.getAttribute("aria-label") || "";
-        // Timestamp aria-labels often contain date patterns or relative times
         if (ariaLabel && href.includes("facebook.com") && /\d/.test(ariaLabel)) {
           if (href.includes("/groups/") || href.includes("/posts/") || href.includes("/permalink/") || href.includes("story_fbid")) {
             return href;
@@ -167,8 +463,6 @@ async function extractFacebook(page: import("playwright").Page, groupUrl: string
         }
       }
 
-      // Strategy 5: Look for hidden/nested links in the header area of the post
-      // Modern Facebook puts permalinks in the top section near author name
       const headerArea = article.querySelector('h2, h3, h4, [data-ad-preview="message"]')?.parentElement?.parentElement;
       if (headerArea) {
         for (const link of headerArea.querySelectorAll('a[href*="facebook.com"]')) {
@@ -179,7 +473,6 @@ async function extractFacebook(page: import("playwright").Page, groupUrl: string
         }
       }
 
-      // Strategy 6: data-ft attribute (older FB markup) may contain post IDs
       const dataFt = article.getAttribute("data-ft");
       if (dataFt) {
         try {
@@ -191,7 +484,6 @@ async function extractFacebook(page: import("playwright").Page, groupUrl: string
         } catch { /* ignore parse errors */ }
       }
 
-      // Strategy 7: Broadest search — any link whose path has a long numeric segment (likely a post ID)
       for (const link of allAnchors) {
         const href = (link as HTMLAnchorElement).href || "";
         if (href.includes("facebook.com") && /\/\d{10,}/.test(href)) {
@@ -202,15 +494,12 @@ async function extractFacebook(page: import("playwright").Page, groupUrl: string
       return "";
     }
 
-    // Strategy 1: div[role="article"] — group/feed posts
-    // Only top-level articles (not nested comment articles)
     const allArticles = Array.from(document.querySelectorAll('div[role="article"]'));
     const articles = allArticles.filter(
       (a) => !a.parentElement?.closest('div[role="article"]')
     );
 
     articles.forEach((article) => {
-      // Collect text from div[dir="auto"] that belong to the POST, not comments
       const textEls = article.querySelectorAll('div[dir="auto"]');
       let text = "";
       textEls.forEach((el) => {
@@ -223,16 +512,12 @@ async function extractFacebook(page: import("playwright").Page, groupUrl: string
 
       if (text.length < 20) return;
 
-      // Author — try heading links first (most reliable), then strong inside links
       const authorEl = article.querySelector(
         'h2 a, h3 a, h4 a, strong a, a[role="link"] > strong, a[role="link"] span[dir="auto"]'
       );
       const author = authorEl?.textContent?.trim() || "unknown";
-
-      // *** PERMALINK EXTRACTION — the key improvement ***
       const url = extractPermalink(article);
 
-      // Timestamp
       const abbrEl = article.querySelector('abbr[data-utime]') as HTMLElement | null;
       const timeEl = article.querySelector('time[datetime]') as HTMLElement | null;
       let rawTs = "";
@@ -248,7 +533,6 @@ async function extractFacebook(page: import("playwright").Page, groupUrl: string
       results.push({ author, text, url, rawTs });
     });
 
-    // Strategy 2: Fallback — text blocks for pages/simpler layouts
     if (results.length === 0) {
       const blocks = document.querySelectorAll('div[data-ad-comet-preview="message"], div[data-ad-preview="message"]');
       blocks.forEach((block) => {
@@ -262,7 +546,6 @@ async function extractFacebook(page: import("playwright").Page, groupUrl: string
     return results;
   }, baseUrl);
 
-  // Resolve relative timestamps and filter to current week
   const resolved = posts.map((p) => ({
     ...p,
     resolvedTs: resolveTimestamp(p.rawTs),
@@ -270,9 +553,8 @@ async function extractFacebook(page: import("playwright").Page, groupUrl: string
 
   const filtered = resolved.filter((p) => isCurrentWeek(p.resolvedTs));
 
-  // Log early-stop stats
   const oldCount = resolved.filter((p) => isOlderThanCurrentWeek(p.resolvedTs)).length;
-  console.log(`[url-scraper] Facebook: found ${posts.length} articles, ${filtered.length} from current week, ${oldCount} older (skipped)`);
+  console.log(`[url-scraper] Facebook DOM: found ${posts.length} articles, ${filtered.length} from current week, ${oldCount} older (skipped)`);
   filtered.forEach((p, i) => {
     console.log(`[url-scraper]   ${i + 1}. [${p.author}] "${p.text.slice(0, 120)}..." url=${p.url.slice(0, 100)}`);
   });
@@ -284,6 +566,83 @@ async function extractFacebook(page: import("playwright").Page, groupUrl: string
     timestamp: p.resolvedTs || new Date().toISOString(),
     engagement: 0,
   }));
+}
+
+// ---------------------------------------------------------------------------
+// Facebook search extractor — searches Facebook for keywords via search URL
+// ---------------------------------------------------------------------------
+
+async function extractFacebookSearch(page: Page, searchUrl: string): Promise<Omit<ScrapedPost, "platform" | "source">[]> {
+  console.log(`[url-scraper] Extracting Facebook search results via GraphQL interception...`);
+
+  const baseUrl = "https://www.facebook.com";
+  const graphqlPosts: GraphQLPost[] = [];
+  let graphqlResponseCount = 0;
+
+  // Set up GraphQL response interception
+  const responseHandler = async (response: PlaywrightResponse) => {
+    const url = response.url();
+    if (!url.includes("/api/graphql") && !url.includes("graphql")) return;
+
+    try {
+      const body = await response.text();
+      graphqlResponseCount++;
+      const posts = parseGraphQLResponseBody(body, baseUrl);
+      if (posts.length > 0) {
+        graphqlPosts.push(...posts);
+        console.log(`[url-scraper]   Search GraphQL #${graphqlResponseCount}: ${posts.length} posts (total: ${graphqlPosts.length})`);
+      }
+    } catch {
+      // skip unreadable responses
+    }
+  };
+
+  page.on("response", responseHandler);
+
+  // Scroll search results to load more
+  for (let i = 0; i < 8; i++) {
+    await page.evaluate(() => window.scrollBy(0, window.innerHeight));
+    await page.waitForTimeout(2000);
+    console.log(`[url-scraper]   Search scroll ${i + 1}/8 (posts: ${graphqlPosts.length})`);
+  }
+
+  page.off("response", responseHandler);
+
+  console.log(`[url-scraper] Facebook search: ${graphqlResponseCount} GraphQL responses, ${graphqlPosts.length} posts`);
+
+  // If GraphQL interception worked, use those results
+  if (graphqlPosts.length > 0) {
+    const seen = new Set<string>();
+    const deduped = graphqlPosts.filter((p) => {
+      if (seen.has(p.postId)) return false;
+      seen.add(p.postId);
+      return true;
+    });
+
+    const withTs = deduped.map((p) => ({
+      ...p,
+      resolvedTs: resolveTimestamp(p.timestamp),
+    }));
+
+    const currentWeek = withTs.filter((p) => isCurrentWeek(p.resolvedTs));
+    console.log(`[url-scraper] Facebook search: ${deduped.length} unique, ${currentWeek.length} current week`);
+
+    currentWeek.forEach((p, i) => {
+      console.log(`[url-scraper]   ${i + 1}. [${p.author}] "${p.text.slice(0, 120)}..." -> ${p.permalink.slice(0, 100)}`);
+    });
+
+    return currentWeek.map((p) => ({
+      author: p.author,
+      text: p.text,
+      url: p.permalink,
+      timestamp: p.resolvedTs || new Date().toISOString(),
+      engagement: 0,
+    }));
+  }
+
+  // Fallback: DOM-based extraction of search results
+  console.log(`[url-scraper] Search GraphQL yielded 0 — falling back to DOM...`);
+  return extractFacebookDOM(page, searchUrl);
 }
 
 // ---------------------------------------------------------------------------
@@ -875,7 +1234,11 @@ export async function scrapeUrl(targetUrl: string): Promise<ScrapeResult> {
       let extracted: Omit<ScrapedPost, "platform" | "source">[] = [];
       switch (platform) {
         case "Facebook":
-          extracted = await extractFacebook(page, targetUrl);
+          if (isFacebookSearchUrl(targetUrl)) {
+            extracted = await extractFacebookSearch(page, targetUrl);
+          } else {
+            extracted = await extractFacebook(page, targetUrl);
+          }
           break;
         case "Reddit":
           extracted = await extractReddit(page, targetUrl);
