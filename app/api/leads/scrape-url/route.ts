@@ -80,11 +80,30 @@ async function logScrapedPosts(
   batchResults: BatchResultEntry[]
 ): Promise<void> {
   if (posts.length === 0) return;
+
+  // Filter out posts with unknown authors — their URLs are broken/unusable
+  const validPosts = posts.filter((p) => {
+    if (!p.author || p.author.toLowerCase() === "unknown" || p.author.startsWith("urn:li:")) {
+      console.log(`[scrape-url] Skipping post with unknown/invalid author: "${p.author}" — ${p.url}`);
+      return false;
+    }
+    return true;
+  });
+
+  if (validPosts.length === 0) {
+    console.log(`[scrape-url] All ${posts.length} posts had unknown authors — nothing to save`);
+    return;
+  }
+
+  if (validPosts.length < posts.length) {
+    console.log(`[scrape-url] Filtered out ${posts.length - validPosts.length} posts with unknown authors`);
+  }
+
   const resultByUrl = new Map<string, BatchResultEntry>();
   for (const r of batchResults) {
     if (r.url) resultByUrl.set(r.url, r);
   }
-  const rows = posts.map((p) => {
+  const rows = validPosts.map((p) => {
     const br = resultByUrl.get(p.url);
     return {
       session_id: sessionId,
@@ -126,6 +145,69 @@ export async function GET(request: NextRequest) {
   }
 
   return NextResponse.json({ sessions: data });
+}
+
+export async function DELETE(request: NextRequest) {
+  const token = request.cookies.get(SESSION_COOKIE_NAME)?.value;
+  const session = token ? await verifySession(token) : null;
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { searchParams } = new URL(request.url);
+  const sessionId = searchParams.get("id");
+
+  if (sessionId) {
+    // Delete a single session and its posts
+    const { error: postsErr } = await supabase
+      .from("scraped_posts")
+      .delete()
+      .eq("session_id", sessionId);
+    if (postsErr) {
+      console.error("[scrape-url] Failed to delete posts:", postsErr.message);
+    }
+
+    const { error } = await supabase
+      .from("scrape_url_sessions")
+      .delete()
+      .eq("id", sessionId)
+      .eq("user_id", session.userId);
+
+    if (error) {
+      console.error("[scrape-url] Failed to delete session:", error.message);
+      return NextResponse.json({ error: "Failed to delete session" }, { status: 500 });
+    }
+  } else {
+    // Delete all sessions and their posts for this user
+    // First get all session IDs
+    const { data: sessions } = await supabase
+      .from("scrape_url_sessions")
+      .select("id")
+      .eq("user_id", session.userId);
+
+    if (sessions && sessions.length > 0) {
+      const ids = sessions.map((s) => s.id);
+      const { error: postsErr } = await supabase
+        .from("scraped_posts")
+        .delete()
+        .in("session_id", ids);
+      if (postsErr) {
+        console.error("[scrape-url] Failed to delete posts:", postsErr.message);
+      }
+    }
+
+    const { error } = await supabase
+      .from("scrape_url_sessions")
+      .delete()
+      .eq("user_id", session.userId);
+
+    if (error) {
+      console.error("[scrape-url] Failed to clear history:", error.message);
+      return NextResponse.json({ error: "Failed to clear history" }, { status: 500 });
+    }
+  }
+
+  return NextResponse.json({ success: true });
 }
 
 export async function POST(request: NextRequest) {

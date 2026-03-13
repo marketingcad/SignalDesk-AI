@@ -1,6 +1,3 @@
-2026/03/14-02:33:21.321 6330 Reusing MANIFEST C:\Users\hecew\signal-desk-ai\scraper-service\auth\browser-profile\Default\IndexedDB\https_www.facebook.com_0.indexeddb.leveldb/MANIFEST-000001
-2026/03/14-02:33:21.321 6330 Recovering log #3
-2026/03/14-02:33:21.369 6330 Reusing old log C:\Users\hecew\signal-desk-ai\scraper-service\auth\browser-profile\Default\IndexedDB\https_www.facebook.com_0.indexeddb.leveldb/000003.log 
-2026/03/14-02:34:59.196 6330 Level-0 table #5: started
-2026/03/14-02:34:59.236 6330 Level-0 table #5: 1554387 bytes OK
-2026/03/14-02:34:59.240 6330 Delete type=0 #3
+2026/03/14-04:17:02.327 8544 Reusing MANIFEST C:\Users\hecew\signal-desk-ai\scraper-service\auth\browser-profile\Default\IndexedDB\https_www.facebook.com_0.indexeddb.leveldb/MANIFEST-000001
+2026/03/14-04:17:02.327 8544 Recovering log #4
+2026/03/14-04:17:02.329 8544 Reusing old log C:\Users\hecew\signal-desk-ai\scraper-service\auth\browser-profile\Default\IndexedDB\https_www.facebook.com_0.indexeddb.leveldb/000004.log 

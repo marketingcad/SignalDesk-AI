@@ -636,5 +636,82 @@
     "postsFound": 0,
     "leadsInserted": 0,
     "errorMessage": "Facebook requires login. Run: cd scraper-service && npx ts-node src/crawler/browserAuth.ts"
+  },
+  {
+    "id": "26875ae2-7ba9-48ca-b44c-ee795027bb0b",
+    "scheduleId": "64a2212f-b2d3-4f1f-a3c2-c22829de82c7",
+    "scheduleName": "FB VAs Group (#3)",
+    "startedAt": "2026-03-13T19:15:00.141Z",
+    "finishedAt": "2026-03-13T19:15:43.138Z",
+    "status": "ok",
+    "postsFound": 38,
+    "leadsInserted": 17,
+    "errorMessage": null
+  },
+  {
+    "id": "0dfba81f-c65c-41dc-96e0-42fe5ba8aee8",
+    "scheduleId": "99074c91-89da-41e9-b6d9-5aade4bdc40d",
+    "scheduleName": "FB VAs Group (#4)",
+    "startedAt": "2026-03-13T19:15:00.161Z",
+    "finishedAt": "2026-03-13T19:15:42.840Z",
+    "status": "ok",
+    "postsFound": 30,
+    "leadsInserted": 15,
+    "errorMessage": null
+  },
+  {
+    "id": "34188ea5-707a-4922-9307-1655806fc3e9",
+    "scheduleId": "1b97b6a2-154b-45b2-b6d3-9c2776bc576d",
+    "scheduleName": "FB VAs Group (#1)",
+    "startedAt": "2026-03-13T19:15:00.166Z",
+    "finishedAt": "2026-03-13T19:15:44.985Z",
+    "status": "ok",
+    "postsFound": 38,
+    "leadsInserted": 19,
+    "errorMessage": null
+  },
+  {
+    "id": "cb9739ce-d427-47a2-b2ef-1f5e9dedd0b8",
+    "scheduleId": "e7deeab0-6bb2-4867-b972-e58c9b5ce862",
+    "scheduleName": "FB VAs Group (#2)",
+    "startedAt": "2026-03-13T19:15:00.169Z",
+    "finishedAt": "2026-03-13T19:15:43.839Z",
+    "status": "ok",
+    "postsFound": 44,
+    "leadsInserted": 22,
+    "errorMessage": null
+  },
+  {
+    "id": "b1ba5680-7431-44f4-9569-7809fb358f88",
+    "scheduleId": "ed367279-ca8e-4882-ad2d-65411d0610b8",
+    "scheduleName": "Reddit VAs Group (#1)",
+    "startedAt": "2026-03-13T19:30:00.032Z",
+    "finishedAt": "2026-03-13T19:30:15.731Z",
+    "status": "ok",
+    "postsFound": 0,
+    "leadsInserted": 0,
+    "errorMessage": null
+  },
+  {
+    "id": "b2071300-2a4e-47dc-82f5-6d5e05bef3a3",
+    "scheduleId": "4a13310f-bafe-412a-a9f9-d7411476dcd2",
+    "scheduleName": "Reddit VAs Group (#2)",
+    "startedAt": "2026-03-13T19:30:00.036Z",
+    "finishedAt": "2026-03-13T19:30:15.336Z",
+    "status": "ok",
+    "postsFound": 0,
+    "leadsInserted": 0,
+    "errorMessage": null
+  },
+  {
+    "id": "a4c43310-2ac5-480a-a713-e729d765d3c9",
+    "scheduleId": "ba7023e2-4a9d-49a8-ad9b-19c161199db6",
+    "scheduleName": "Reddit VAs Group (#3)",
+    "startedAt": "2026-03-13T19:30:00.040Z",
+    "finishedAt": "2026-03-13T19:30:15.721Z",
+    "status": "ok",
+    "postsFound": 0,
+    "leadsInserted": 0,
+    "errorMessage": null
   }
 ]

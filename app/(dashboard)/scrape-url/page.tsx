@@ -493,6 +493,8 @@ export default function ScrapeUrlPage() {
   const [scrapeError, setScrapeError] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
+  const [clearingHistory, setClearingHistory] = useState(false);
+  const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
 
   // ── Schedules ────────────────────────────────────────────
   const [schedules, setSchedules] = useState<UrlSchedule[]>([]);
@@ -534,6 +536,26 @@ export default function ScrapeUrlPage() {
       })
       .catch(() => {})
       .finally(() => setHistoryLoading(false));
+  }, []);
+
+  // ── Delete history ─────────────────────────────────────
+  const clearAllHistory = useCallback(async () => {
+    if (!confirm("Clear all scrape history? This cannot be undone.")) return;
+    setClearingHistory(true);
+    try {
+      const res = await fetch("/api/leads/scrape-url", { method: "DELETE" });
+      if (res.ok) setHistory([]);
+    } catch { /* ignore */ }
+    finally { setClearingHistory(false); }
+  }, []);
+
+  const deleteSession = useCallback(async (sessionId: string) => {
+    setDeletingSessionId(sessionId);
+    try {
+      const res = await fetch(`/api/leads/scrape-url?id=${sessionId}`, { method: "DELETE" });
+      if (res.ok) setHistory((prev) => prev.filter((e) => e.id !== sessionId));
+    } catch { /* ignore */ }
+    finally { setDeletingSessionId(null); }
   }, []);
 
   // ── Run history ──────────────────────────────────────
@@ -903,6 +925,20 @@ export default function ScrapeUrlPage() {
                 </div>
                 {history.length > 0 && <Badge variant="secondary" className="text-[10px]">{history.length}</Badge>}
               </div>
+              <div className="flex items-center justify-end px">
+                {history.length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-[11px] text-muted-foreground hover:text-rose-400"
+                  onClick={clearAllHistory}
+                  disabled={clearingHistory}
+                >
+                  {clearingHistory ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Trash2 className="h-3 w-3 mr-1" />}
+                  Clear All
+                </Button>
+              )}
+              </div>
               {historyLoading ? (
                 <div className="flex items-center justify-center py-12 gap-2">
                   <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
@@ -925,9 +961,21 @@ export default function ScrapeUrlPage() {
                         >
                           {entry.url}
                         </button>
-                        {entry.error
-                          ? <AlertTriangle className="h-3.5 w-3.5 text-rose-400 shrink-0 mt-0.5" />
-                          : <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0 mt-0.5" />}
+                        <div className="flex items-center gap-1 shrink-0 mt-0.5">
+                          {entry.error
+                            ? <AlertTriangle className="h-3.5 w-3.5 text-rose-400" />
+                            : <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />}
+                          <button
+                            onClick={() => entry.id && deleteSession(entry.id)}
+                            disabled={deletingSessionId === entry.id}
+                            className="p-0.5 rounded hover:bg-rose-500/10 text-muted-foreground/40 hover:text-rose-400 transition-colors"
+                            title="Delete this entry"
+                          >
+                            {deletingSessionId === entry.id
+                              ? <Loader2 className="h-3 w-3 animate-spin" />
+                              : <Trash2 className="h-3 w-3" />}
+                          </button>
+                        </div>
                       </div>
                       {entry.error ? (
                         <p className="text-[10px] text-rose-400 line-clamp-2">{entry.error}</p>

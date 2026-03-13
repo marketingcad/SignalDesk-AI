@@ -36,11 +36,29 @@ export async function sendLeadsBatch(
     return null;
   }
 
-  console.log(`[backend] Sending ${posts.length} posts to ${config.backendApiUrl}/api/leads/batch`);
+  // Filter out posts with unknown authors — their URLs are broken/unusable
+  const validPosts = posts.filter((p) => {
+    if (!p.author || p.author.toLowerCase() === "unknown" || p.author.startsWith("urn:li:")) {
+      console.log(`[backend] Skipping post with unknown/invalid author: "${p.author}" — ${p.url}`);
+      return false;
+    }
+    return true;
+  });
+
+  if (validPosts.length === 0) {
+    console.log(`[backend] All ${posts.length} posts had unknown authors — nothing to send`);
+    return null;
+  }
+
+  if (validPosts.length < posts.length) {
+    console.log(`[backend] Filtered out ${posts.length - validPosts.length} posts with unknown authors`);
+  }
+
+  console.log(`[backend] Sending ${validPosts.length} posts to ${config.backendApiUrl}/api/leads/batch`);
 
   try {
     // Map scraper fields to what the batch API expects
-    const mapped = posts.map((p) => ({
+    const mapped = validPosts.map((p) => ({
       platform: p.platform,
       username: p.author,
       text: p.text,
