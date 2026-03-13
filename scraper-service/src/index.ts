@@ -13,6 +13,7 @@ import {
   pauseSchedule,
   resumeSchedule,
   runScheduleNow,
+  listRuns,
 } from "./scheduler/urlScheduler";
 import {
   runAllPlatforms,
@@ -231,6 +232,13 @@ app.get("/api/schedules", (req, res) => {
   res.json({ success: true, count: schedules.length, schedules });
 });
 
+/** GET /api/schedules/runs — all run history (must be before :id) */
+app.get("/api/schedules/runs", (req, res) => {
+  if (!checkAuth(req, res)) return;
+  const runs = listRuns();
+  res.json({ success: true, runs });
+});
+
 /** GET /api/schedules/:id — get one */
 app.get("/api/schedules/:id", (req, res) => {
   if (!checkAuth(req, res)) return;
@@ -311,6 +319,15 @@ app.delete("/api/schedules/:id", (req, res) => {
   const deleted = deleteSchedule(req.params.id);
   if (!deleted) return res.status(404).json({ error: "Schedule not found" });
   res.json({ success: true, deleted: true, id: req.params.id });
+});
+
+/** GET /api/schedules/:id/runs — run history for one schedule */
+app.get("/api/schedules/:id/runs", (req, res) => {
+  if (!checkAuth(req, res)) return;
+  const schedule = getSchedule(req.params.id);
+  if (!schedule) return res.status(404).json({ error: "Schedule not found" });
+  const runs = listRuns(req.params.id);
+  res.json({ success: true, runs });
 });
 
 /** POST /api/schedules/:id/pause */

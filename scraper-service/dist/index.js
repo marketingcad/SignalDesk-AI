@@ -222,6 +222,13 @@ app.get("/api/schedules", (req, res) => {
     const schedules = (0, urlScheduler_1.listSchedules)();
     res.json({ success: true, count: schedules.length, schedules });
 });
+/** GET /api/schedules/runs — all run history (must be before :id) */
+app.get("/api/schedules/runs", (req, res) => {
+    if (!checkAuth(req, res))
+        return;
+    const runs = (0, urlScheduler_1.listRuns)();
+    res.json({ success: true, runs });
+});
 /** GET /api/schedules/:id — get one */
 app.get("/api/schedules/:id", (req, res) => {
     if (!checkAuth(req, res))
@@ -294,6 +301,16 @@ app.delete("/api/schedules/:id", (req, res) => {
     if (!deleted)
         return res.status(404).json({ error: "Schedule not found" });
     res.json({ success: true, deleted: true, id: req.params.id });
+});
+/** GET /api/schedules/:id/runs — run history for one schedule */
+app.get("/api/schedules/:id/runs", (req, res) => {
+    if (!checkAuth(req, res))
+        return;
+    const schedule = (0, urlScheduler_1.getSchedule)(req.params.id);
+    if (!schedule)
+        return res.status(404).json({ error: "Schedule not found" });
+    const runs = (0, urlScheduler_1.listRuns)(req.params.id);
+    res.json({ success: true, runs });
 });
 /** POST /api/schedules/:id/pause */
 app.post("/api/schedules/:id/pause", (req, res) => {

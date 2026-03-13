@@ -1,3 +1,7 @@
-2026/03/13-03:25:18.866 9f24 Reusing MANIFEST C:\Users\hecew\signal-desk-ai\scraper-service\auth\browser-profile\Default\Local Storage\leveldb/MANIFEST-000001
-2026/03/13-03:25:18.870 9f24 Recovering log #17
-2026/03/13-03:25:18.872 9f24 Reusing old log C:\Users\hecew\signal-desk-ai\scraper-service\auth\browser-profile\Default\Local Storage\leveldb/000017.log 
+2026/03/13-22:36:56.006 2194 Reusing MANIFEST C:\Users\hecew\signal-desk-ai\scraper-service\auth\browser-profile\Default\Local Storage\leveldb/MANIFEST-000001
+2026/03/13-22:36:56.010 2194 Recovering log #17
+2026/03/13-22:36:56.010 2194 Level-0 table #20: started
+2026/03/13-22:36:56.015 2194 Level-0 table #20: 23212 bytes OK
+2026/03/13-22:36:56.015 2194 Recovering log #20
+2026/03/13-22:36:56.017 2194 Reusing old log C:\Users\hecew\signal-desk-ai\scraper-service\auth\browser-profile\Default\Local Storage\leveldb/000020.log 
+2026/03/13-22:36:56.018 2194 Delete type=0 #17

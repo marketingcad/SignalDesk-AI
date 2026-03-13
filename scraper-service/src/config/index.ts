@@ -42,11 +42,15 @@ export const config = {
     ),
     xSearchQueries: envList(
       "X_SEARCH_QUERIES",
-      "hiring virtual assistant,need a VA,looking for VA,hire a va,va needed,hiring remote assistant,hiring executive assistant remote,hiring ghl va,hiring social media va,hiring real estate va,hiring cold caller va,hiring appointment setter,need admin support,need someone to manage my crm,any va recommendations,recommend a good va,where to hire a va,overwhelmed with admin,scaling my business and need help"
+      "hiring virtual assistant,need a VA,looking for VA,hire a va,va needed,hiring remote assistant,hiring executive assistant remote,hiring ghl va,hiring social media va,hiring real estate va,hiring cold caller va,hiring appointment setter,need admin support,need someone to manage my crm,any va recommendations,recommend a good va,where to hire a va,overwhelmed with admin,scaling my business and need help,hiring GoHighLevel va,need someone for clickfunnels,hiring bookkeeping va,need va for hubspot,need va for salesforce"
     ),
     linkedinSearchQueries: envList(
       "LINKEDIN_SEARCH_QUERIES",
-      "hiring virtual assistant,need VA for business,looking for a virtual assistant,hire a virtual assistant,virtual assistant needed,hiring remote assistant,hiring executive assistant remote,need admin support,outsourcing admin work,where to find a va,thinking of hiring a va"
+      "hiring virtual assistant,need VA for business,looking for a virtual assistant,hire a virtual assistant,virtual assistant needed,hiring remote assistant,hiring executive assistant remote,need admin support,outsourcing admin work,where to find a va,thinking of hiring a va,need someone to manage my crm,overwhelmed with admin,hiring ghl va,hiring appointment setter"
+    ),
+    facebookSearchQueries: envList(
+      "FACEBOOK_SEARCH_QUERIES",
+      "hiring virtual assistant,need a VA,looking for virtual assistant,hire VA for business,hiring remote assistant,need admin support,hiring appointment setter,hiring social media va,looking for a va,overwhelmed need help,hiring ghl va,need someone to manage my crm"
     ),
     facebookGroupUrls: envList("FACEBOOK_GROUP_URLS", ""),
   },

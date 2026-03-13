@@ -8,6 +8,7 @@ import type { ScrapedPost, ScrapeResult } from "../types";
  * Nitter instances are unreliable/dead, so we use:
  *   site:x.com "hiring virtual assistant"
  * to find publicly indexed tweets.
+ * Google's &tbs=qdr:w filter ensures results are from the past week.
  */
 export async function scrapeX(): Promise<ScrapeResult> {
   const start = Date.now();

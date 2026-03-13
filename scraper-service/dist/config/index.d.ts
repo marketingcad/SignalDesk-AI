@@ -13,6 +13,7 @@ export declare const config: {
         redditSubreddits: string[];
         xSearchQueries: string[];
         linkedinSearchQueries: string[];
+        facebookSearchQueries: string[];
         facebookGroupUrls: string[];
     };
     maxResultsPerRun: number;

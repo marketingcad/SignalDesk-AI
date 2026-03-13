@@ -72,3 +72,14 @@ export interface UpdateScheduleInput {
     cron?: string;
     status?: ScheduleStatus;
 }
+export interface ScheduleRun {
+    id: string;
+    scheduleId: string;
+    scheduleName?: string;
+    startedAt: string;
+    finishedAt: string | null;
+    status: "ok" | "error" | "running";
+    postsFound: number;
+    leadsInserted: number;
+    errorMessage: string | null;
+}

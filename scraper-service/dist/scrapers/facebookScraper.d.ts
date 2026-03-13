@@ -1,13 +1,17 @@
 import type { ScrapeResult } from "../types";
 /**
  * Facebook Scraper — crawls publicly accessible Facebook group posts.
- * Uses Google dorking: site:facebook.com/groups "hiring virtual assistant"
- * Also supports direct public group page scraping for groups that allow
- * non-logged-in viewing.
  *
- * NOTE: Most Facebook groups require login. This scraper targets:
- * 1. Public group posts indexed by Google
- * 2. Public Facebook pages/posts
- * The existing Apify service + Chrome extension handle logged-in scraping.
+ * Two strategies:
+ * 1. Google dorking: site:facebook.com/groups "hiring virtual assistant"
+ *    Returns Google-indexed group posts with direct permalinks.
+ *
+ * 2. Direct group URLs (from config): opens the group page and extracts
+ *    individual post permalinks from div[role="article"] containers.
+ *    Looks for /posts/, /permalink/, story_fbid patterns inside each post.
+ *
+ * NOTE: Most Facebook groups require login. Strategy 2 works best with
+ * saved cookies via browserAuth. The Apify service + Chrome extension
+ * handle logged-in scraping as a complement.
  */
 export declare function scrapeFacebook(): Promise<ScrapeResult>;

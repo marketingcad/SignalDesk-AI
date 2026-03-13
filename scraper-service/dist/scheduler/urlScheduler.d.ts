@@ -1,4 +1,4 @@
-import type { UrlSchedule, CreateScheduleInput, UpdateScheduleInput } from "../types";
+import type { UrlSchedule, CreateScheduleInput, UpdateScheduleInput, ScheduleRun } from "../types";
 export declare function initUrlScheduler(): void;
 export declare function shutdownUrlScheduler(): void;
 export declare function listSchedules(): UrlSchedule[];
@@ -9,3 +9,4 @@ export declare function deleteSchedule(id: string): boolean;
 export declare function pauseSchedule(id: string): UrlSchedule | null;
 export declare function resumeSchedule(id: string): UrlSchedule | null;
 export declare function runScheduleNow(id: string): Promise<void>;
+export declare function listRuns(scheduleId?: string): ScheduleRun[];

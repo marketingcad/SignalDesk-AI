@@ -31,16 +31,41 @@ export function isJobSeeker(text: string): boolean {
 }
 
 /**
- * Filter scraped posts: remove too-short posts and job seekers.
+ * Filter scraped posts: remove too-short posts, job seekers, and duplicates.
  * @param tag - log prefix for context (e.g. "[crawler]" or "[url-scraper]")
  */
 export function filterPosts(posts: ScrapedPost[], tag = "[filter]"): ScrapedPost[] {
+  const seenUrls = new Set<string>();
   return posts.filter((post) => {
     if (!post.text || post.text.trim().length < 20) return false;
     if (isJobSeeker(post.text)) {
       console.log(`${tag} Filtered job seeker: "${post.text.slice(0, 80)}..."`);
       return false;
     }
+    // Deduplicate by URL within the same run
+    if (post.url) {
+      const normalizedUrl = post.url.split("?")[0].replace(/\/+$/, "");
+      if (seenUrls.has(normalizedUrl)) {
+        console.log(`${tag} Filtered duplicate URL: ${post.url.slice(0, 80)}`);
+        return false;
+      }
+      seenUrls.add(normalizedUrl);
+    }
+    return true;
+  });
+}
+
+/**
+ * Deduplicate posts by URL — strips query params and trailing slashes.
+ * Used within extractors to avoid sending duplicates to backend.
+ */
+export function deduplicatePosts(posts: ScrapedPost[]): ScrapedPost[] {
+  const seen = new Set<string>();
+  return posts.filter((post) => {
+    if (!post.url) return true; // keep posts without URLs (rare)
+    const key = post.url.split("?")[0].replace(/\/+$/, "");
+    if (seen.has(key)) return false;
+    seen.add(key);
     return true;
   });
 }

@@ -205,19 +205,7 @@ export default function AlertsPage() {
                       }}
                     >
                       <MessageSquare className="h-3 w-3" />
-                      Respond
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="gap-1.5 h-7"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (alert.url) window.open(alert.url, "_blank");
-                      }}
-                    >
-                      <ExternalLink className="h-3 w-3" />
-                      View Post
+                      View Pos
                     </Button>
                     {!alert.read && (
                       <button

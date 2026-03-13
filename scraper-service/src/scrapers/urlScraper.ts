@@ -1,55 +1,13 @@
 import { chromium } from "playwright";
 import { config } from "../config";
 import { hasSavedCookies, getProfileDir, getStorageState, shouldUseStorageState } from "../crawler/browserAuth";
+import { isCurrentWeek, isOlderThanCurrentWeek, resolveTimestamp } from "../utils/dateHelpers";
 import type { Platform, ScrapedPost, ScrapeResult } from "../types";
 
 // ---------------------------------------------------------------------------
-// Date helpers — filter posts to current month only
+// Detect platform from a URL
 // ---------------------------------------------------------------------------
 
-function isCurrentMonth(ts: string | null | undefined): boolean {
-  if (!ts) return true; // no date found → keep post (don't discard valid leads)
-  const now = new Date();
-  const d = new Date(ts);
-  if (isNaN(d.getTime())) return true; // unparseable → keep
-  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
-}
-
-/**
- * Parse relative time strings ("2h", "3 days ago", "1w", "just now") → ISO string.
- * Returns null if the string can't be parsed.
- */
-function parseRelativeTs(text: string): string | null {
-  if (!text) return null;
-  const now = new Date();
-  const s = text.toLowerCase().trim();
-  if (/^(just now|now|moment|seconds? ago)/.test(s)) return now.toISOString();
-  if (s === "yesterday") {
-    const d = new Date(now);
-    d.setDate(d.getDate() - 1);
-    return d.toISOString();
-  }
-  const m = s.match(/(\d+)\s*(s(?:ec)?|m(?:in)?(?!o)|h(?:r|our)?|d(?:ay)?|w(?:k|eek)?|mo(?:nth)?|y(?:r|ear)?)/);
-  if (!m) return null;
-  const n = parseInt(m[1]);
-  const unit = m[2];
-  const d = new Date(now);
-  if (/^s/.test(unit))       d.setSeconds(d.getSeconds() - n);
-  else if (/^m/.test(unit))  d.setMinutes(d.getMinutes() - n);
-  else if (/^h/.test(unit))  d.setHours(d.getHours() - n);
-  else if (/^d/.test(unit))  d.setDate(d.getDate() - n);
-  else if (/^w/.test(unit))  d.setDate(d.getDate() - n * 7);
-  else if (/^mo/.test(unit)) d.setMonth(d.getMonth() - n);
-  else if (/^y/.test(unit))  d.setFullYear(d.getFullYear() - n);
-  else return null;
-  return d.toISOString();
-}
-
-// ---------------------------------------------------------------------------
-
-/**
- * Detect platform from a URL.
- */
 function detectPlatform(url: string): Platform | null {
   if (/facebook\.com|fb\.com/i.test(url)) return "Facebook";
   if (/linkedin\.com/i.test(url)) return "LinkedIn";
@@ -59,21 +17,46 @@ function detectPlatform(url: string): Platform | null {
 }
 
 // ---------------------------------------------------------------------------
-// Platform-specific extractors
+// Facebook extractor — permalink-focused extraction
 // ---------------------------------------------------------------------------
 
-async function extractFacebook(page: import("playwright").Page): Promise<Omit<ScrapedPost, "platform" | "source">[]> {
-  console.log(`[url-scraper] Extracting Facebook posts...`);
+async function extractFacebook(page: import("playwright").Page, groupUrl: string): Promise<Omit<ScrapedPost, "platform" | "source">[]> {
+  console.log(`[url-scraper] Extracting Facebook posts with permalink detection...`);
 
-  // Scroll to load posts
-  for (let i = 0; i < 5; i++) {
+  let hitOldPost = false;
+
+  // Scroll to load posts, stop early if we hit old posts
+  for (let i = 0; i < 8; i++) {
+    if (hitOldPost) {
+      console.log(`[url-scraper]   Stopping scroll — detected posts older than current week`);
+      break;
+    }
     await page.evaluate(() => window.scrollBy(0, window.innerHeight));
     await page.waitForTimeout(1500);
-    console.log(`[url-scraper]   Scroll ${i + 1}/5`);
+    console.log(`[url-scraper]   Scroll ${i + 1}/8`);
+
+    // Quick check: do we have timestamps indicating old posts?
+    const oldPostDetected = await page.evaluate(() => {
+      const timeEls = document.querySelectorAll('abbr[data-utime], time[datetime]');
+      for (const el of timeEls) {
+        const utime = (el as HTMLElement).dataset?.utime;
+        if (utime) {
+          const postDate = new Date(parseInt(utime) * 1000);
+          const now = new Date();
+          const dayOfWeek = now.getUTCDay();
+          const diffToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+          const monday = new Date(now);
+          monday.setUTCDate(monday.getUTCDate() - diffToMonday);
+          monday.setUTCHours(0, 0, 0, 0);
+          if (postDate < monday) return true;
+        }
+      }
+      return false;
+    });
+    if (oldPostDetected) hitOldPost = true;
   }
 
-  // Click "See more" buttons to expand truncated post text.
-  // Without this, long posts are hidden and we'd only get comment text.
+  // Click "See more" buttons to expand truncated post text
   try {
     const seeMoreButtons = await page.$$('div[role="button"]');
     let expanded = 0;
@@ -93,49 +76,145 @@ async function extractFacebook(page: import("playwright").Page): Promise<Omit<Sc
     console.log(`[url-scraper] "See more" expansion skipped (non-critical)`);
   }
 
-  const posts = await page.evaluate(() => {
+  // Extract the base URL for building full permalinks
+  const baseUrl = new URL(groupUrl).origin; // https://www.facebook.com
+
+  const posts = await page.evaluate((baseUrlArg: string) => {
     const results: { author: string; text: string; url: string; rawTs: string }[] = [];
 
-    // Helper: check if an element is inside the comments section.
-    // Facebook comments live inside: nested div[role="article"], elements below
-    // the comment form, or inside list items (ul > li) after the post content.
+    // Helper: check if an element is inside the comments section
     function isInsideCommentSection(el: Element, postArticle: Element): boolean {
-      // Inside a nested article (comment bubble)
       const closestArticle = el.closest('div[role="article"]');
       if (closestArticle && closestArticle !== postArticle) return true;
-
-      // Inside a form (comment input area)
       if (el.closest("form")) return true;
-
-      // Inside a list that contains comments (ul with role="list" or plain ul after content)
       const parentList = el.closest('ul[role="list"], ul');
       if (parentList && postArticle.contains(parentList)) {
-        // Check if this list contains nested articles (comment list)
         if (parentList.querySelector('div[role="article"]')) return true;
       }
-
-      // Inside an element with comment-related aria labels
       const commentContainer = el.closest(
         '[aria-label*="comment" i], [aria-label*="Comment" i], [aria-label*="reply" i], [aria-label*="Reply" i]'
       );
       if (commentContainer && postArticle.contains(commentContainer)) return true;
-
       return false;
     }
 
+    /**
+     * Extract permalink from a post article element.
+     * Facebook uses several URL patterns for post permalinks:
+     *   /posts/{postId}
+     *   /permalink/{postId}
+     *   story_fbid=...
+     *   /p/{postId}
+     *   /groups/{groupId}/posts/{postId}
+     * We look for <a> tags containing these patterns.
+     */
+    function extractPermalink(article: Element): string {
+      function toFullUrl(href: string): string {
+        try { return new URL(href, baseUrlArg).href; }
+        catch { return href.startsWith("http") ? href : `${baseUrlArg}${href}`; }
+      }
+
+      // Strategy 1: Direct permalink selectors (most reliable)
+      const permalinkSelectors = [
+        'a[href*="/posts/"]',
+        'a[href*="/permalink/"]',
+        'a[href*="story_fbid"]',
+        'a[href*="/p/"]',
+        'a[href*="/groups/"][href*="/posts/"]',
+      ];
+
+      for (const selector of permalinkSelectors) {
+        const link = article.querySelector(selector) as HTMLAnchorElement | null;
+        if (link?.href) return toFullUrl(link.href);
+      }
+
+      // Strategy 2: Timestamp links — Facebook often makes the timestamp a permalink
+      const allAnchors = article.querySelectorAll('a[href]');
+      for (const link of allAnchors) {
+        const href = (link as HTMLAnchorElement).href || "";
+        const hasTime = link.querySelector('abbr, time, [data-utime]');
+        const linkText = link.textContent?.trim() || "";
+        const isTimestampLink = hasTime ||
+          /^\d+[hmdw]$/.test(linkText) ||
+          /ago|hr|min|just now|yesterday/i.test(linkText) ||
+          /^\d{1,2}\/\d{1,2}/.test(linkText);
+
+        if (isTimestampLink && href.includes("facebook.com")) {
+          const patterns = ["/posts/", "/permalink/", "story_fbid", "/p/", "/groups/"];
+          if (patterns.some((p) => href.includes(p))) {
+            return href;
+          }
+        }
+      }
+
+      // Strategy 3: Any link with a Facebook post ID pattern
+      for (const link of article.querySelectorAll('a[href*="facebook.com"]')) {
+        const href = (link as HTMLAnchorElement).href;
+        if (/\/(?:posts|permalink|p)\/\d+/.test(href) || /story_fbid=\d+/.test(href)) {
+          return href;
+        }
+      }
+
+      // Strategy 4: Aria-label links — FB wraps timestamps in links with aria-label
+      for (const link of allAnchors) {
+        const href = (link as HTMLAnchorElement).href || "";
+        const ariaLabel = link.getAttribute("aria-label") || "";
+        // Timestamp aria-labels often contain date patterns or relative times
+        if (ariaLabel && href.includes("facebook.com") && /\d/.test(ariaLabel)) {
+          if (href.includes("/groups/") || href.includes("/posts/") || href.includes("/permalink/") || href.includes("story_fbid")) {
+            return href;
+          }
+        }
+      }
+
+      // Strategy 5: Look for hidden/nested links in the header area of the post
+      // Modern Facebook puts permalinks in the top section near author name
+      const headerArea = article.querySelector('h2, h3, h4, [data-ad-preview="message"]')?.parentElement?.parentElement;
+      if (headerArea) {
+        for (const link of headerArea.querySelectorAll('a[href*="facebook.com"]')) {
+          const href = (link as HTMLAnchorElement).href;
+          if (/\/(?:posts|permalink|p)\/\d+/.test(href) || /story_fbid/.test(href) || /\/groups\/[^/]+\/posts\//.test(href)) {
+            return href;
+          }
+        }
+      }
+
+      // Strategy 6: data-ft attribute (older FB markup) may contain post IDs
+      const dataFt = article.getAttribute("data-ft");
+      if (dataFt) {
+        try {
+          const ft = JSON.parse(dataFt);
+          const topLevelPostId = ft.top_level_post_id || ft.tl_objid;
+          if (topLevelPostId) {
+            return `${baseUrlArg}/permalink.php?story_fbid=${topLevelPostId}&id=${ft.page_id || ft.content_owner_id_new || ""}`;
+          }
+        } catch { /* ignore parse errors */ }
+      }
+
+      // Strategy 7: Broadest search — any link whose path has a long numeric segment (likely a post ID)
+      for (const link of allAnchors) {
+        const href = (link as HTMLAnchorElement).href || "";
+        if (href.includes("facebook.com") && /\/\d{10,}/.test(href)) {
+          return href;
+        }
+      }
+
+      return "";
+    }
+
     // Strategy 1: div[role="article"] — group/feed posts
-    // Only top-level articles (comments are nested div[role="article"] inside the post)
+    // Only top-level articles (not nested comment articles)
     const allArticles = Array.from(document.querySelectorAll('div[role="article"]'));
     const articles = allArticles.filter(
       (a) => !a.parentElement?.closest('div[role="article"]')
     );
+
     articles.forEach((article) => {
-      // Collect text from div[dir="auto"] that belong to the POST, not comments.
+      // Collect text from div[dir="auto"] that belong to the POST, not comments
       const textEls = article.querySelectorAll('div[dir="auto"]');
       let text = "";
       textEls.forEach((el) => {
         if (isInsideCommentSection(el, article)) return;
-
         const t = el.textContent?.trim() || "";
         if (t.length > 15 && !text.includes(t)) {
           text += (text ? "\n" : "") + t;
@@ -150,13 +229,10 @@ async function extractFacebook(page: import("playwright").Page): Promise<Omit<Sc
       );
       const author = authorEl?.textContent?.trim() || "unknown";
 
-      // Post permalink
-      const timeLink = article.querySelector(
-        'a[href*="/posts/"], a[href*="/permalink/"], a[href*="story_fbid"], a[href*="/p/"]'
-      );
-      const url = (timeLink as HTMLAnchorElement)?.href || "";
+      // *** PERMALINK EXTRACTION — the key improvement ***
+      const url = extractPermalink(article);
 
-      // Timestamp — try abbr[data-utime] (unix seconds), then time[datetime], then relative text
+      // Timestamp
       const abbrEl = article.querySelector('abbr[data-utime]') as HTMLElement | null;
       const timeEl = article.querySelector('time[datetime]') as HTMLElement | null;
       let rawTs = "";
@@ -165,7 +241,6 @@ async function extractFacebook(page: import("playwright").Page): Promise<Omit<Sc
       } else if (timeEl?.getAttribute("datetime")) {
         rawTs = timeEl.getAttribute("datetime") || "";
       } else {
-        // Relative time text as fallback ("2 hours ago", "Yesterday", etc.)
         const relEl = article.querySelector('abbr, time, [aria-label*="ago"], [title*="ago"]') as HTMLElement | null;
         rawTs = relEl?.getAttribute("aria-label") || relEl?.getAttribute("title") || relEl?.textContent?.trim() || "";
       }
@@ -185,19 +260,21 @@ async function extractFacebook(page: import("playwright").Page): Promise<Omit<Sc
     }
 
     return results;
-  });
+  }, baseUrl);
 
-  // Resolve relative timestamps and filter to current month
-  const filtered = posts
-    .map((p) => {
-      const ts = /^\d{4}-/.test(p.rawTs) ? p.rawTs : (parseRelativeTs(p.rawTs) ?? "");
-      return { ...p, resolvedTs: ts };
-    })
-    .filter((p) => isCurrentMonth(p.resolvedTs));
+  // Resolve relative timestamps and filter to current week
+  const resolved = posts.map((p) => ({
+    ...p,
+    resolvedTs: resolveTimestamp(p.rawTs),
+  }));
 
-  console.log(`[url-scraper] Facebook: found ${posts.length} articles, ${filtered.length} from current month`);
+  const filtered = resolved.filter((p) => isCurrentWeek(p.resolvedTs));
+
+  // Log early-stop stats
+  const oldCount = resolved.filter((p) => isOlderThanCurrentWeek(p.resolvedTs)).length;
+  console.log(`[url-scraper] Facebook: found ${posts.length} articles, ${filtered.length} from current week, ${oldCount} older (skipped)`);
   filtered.forEach((p, i) => {
-    console.log(`[url-scraper]   ${i + 1}. [${p.author}] "${p.text.slice(0, 120)}..." url=${p.url.slice(0, 80)}`);
+    console.log(`[url-scraper]   ${i + 1}. [${p.author}] "${p.text.slice(0, 120)}..." url=${p.url.slice(0, 100)}`);
   });
 
   return filtered.map((p) => ({
@@ -209,8 +286,12 @@ async function extractFacebook(page: import("playwright").Page): Promise<Omit<Sc
   }));
 }
 
-async function extractReddit(page: import("playwright").Page): Promise<Omit<ScrapedPost, "platform" | "source">[]> {
-  console.log(`[url-scraper] Extracting Reddit posts...`);
+// ---------------------------------------------------------------------------
+// Reddit extractor — uses NEW reddit interface (www.reddit.com)
+// ---------------------------------------------------------------------------
+
+async function extractReddit(page: import("playwright").Page, targetUrl: string): Promise<Omit<ScrapedPost, "platform" | "source">[]> {
+  console.log(`[url-scraper] Extracting Reddit posts (new interface)...`);
 
   // Check for Reddit block / interstitial pages
   const pageContent = await page.content();
@@ -223,74 +304,96 @@ async function extractReddit(page: import("playwright").Page): Promise<Omit<Scra
     console.warn(`[url-scraper] Reddit appears to be blocking the request (anti-bot page detected)`);
   }
 
-  for (let i = 0; i < 5; i++) {
+  let hitOldPost = false;
+
+  // Scroll to load posts, stop early on old posts
+  for (let i = 0; i < 6; i++) {
+    if (hitOldPost) {
+      console.log(`[url-scraper]   Stopping scroll — detected posts older than current week`);
+      break;
+    }
     await page.evaluate(() => window.scrollBy(0, window.innerHeight));
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(1200);
+    console.log(`[url-scraper]   Scroll ${i + 1}/6`);
+
+    // Check for old posts via shreddit-post timestamps
+    const oldDetected = await page.evaluate(() => {
+      const posts = document.querySelectorAll("shreddit-post");
+      for (const post of posts) {
+        const ts = post.getAttribute("created-timestamp");
+        if (ts) {
+          const postDate = new Date(ts);
+          const now = new Date();
+          const dayOfWeek = now.getUTCDay();
+          const diffToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+          const monday = new Date(now);
+          monday.setUTCDate(monday.getUTCDate() - diffToMonday);
+          monday.setUTCHours(0, 0, 0, 0);
+          if (postDate < monday) return true;
+        }
+      }
+      return false;
+    });
+    if (oldDetected) hitOldPost = true;
   }
 
   const posts = await page.evaluate(() => {
     const results: { author: string; text: string; url: string; engagement: number; rawTs: string }[] = [];
 
-    // old.reddit.com — subreddit listing + search results
-    // .thing.link matches posts on both listing pages and search result pages
-    document.querySelectorAll('.thing.link, div.search-result-link').forEach((thing) => {
-      const titleEl = thing.querySelector('a.title, a.search-title');
-      const authorEl = thing.querySelector('a.author');
-      const scoreEl = thing.querySelector('.score.unvoted, span.search-score');
-      const timeEl = thing.querySelector('time[datetime], time[title]') as HTMLElement | null;
-      const title = titleEl?.textContent?.trim() || "";
-      const url = (titleEl as HTMLAnchorElement)?.href || "";
-      const author = authorEl?.textContent?.trim() || "unknown";
-      const score = parseInt(scoreEl?.textContent?.replace(/[^0-9-]/g, "") || "0", 10) || 0;
-      const rawTs = timeEl?.getAttribute("datetime") || timeEl?.getAttribute("title") || "";
-      if (title) results.push({ author, text: title, url, engagement: score, rawTs });
+    // NEW reddit: shreddit-post custom elements expose data via attributes
+    document.querySelectorAll("shreddit-post").forEach((post) => {
+      const text = post.getAttribute("post-title") || "";
+      const author = post.getAttribute("author") || "unknown";
+      const permalink = post.getAttribute("permalink") || post.getAttribute("content-href") || "";
+      const score = parseInt(post.getAttribute("score") || "0", 10) || 0;
+      const createdTs = post.getAttribute("created-timestamp") || "";
+      const url = permalink
+        ? (permalink.startsWith("http") ? permalink : `https://www.reddit.com${permalink}`)
+        : "";
+      if (text.length > 5) results.push({ author, text, url, engagement: score, rawTs: createdTs });
     });
 
-    // new.reddit.com fallback — try to read shreddit-post attributes directly
-    // (shadow DOM prevents querySelector from reaching inside, but attributes are on the host element)
-    if (results.length === 0) {
-      document.querySelectorAll('shreddit-post').forEach((post) => {
-        const text = post.getAttribute("post-title") || "";
-        const author = post.getAttribute("author") || "unknown";
-        const permalink = post.getAttribute("permalink") || post.getAttribute("content-href") || "";
-        const score = parseInt(post.getAttribute("score") || "0", 10) || 0;
-        const createdTs = post.getAttribute("created-timestamp") || "";
-        const url = permalink ? `https://www.reddit.com${permalink}` : "";
-        if (text.length > 5) results.push({ author, text, url, engagement: score, rawTs: createdTs });
-      });
-    }
-
-    // new.reddit.com fallback 2 — article / data-testid containers
+    // Fallback: article / data-testid containers (new reddit alternative layout)
     if (results.length === 0) {
       document.querySelectorAll('article, [data-testid="post-container"]').forEach((card) => {
         const titleEl = card.querySelector('h3, a[slot="title"], [data-testid="post-title"]');
         const authorEl = card.querySelector('a[href*="/user/"]');
-        const timeEl = card.querySelector('faceplate-timeago, time[datetime]') as HTMLElement | null;
+        const timeEl = card.querySelector("faceplate-timeago, time[datetime]") as HTMLElement | null;
+        const linkEl = card.querySelector('a[href*="/comments/"]') as HTMLAnchorElement | null;
         const text = titleEl?.textContent?.trim() || "";
         const author = authorEl?.textContent?.trim() || "unknown";
         const tsAttr = timeEl?.getAttribute("ts");
         const rawTs = tsAttr
           ? new Date(parseInt(tsAttr)).toISOString()
           : (timeEl?.getAttribute("datetime") || "");
-        if (text.length > 10) results.push({ author, text, url: "", engagement: 0, rawTs });
+        const url = linkEl?.href || "";
+        if (text.length > 10) results.push({ author, text, url, engagement: 0, rawTs });
       });
     }
 
     return results;
   });
 
-  // Resolve timestamps (no month filter — manual URL scraping should return all visible posts)
-  const resolved = posts.map((p) => {
-    const ts = /^\d{4}-/.test(p.rawTs) ? p.rawTs : (parseRelativeTs(p.rawTs) ?? "");
-    return { ...p, resolvedTs: ts };
-  });
+  // Resolve timestamps and filter to current week
+  const resolved = posts.map((p) => ({
+    ...p,
+    resolvedTs: resolveTimestamp(p.rawTs),
+  }));
+  const filtered = resolved.filter((p) => isCurrentWeek(p.resolvedTs));
 
-  console.log(`[url-scraper] Reddit: found ${resolved.length} posts`);
-  resolved.forEach((p, i) => {
+  const oldCount = resolved.filter((p) => isOlderThanCurrentWeek(p.resolvedTs)).length;
+  console.log(`[url-scraper] Reddit: found ${resolved.length} posts, ${filtered.length} from current week, ${oldCount} older (skipped)`);
+  filtered.forEach((p, i) => {
     console.log(`[url-scraper]   ${i + 1}. [${p.author}] "${p.text.slice(0, 120)}..."`);
   });
 
-  return resolved.map((p) => ({
+  // If browser extraction found 0 current-week posts, try JSON API fallback
+  if (filtered.length === 0) {
+    console.log(`[url-scraper] New Reddit returned 0 current-week posts, trying JSON API fallback...`);
+    return extractRedditViaJson(targetUrl);
+  }
+
+  return filtered.map((p) => ({
     author: p.author,
     text: p.text,
     url: p.url,
@@ -298,6 +401,79 @@ async function extractReddit(page: import("playwright").Page): Promise<Omit<Scra
     engagement: p.engagement,
   }));
 }
+
+// ---------------------------------------------------------------------------
+// Reddit JSON API fallback
+// ---------------------------------------------------------------------------
+
+async function extractRedditViaJson(originalUrl: string): Promise<Omit<ScrapedPost, "platform" | "source">[]> {
+  // Ensure we use www.reddit.com (not old.reddit.com)
+  let jsonUrl = originalUrl.replace(/old\.reddit\.com/i, "www.reddit.com");
+  // Append /new.json if this is a subreddit URL (to get new posts only)
+  if (/\/r\/[^/]+\/?$/.test(jsonUrl)) {
+    jsonUrl = jsonUrl.replace(/\/+$/, "") + "/new.json";
+  } else {
+    jsonUrl = jsonUrl.replace(/\/+$/, "") + ".json";
+  }
+
+  console.log(`[url-scraper] Reddit JSON fallback: ${jsonUrl}`);
+
+  try {
+    const resp = await fetch(jsonUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      },
+      signal: AbortSignal.timeout(15_000),
+    });
+
+    if (!resp.ok) {
+      console.warn(`[url-scraper] Reddit JSON API returned ${resp.status}`);
+      return [];
+    }
+
+    const json = await resp.json();
+    const listing = json?.data?.children ?? (Array.isArray(json) ? json[0]?.data?.children : null) ?? [];
+
+    const results: Omit<ScrapedPost, "platform" | "source">[] = [];
+    for (const child of listing) {
+      const d = child?.data;
+      if (!d || child.kind !== "t3") continue; // t3 = link/post
+
+      const title = d.title || "";
+      const selftext = d.selftext || "";
+      const text = selftext ? `${title}\n\n${selftext}` : title;
+      if (text.length < 5) continue;
+
+      const permalink = d.permalink ? `https://www.reddit.com${d.permalink}` : "";
+      const createdUtc = d.created_utc ? new Date(d.created_utc * 1000).toISOString() : "";
+
+      // Filter to current week
+      if (isOlderThanCurrentWeek(createdUtc)) {
+        console.log(`[url-scraper]   Skipping old Reddit post: "${title.slice(0, 60)}..." (${createdUtc})`);
+        continue;
+      }
+
+      results.push({
+        author: d.author || "unknown",
+        text,
+        url: permalink,
+        timestamp: createdUtc || new Date().toISOString(),
+        engagement: d.score ?? 0,
+      });
+    }
+
+    console.log(`[url-scraper] Reddit JSON fallback: found ${results.length} current-week posts`);
+    return results;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`[url-scraper] Reddit JSON fallback failed: ${msg}`);
+    return [];
+  }
+}
+
+// ---------------------------------------------------------------------------
+// LinkedIn extractor
+// ---------------------------------------------------------------------------
 
 async function extractLinkedin(page: import("playwright").Page): Promise<Omit<ScrapedPost, "platform" | "source">[]> {
   console.log(`[url-scraper] Extracting LinkedIn posts...`);
@@ -315,7 +491,6 @@ async function extractLinkedin(page: import("playwright").Page): Promise<Omit<Sc
       const textEl = container.querySelector('.feed-shared-text, .break-words, .update-components-text');
       const authorEl = container.querySelector('.feed-shared-actor__name, .update-components-actor__name');
       const linkEl = container.querySelector('a[href*="/feed/update/"]');
-      // LinkedIn time: <time datetime="ISO"> or sub-description with relative text
       const timeEl = container.querySelector('time[datetime]') as HTMLElement | null;
       const relEl = container.querySelector('.feed-shared-actor__sub-description, .update-components-actor__meta') as HTMLElement | null;
       const text = textEl?.textContent?.trim() || "";
@@ -328,15 +503,14 @@ async function extractLinkedin(page: import("playwright").Page): Promise<Omit<Sc
     return results;
   });
 
-  // Filter to current month
-  const filtered = posts
-    .map((p) => {
-      const ts = /^\d{4}-/.test(p.rawTs) ? p.rawTs : (parseRelativeTs(p.rawTs) ?? "");
-      return { ...p, resolvedTs: ts };
-    })
-    .filter((p) => isCurrentMonth(p.resolvedTs));
+  // Filter to current week
+  const resolved = posts.map((p) => ({
+    ...p,
+    resolvedTs: resolveTimestamp(p.rawTs),
+  }));
+  const filtered = resolved.filter((p) => isCurrentWeek(p.resolvedTs));
 
-  console.log(`[url-scraper] LinkedIn: found ${posts.length} posts, ${filtered.length} from current month`);
+  console.log(`[url-scraper] LinkedIn: found ${posts.length} posts, ${filtered.length} from current week`);
   filtered.forEach((p, i) => {
     console.log(`[url-scraper]   ${i + 1}. [${p.author}] "${p.text.slice(0, 120)}..."`);
   });
@@ -350,13 +524,43 @@ async function extractLinkedin(page: import("playwright").Page): Promise<Omit<Sc
   }));
 }
 
+// ---------------------------------------------------------------------------
+// X/Twitter extractor
+// ---------------------------------------------------------------------------
+
 async function extractX(page: import("playwright").Page): Promise<Omit<ScrapedPost, "platform" | "source">[]> {
   console.log(`[url-scraper] Extracting X/Twitter posts...`);
   await page.waitForTimeout(3000);
 
-  for (let i = 0; i < 3; i++) {
+  let hitOldPost = false;
+
+  for (let i = 0; i < 5; i++) {
+    if (hitOldPost) {
+      console.log(`[url-scraper]   Stopping scroll — detected posts older than current week`);
+      break;
+    }
     await page.evaluate(() => window.scrollBy(0, window.innerHeight));
     await page.waitForTimeout(1500);
+
+    // Check for old tweets via time[datetime]
+    const oldDetected = await page.evaluate(() => {
+      const times = document.querySelectorAll('article[data-testid="tweet"] time[datetime]');
+      for (const t of times) {
+        const dt = t.getAttribute("datetime");
+        if (dt) {
+          const postDate = new Date(dt);
+          const now = new Date();
+          const dayOfWeek = now.getUTCDay();
+          const diffToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+          const monday = new Date(now);
+          monday.setUTCDate(monday.getUTCDate() - diffToMonday);
+          monday.setUTCHours(0, 0, 0, 0);
+          if (postDate < monday) return true;
+        }
+      }
+      return false;
+    });
+    if (oldDetected) hitOldPost = true;
   }
 
   const posts = await page.evaluate(() => {
@@ -366,7 +570,6 @@ async function extractX(page: import("playwright").Page): Promise<Omit<ScrapedPo
       const textEl = tweet.querySelector('[data-testid="tweetText"]');
       const authorEl = tweet.querySelector('a[href*="/"] div[dir="ltr"] > span');
       const linkEl = tweet.querySelector('a[href*="/status/"]');
-      // X always has <time datetime="ISO"> inside the tweet
       const timeEl = tweet.querySelector('time[datetime]') as HTMLElement | null;
       const text = textEl?.textContent?.trim() || "";
       const author = authorEl?.textContent?.trim() || "unknown";
@@ -378,15 +581,14 @@ async function extractX(page: import("playwright").Page): Promise<Omit<ScrapedPo
     return results;
   });
 
-  // Filter to current month
-  const filtered = posts
-    .map((p) => {
-      const ts = /^\d{4}-/.test(p.rawTs) ? p.rawTs : (parseRelativeTs(p.rawTs) ?? "");
-      return { ...p, resolvedTs: ts };
-    })
-    .filter((p) => isCurrentMonth(p.resolvedTs));
+  // Filter to current week
+  const resolved = posts.map((p) => ({
+    ...p,
+    resolvedTs: resolveTimestamp(p.rawTs),
+  }));
+  const filtered = resolved.filter((p) => isCurrentWeek(p.resolvedTs));
 
-  console.log(`[url-scraper] X: found ${posts.length} tweets, ${filtered.length} from current month`);
+  console.log(`[url-scraper] X: found ${posts.length} tweets, ${filtered.length} from current week`);
   filtered.forEach((p, i) => {
     console.log(`[url-scraper]   ${i + 1}. [${p.author}] "${p.text.slice(0, 120)}..."`);
   });
@@ -400,10 +602,13 @@ async function extractX(page: import("playwright").Page): Promise<Omit<ScrapedPo
   }));
 }
 
+// ---------------------------------------------------------------------------
+// Generic extractor (non-platform URLs)
+// ---------------------------------------------------------------------------
+
 async function extractGeneric(page: import("playwright").Page): Promise<Omit<ScrapedPost, "platform" | "source">[]> {
   console.log(`[url-scraper] Extracting posts from generic page...`);
 
-  // Scroll to load dynamic content
   for (let i = 0; i < 5; i++) {
     await page.evaluate(() => window.scrollBy(0, window.innerHeight));
     await page.waitForTimeout(1500);
@@ -413,7 +618,7 @@ async function extractGeneric(page: import("playwright").Page): Promise<Omit<Scr
     const results: { author: string; text: string; url: string; rawTs: string }[] = [];
     const seen = new Set<string>();
 
-    // Strategy 1: article elements (blogs, news, forums)
+    // Strategy 1: article elements
     document.querySelectorAll('article, [role="article"]').forEach((article) => {
       const headingEl = article.querySelector('h1, h2, h3, h4, a');
       const textEls = article.querySelectorAll('p, div[dir="auto"], .post-content, .entry-content');
@@ -440,7 +645,7 @@ async function extractGeneric(page: import("playwright").Page): Promise<Omit<Scr
       results.push({ author, text, url, rawTs });
     });
 
-    // Strategy 2: post-like containers (forums, community pages)
+    // Strategy 2: post-like containers
     if (results.length === 0) {
       document.querySelectorAll('.post, .comment, .entry, .thread, .message, [class*="post-"], [class*="Post"]').forEach((container) => {
         const text = container.textContent?.trim() || "";
@@ -462,13 +667,12 @@ async function extractGeneric(page: import("playwright").Page): Promise<Omit<Scr
       });
     }
 
-    // Strategy 3: heading + paragraph blocks (general pages)
+    // Strategy 3: heading + paragraph blocks
     if (results.length === 0) {
       document.querySelectorAll('h1, h2, h3').forEach((heading) => {
         const title = heading.textContent?.trim() || "";
         if (title.length < 10) return;
 
-        // Gather sibling paragraphs
         let body = "";
         let sibling = heading.nextElementSibling;
         while (sibling && !['H1', 'H2', 'H3'].includes(sibling.tagName)) {
@@ -513,67 +717,6 @@ async function extractGeneric(page: import("playwright").Page): Promise<Omit<Scr
 }
 
 // ---------------------------------------------------------------------------
-// Reddit JSON API fallback — works when old.reddit.com blocks the browser
-// ---------------------------------------------------------------------------
-
-async function extractRedditViaJson(originalUrl: string): Promise<Omit<ScrapedPost, "platform" | "source">[]> {
-  // Normalize to www.reddit.com and append .json
-  let jsonUrl = originalUrl.replace(/old\.reddit\.com/i, "www.reddit.com");
-  // Remove trailing slash, then append .json
-  jsonUrl = jsonUrl.replace(/\/+$/, "") + ".json";
-
-  console.log(`[url-scraper] Reddit JSON fallback: ${jsonUrl}`);
-
-  try {
-    const resp = await fetch(jsonUrl, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      },
-      signal: AbortSignal.timeout(15_000),
-    });
-
-    if (!resp.ok) {
-      console.warn(`[url-scraper] Reddit JSON API returned ${resp.status}`);
-      return [];
-    }
-
-    const json = await resp.json();
-
-    // Subreddit listing: json.data.children[]
-    const listing = json?.data?.children ?? (Array.isArray(json) ? json[0]?.data?.children : null) ?? [];
-
-    const results: Omit<ScrapedPost, "platform" | "source">[] = [];
-    for (const child of listing) {
-      const d = child?.data;
-      if (!d || child.kind !== "t3") continue; // t3 = link/post
-
-      const title = d.title || "";
-      const selftext = d.selftext || "";
-      const text = selftext ? `${title}\n\n${selftext}` : title;
-      if (text.length < 5) continue;
-
-      const permalink = d.permalink ? `https://www.reddit.com${d.permalink}` : "";
-      const createdUtc = d.created_utc ? new Date(d.created_utc * 1000).toISOString() : "";
-
-      results.push({
-        author: d.author || "unknown",
-        text,
-        url: permalink,
-        timestamp: createdUtc || new Date().toISOString(),
-        engagement: d.score ?? 0,
-      });
-    }
-
-    console.log(`[url-scraper] Reddit JSON fallback: found ${results.length} posts`);
-    return results;
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.warn(`[url-scraper] Reddit JSON fallback failed: ${msg}`);
-    return [];
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Main: scrape a specific URL using Playwright with saved cookies
 // ---------------------------------------------------------------------------
 
@@ -605,7 +748,6 @@ export async function scrapeUrl(targetUrl: string): Promise<ScrapeResult> {
     let page: import("playwright").Page;
 
     if (cookiesExist && shouldUseStorageState()) {
-      // Server mode — use portable storageState (env var or JSON file)
       const statePath = getStorageState();
       console.log(`[url-scraper] Using storageState: ${statePath ? "yes" : "none"}`);
       browser = await chromium.launch({
@@ -619,7 +761,6 @@ export async function scrapeUrl(targetUrl: string): Promise<ScrapeResult> {
       });
       page = await context.newPage();
     } else if (cookiesExist) {
-      // Local dev — use persistent browser profile
       console.log(`[url-scraper] Using persistent profile: ${getProfileDir()}`);
       context = await chromium.launchPersistentContext(getProfileDir(), {
         headless: config.headless,
@@ -629,7 +770,6 @@ export async function scrapeUrl(targetUrl: string): Promise<ScrapeResult> {
       });
       page = context.pages()[0] || (await context.newPage());
     } else {
-      // No profile — launch a plain browser
       browser = await chromium.launch({
         headless: config.headless,
         args: ["--disable-blink-features=AutomationControlled"],
@@ -641,12 +781,16 @@ export async function scrapeUrl(targetUrl: string): Promise<ScrapeResult> {
       page = await context.newPage();
     }
 
-    // Rewrite Reddit URLs to old.reddit.com for reliable scraping
-    // (new Reddit uses Shadow DOM web components that selectors can't pierce)
+    // Reddit: use www.reddit.com (new interface), append /new/ for subreddit feeds
     let navigateUrl = targetUrl;
-    if (platform === "Reddit" && /www\.reddit\.com/i.test(targetUrl)) {
-      navigateUrl = targetUrl.replace(/www\.reddit\.com/i, "old.reddit.com");
-      console.log(`[url-scraper] Rewriting Reddit URL to old.reddit.com for reliable scraping`);
+    if (platform === "Reddit") {
+      // Normalize to www.reddit.com
+      navigateUrl = navigateUrl.replace(/old\.reddit\.com/i, "www.reddit.com");
+      // Append /new/ for subreddit URLs to get newest posts first
+      if (/\/r\/[^/]+\/?$/.test(navigateUrl)) {
+        navigateUrl = navigateUrl.replace(/\/+$/, "") + "/new/";
+        console.log(`[url-scraper] Reddit: using /new/ feed for newest posts first`);
+      }
     }
 
     // Navigate
@@ -673,19 +817,68 @@ export async function scrapeUrl(targetUrl: string): Promise<ScrapeResult> {
         `${platform} requires login. Run: cd scraper-service && npx ts-node src/crawler/browserAuth.ts`
       );
     } else {
+      // Platform-specific login verification
+      if (platform === "Facebook") {
+        const fbLoginCheck = await page.evaluate(() => {
+          const profileLink = document.querySelector('a[href*="/me"], a[aria-label="Profile"], div[role="navigation"] a[href*="/profile"]');
+          const logoutLink = document.querySelector('a[href*="logout"], [data-testid="royal_logout"]');
+          const createPostBox = document.querySelector('div[role="main"] div[role="button"][tabindex="0"]');
+          const feedContent = document.querySelectorAll('div[role="article"]').length;
+          return {
+            hasProfileLink: !!profileLink,
+            hasLogoutLink: !!logoutLink,
+            hasCreatePostBox: !!createPostBox,
+            articleCount: feedContent,
+          };
+        });
+        const loggedIn = fbLoginCheck.hasProfileLink || fbLoginCheck.hasLogoutLink || fbLoginCheck.articleCount > 0;
+        console.log(`[url-scraper] Facebook login check:`);
+        console.log(`[url-scraper]   Logged in:       ${loggedIn ? "YES" : "NO (likely not authenticated)"}`);
+        console.log(`[url-scraper]   Profile link:    ${fbLoginCheck.hasProfileLink}`);
+        console.log(`[url-scraper]   Logout link:     ${fbLoginCheck.hasLogoutLink}`);
+        console.log(`[url-scraper]   Create post box: ${fbLoginCheck.hasCreatePostBox}`);
+        console.log(`[url-scraper]   Articles in DOM: ${fbLoginCheck.articleCount}`);
+        if (!loggedIn) {
+          console.warn(`[url-scraper] WARNING: Facebook session appears unauthenticated — posts may not load`);
+          console.warn(`[url-scraper]   Run: cd scraper-service && npx ts-node src/crawler/browserAuth.ts`);
+        }
+      } else if (platform === "LinkedIn") {
+        const liLoginCheck = await page.evaluate(() => {
+          const feedCards = document.querySelectorAll('.feed-shared-update-v2, .occludable-update, div[data-urn]').length;
+          const navProfile = document.querySelector('a[href*="/in/"], img.global-nav__me-photo, .feed-identity-module');
+          return { feedCards, hasNavProfile: !!navProfile };
+        });
+        const loggedIn = liLoginCheck.hasNavProfile || liLoginCheck.feedCards > 0;
+        console.log(`[url-scraper] LinkedIn login check:`);
+        console.log(`[url-scraper]   Logged in:    ${loggedIn ? "YES" : "NO (likely not authenticated)"}`);
+        console.log(`[url-scraper]   Nav profile:  ${liLoginCheck.hasNavProfile}`);
+        console.log(`[url-scraper]   Feed cards:   ${liLoginCheck.feedCards}`);
+        if (!loggedIn) {
+          console.warn(`[url-scraper] WARNING: LinkedIn session appears unauthenticated — posts may not load`);
+        }
+      } else if (platform === "X") {
+        const xLoginCheck = await page.evaluate(() => {
+          const tweets = document.querySelectorAll('article[data-testid="tweet"]').length;
+          const navProfile = document.querySelector('a[data-testid="AppTabBar_Profile_Link"], a[href*="/compose/tweet"]');
+          return { tweets, hasNavProfile: !!navProfile };
+        });
+        const loggedIn = xLoginCheck.hasNavProfile || xLoginCheck.tweets > 0;
+        console.log(`[url-scraper] X/Twitter login check:`);
+        console.log(`[url-scraper]   Logged in:    ${loggedIn ? "YES" : "NO (likely not authenticated)"}`);
+        console.log(`[url-scraper]   Nav profile:  ${xLoginCheck.hasNavProfile}`);
+        console.log(`[url-scraper]   Tweets in DOM: ${xLoginCheck.tweets}`);
+        if (!loggedIn) {
+          console.warn(`[url-scraper] WARNING: X session appears unauthenticated — posts may not load`);
+        }
+      }
       // Extract posts
       let extracted: Omit<ScrapedPost, "platform" | "source">[] = [];
       switch (platform) {
         case "Facebook":
-          extracted = await extractFacebook(page);
+          extracted = await extractFacebook(page, targetUrl);
           break;
         case "Reddit":
-          extracted = await extractReddit(page);
-          // If old.reddit.com returned 0 posts, try Reddit JSON API as fallback
-          if (extracted.length === 0) {
-            console.log(`[url-scraper] old.reddit.com returned 0 posts, trying Reddit JSON API fallback...`);
-            extracted = await extractRedditViaJson(targetUrl);
-          }
+          extracted = await extractReddit(page, targetUrl);
           break;
         case "LinkedIn":
           extracted = await extractLinkedin(page);
@@ -726,7 +919,7 @@ export async function scrapeUrl(targetUrl: string): Promise<ScrapeResult> {
   if (posts.length > 0) {
     console.log(`[url-scraper] Posts:`);
     posts.forEach((p, i) =>
-      console.log(`[url-scraper]   ${i + 1}. [${p.author}] ${p.text.slice(0, 120)}... -> ${p.url.slice(0, 80)}`)
+      console.log(`[url-scraper]   ${i + 1}. [${p.author}] ${p.text.slice(0, 120)}... -> ${p.url.slice(0, 100)}`)
     );
   }
   if (errors.length > 0) {

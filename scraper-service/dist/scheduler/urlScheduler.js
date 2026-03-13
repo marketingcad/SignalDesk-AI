@@ -43,6 +43,7 @@ exports.deleteSchedule = deleteSchedule;
 exports.pauseSchedule = pauseSchedule;
 exports.resumeSchedule = resumeSchedule;
 exports.runScheduleNow = runScheduleNow;
+exports.listRuns = listRuns;
 const cron = __importStar(require("node-cron"));
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
@@ -57,6 +58,8 @@ const crawlerManager_1 = require("../crawler/crawlerManager");
 // ---------------------------------------------------------------------------
 const STORE_DIR = path.resolve(__dirname, "../../storage");
 const STORE_FILE = path.join(STORE_DIR, "url-schedules.json");
+const RUNS_FILE = path.join(STORE_DIR, "url-schedule-runs.json");
+const MAX_RUNS = 200; // keep last N runs to avoid unbounded growth
 function readStore() {
     try {
         if (!fs.existsSync(STORE_FILE))
@@ -75,6 +78,40 @@ function writeStore(schedules) {
     fs.renameSync(tmp, STORE_FILE);
 }
 // ---------------------------------------------------------------------------
+// Run history persistence
+// ---------------------------------------------------------------------------
+function readRuns() {
+    try {
+        if (!fs.existsSync(RUNS_FILE))
+            return [];
+        return JSON.parse(fs.readFileSync(RUNS_FILE, "utf-8"));
+    }
+    catch {
+        return [];
+    }
+}
+function writeRuns(runs) {
+    if (!fs.existsSync(STORE_DIR))
+        fs.mkdirSync(STORE_DIR, { recursive: true });
+    const trimmed = runs.slice(-MAX_RUNS);
+    const tmp = RUNS_FILE + ".tmp";
+    fs.writeFileSync(tmp, JSON.stringify(trimmed, null, 2), "utf-8");
+    fs.renameSync(tmp, RUNS_FILE);
+}
+function addRun(run) {
+    const runs = readRuns();
+    runs.push(run);
+    writeRuns(runs);
+}
+function updateRun(runId, patch) {
+    const runs = readRuns();
+    const idx = runs.findIndex((r) => r.id === runId);
+    if (idx !== -1) {
+        runs[idx] = { ...runs[idx], ...patch };
+        writeRuns(runs);
+    }
+}
+// ---------------------------------------------------------------------------
 // In-memory task map
 // ---------------------------------------------------------------------------
 const activeTasks = new Map();
@@ -91,20 +128,40 @@ async function runSchedule(id) {
         return;
     }
     console.log(`[url-scheduler] Running "${schedule.name}" → ${schedule.url}`);
+    // Create run record
+    const runId = (0, crypto_1.randomUUID)();
+    const run = {
+        id: runId,
+        scheduleId: id,
+        scheduleName: schedule.name,
+        startedAt: new Date().toISOString(),
+        finishedAt: null,
+        status: "running",
+        postsFound: 0,
+        leadsInserted: 0,
+        errorMessage: null,
+    };
+    addRun(run);
     let runStatus = "ok";
+    let postsFound = 0;
+    let leadsInserted = 0;
+    let errorMessage = null;
     try {
         const result = await (0, scrapers_1.scrapeUrl)(schedule.url);
         // Pre-filter: reject job seekers (same as crawlerManager + url-scraper)
         const filtered = (0, postFilter_1.filterPosts)(result.posts, "[url-scheduler]");
         console.log(`[url-scheduler] ${filtered.length} posts after filtering (${result.posts.length - filtered.length} rejected)`);
+        postsFound = filtered.length;
         if (filtered.length > 0) {
             const batchResult = await (0, backendClient_1.sendLeadsBatch)(filtered);
             if (batchResult) {
+                leadsInserted = batchResult.inserted;
                 await (0, discord_1.sendNewLeadsAlert)(schedule.url, result.platform, filtered, batchResult);
             }
         }
         if (result.errors.length > 0) {
             runStatus = "error";
+            errorMessage = result.errors.join("; ");
             const discordErrors = result.errors.filter((e) => !e.includes("requires login"));
             if (discordErrors.length > 0) {
                 await (0, discord_1.sendErrorAlert)(result.platform, discordErrors.join("\n"));
@@ -113,10 +170,18 @@ async function runSchedule(id) {
     }
     catch (err) {
         runStatus = "error";
-        const msg = err instanceof Error ? err.message : String(err);
-        console.error(`[url-scheduler] "${schedule.name}" failed: ${msg}`);
+        errorMessage = err instanceof Error ? err.message : String(err);
+        console.error(`[url-scheduler] "${schedule.name}" failed: ${errorMessage}`);
     }
-    // Persist run stats
+    // Update run record
+    updateRun(runId, {
+        finishedAt: new Date().toISOString(),
+        status: runStatus,
+        postsFound,
+        leadsInserted,
+        errorMessage,
+    });
+    // Persist run stats on schedule
     const updated = readStore();
     const idx = updated.findIndex((s) => s.id === id);
     if (idx !== -1) {
@@ -244,5 +309,15 @@ async function runScheduleNow(id) {
     if (!schedule)
         throw new Error(`Schedule not found: ${id}`);
     await runSchedule(id);
+}
+// ---------------------------------------------------------------------------
+// Run history queries — called by route handlers
+// ---------------------------------------------------------------------------
+function listRuns(scheduleId) {
+    const runs = readRuns();
+    const filtered = scheduleId
+        ? runs.filter((r) => r.scheduleId === scheduleId)
+        : runs;
+    return filtered.sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
 }
 //# sourceMappingURL=urlScheduler.js.map

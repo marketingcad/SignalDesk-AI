@@ -9,6 +9,7 @@ const storage_1 = require("../crawler/storage");
  * Nitter instances are unreliable/dead, so we use:
  *   site:x.com "hiring virtual assistant"
  * to find publicly indexed tweets.
+ * Google's &tbs=qdr:w filter ensures results are from the past week.
  */
 async function scrapeX() {
     const start = Date.now();
