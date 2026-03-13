@@ -831,17 +831,271 @@ async function extractRedditViaJson(originalUrl: string): Promise<Omit<ScrapedPo
 }
 
 // ---------------------------------------------------------------------------
-// LinkedIn extractor
+// LinkedIn: Voyager API response parser
 // ---------------------------------------------------------------------------
 
-async function extractLinkedin(page: import("playwright").Page): Promise<Omit<ScrapedPost, "platform" | "source">[]> {
-  console.log(`[url-scraper] Extracting LinkedIn posts...`);
+interface LinkedInApiPost {
+  postId: string;
+  author: string;
+  text: string;
+  timestamp: string;
+  permalink: string;
+  engagement: number;
+}
+
+/**
+ * Recursively walk a parsed LinkedIn Voyager API response looking for post data.
+ * LinkedIn's API returns "included" arrays with entity objects, and "data" with
+ * feed update references. Post content lives in objects with $type containing
+ * "com.linkedin.voyager.feed" or "com.linkedin.voyager.dash.feed".
+ */
+function extractPostsFromLinkedInApi(obj: unknown): LinkedInApiPost[] {
+  const results: LinkedInApiPost[] = [];
+  const seen = new Set<string>();
+
+  function walk(node: unknown): void {
+    if (node === null || node === undefined) return;
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item);
+      return;
+    }
+    if (typeof node !== "object") return;
+
+    const n = node as Record<string, unknown>;
+
+    // ── Pattern 1: Feed update with commentary (most common) ──
+    // { commentary: { text: { text } }, actor: { name }, updateMetadata: { urn } }
+    if (typeof n.commentary === "object" && n.commentary !== null) {
+      const commentary = n.commentary as Record<string, unknown>;
+      const textObj = commentary.text as Record<string, unknown> | undefined;
+      const text = typeof textObj?.text === "string" ? textObj.text : (typeof commentary.text === "string" ? commentary.text : "");
+
+      if (text.length > 15) {
+        const urn = String(n.urn ?? n.updateUrn ?? n.entityUrn ?? n["*updateMetadata"] ?? "");
+        const postId = urn.replace(/^urn:li:\w+:/, "") || text.slice(0, 50);
+        if (!seen.has(postId)) {
+          seen.add(postId);
+
+          // Author
+          let author = "unknown";
+          if (typeof n.actor === "object" && n.actor !== null) {
+            const actor = n.actor as Record<string, unknown>;
+            const name = actor.name as Record<string, unknown> | undefined;
+            author = typeof name?.text === "string" ? name.text : (typeof actor.name === "string" ? actor.name : "unknown");
+          }
+
+          // Timestamp
+          let timestamp = "";
+          if (typeof n.createdAt === "number") {
+            timestamp = new Date(n.createdAt).toISOString();
+          } else if (typeof n.publishedAt === "number") {
+            timestamp = new Date(n.publishedAt).toISOString();
+          }
+
+          // Engagement
+          let engagement = 0;
+          if (typeof n.socialDetail === "object" && n.socialDetail !== null) {
+            const social = n.socialDetail as Record<string, unknown>;
+            engagement = typeof social.totalSocialActivityCounts === "object" && social.totalSocialActivityCounts !== null
+              ? (social.totalSocialActivityCounts as Record<string, unknown>).numLikes as number ?? 0
+              : 0;
+          }
+
+          // Permalink from URN
+          let permalink = "";
+          const activityMatch = urn.match(/activity:(\d+)/);
+          if (activityMatch) {
+            permalink = `https://www.linkedin.com/feed/update/urn:li:activity:${activityMatch[1]}`;
+          } else if (urn.includes("ugcPost:")) {
+            const ugcMatch = urn.match(/ugcPost:(\d+)/);
+            if (ugcMatch) permalink = `https://www.linkedin.com/feed/update/urn:li:ugcPost:${ugcMatch[1]}`;
+          }
+
+          results.push({ postId, author, text, timestamp, permalink, engagement });
+        }
+      }
+    }
+
+    // ── Pattern 2: Share / UGC post with text object ──
+    if (typeof n.text === "object" && n.text !== null && typeof n.$type === "string" && n.$type.includes("linkedin")) {
+      const textObj = n.text as Record<string, unknown>;
+      const text = typeof textObj.text === "string" ? textObj.text : "";
+
+      if (text.length > 15) {
+        const urn = String(n.urn ?? n.entityUrn ?? "");
+        const postId = urn.replace(/^urn:li:\w+:/, "") || text.slice(0, 50);
+        if (!seen.has(postId)) {
+          seen.add(postId);
+
+          let author = "unknown";
+          if (typeof n.author === "string") {
+            // Author is a URN like "urn:li:member:123" — we keep it as-is, DOM can fill it
+            author = n.author;
+          }
+
+          let timestamp = "";
+          if (typeof n.createdAt === "number") {
+            timestamp = new Date(n.createdAt).toISOString();
+          } else if (typeof n.firstPublishedAt === "number") {
+            timestamp = new Date(n.firstPublishedAt).toISOString();
+          }
+
+          let permalink = "";
+          const activityMatch = urn.match(/(?:activity|ugcPost):(\d+)/);
+          if (activityMatch) {
+            permalink = `https://www.linkedin.com/feed/update/${urn}`;
+          }
+
+          results.push({ postId, author, text, timestamp, permalink, engagement: 0 });
+        }
+      }
+    }
+
+    // ── Pattern 3: "included" array (Voyager collection responses) ──
+    if (Array.isArray(n.included)) {
+      for (const item of n.included) walk(item);
+    }
+
+    // ── Pattern 4: "elements" array (paginated responses) ──
+    if (Array.isArray(n.elements)) {
+      for (const item of n.elements) walk(item);
+    }
+
+    // ── Pattern 5: data.* wrappers ──
+    if (typeof n.data === "object" && n.data !== null) {
+      walk(n.data);
+    }
+
+    // Recurse into remaining object values
+    for (const key of Object.keys(n)) {
+      if (["commentary", "text", "included", "elements", "data"].includes(key)) continue;
+      const val = n[key];
+      if (typeof val === "object" && val !== null) {
+        walk(val);
+      }
+    }
+  }
+
+  walk(obj);
+  return results;
+}
+
+/**
+ * Parse a LinkedIn API response body (Voyager JSON).
+ */
+function parseLinkedInResponseBody(body: string): LinkedInApiPost[] {
+  try {
+    const json = JSON.parse(body);
+    return extractPostsFromLinkedInApi(json);
+  } catch {
+    return [];
+  }
+}
+
+// ---------------------------------------------------------------------------
+// LinkedIn extractor — Voyager API interception + DOM fallback
+// ---------------------------------------------------------------------------
+
+async function extractLinkedin(page: Page): Promise<Omit<ScrapedPost, "platform" | "source">[]> {
+  console.log(`[url-scraper] Extracting LinkedIn posts via API interception + DOM fallback...`);
+
+  const apiPosts: LinkedInApiPost[] = [];
+  let apiResponseCount = 0;
+
+  // ── Step 1: Set up Voyager API response interception ──
+  const responseHandler = async (response: PlaywrightResponse) => {
+    const url = response.url();
+    // LinkedIn Voyager API endpoints for feed data
+    if (!url.includes("/voyager/api/") && !url.includes("/api/feed/") && !url.includes("/graphql")) return;
+    // Only capture feed-related responses
+    if (!url.includes("feed") && !url.includes("update") && !url.includes("search") && !url.includes("graphql")) return;
+
+    try {
+      const contentType = response.headers()["content-type"] || "";
+      if (!contentType.includes("json")) return;
+
+      const body = await response.text();
+      apiResponseCount++;
+      const posts = parseLinkedInResponseBody(body);
+      if (posts.length > 0) {
+        apiPosts.push(...posts);
+        console.log(`[url-scraper]   LinkedIn API response #${apiResponseCount}: extracted ${posts.length} posts (total: ${apiPosts.length})`);
+      }
+    } catch {
+      // Response may not be readable
+    }
+  };
+
+  page.on("response", responseHandler);
+
+  // ── Step 2: Wait for initial load then scroll ──
   await page.waitForTimeout(3000);
 
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 6; i++) {
     await page.evaluate(() => window.scrollBy(0, window.innerHeight));
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(2000);
+    console.log(`[url-scraper]   LinkedIn scroll ${i + 1}/6 (API posts so far: ${apiPosts.length})`);
   }
+
+  page.off("response", responseHandler);
+
+  console.log(`[url-scraper] LinkedIn API interception complete: ${apiResponseCount} responses, ${apiPosts.length} posts extracted`);
+
+  // ── Step 3: Process API posts ──
+  if (apiPosts.length > 0) {
+    const seen = new Set<string>();
+    const deduped = apiPosts.filter((p) => {
+      if (seen.has(p.postId)) return false;
+      seen.add(p.postId);
+      return true;
+    });
+
+    const withTs = deduped.map((p) => ({
+      ...p,
+      resolvedTs: resolveTimestamp(p.timestamp),
+    }));
+
+    const currentWeek = withTs.filter((p) => isCurrentWeek(p.resolvedTs));
+    const oldCount = withTs.filter((p) => isOlderThanCurrentWeek(p.resolvedTs)).length;
+
+    console.log(`[url-scraper] LinkedIn API: ${deduped.length} unique posts, ${currentWeek.length} current week, ${oldCount} older (skipped)`);
+
+    // ── Step 4: Keyword/NLP filtering ──
+    const keywords = config.targets.linkedinSearchQueries;
+    const keywordFiltered = currentWeek.map((p) => ({
+      ...p,
+      matchedKeywords: matchKeywords(p.text, keywords),
+    }));
+
+    const withMatches = keywordFiltered.filter((p) => p.matchedKeywords.length > 0);
+    const noMatches = keywordFiltered.filter((p) => p.matchedKeywords.length === 0);
+
+    console.log(`[url-scraper] LinkedIn keyword filtering: ${withMatches.length} matched, ${noMatches.length} unmatched`);
+    keywordFiltered.forEach((p, i) => {
+      const kwTag = p.matchedKeywords.length > 0 ? ` [KW: ${p.matchedKeywords.join(", ")}]` : " [no keyword match]";
+      console.log(`[url-scraper]   ${i + 1}. [${p.author}] "${p.text.slice(0, 120)}..."${kwTag}`);
+    });
+
+    return keywordFiltered.map((p) => ({
+      author: p.author,
+      text: p.text,
+      url: p.permalink,
+      timestamp: p.resolvedTs || new Date().toISOString(),
+      engagement: p.engagement,
+    }));
+  }
+
+  // ── Step 5: DOM fallback ──
+  console.log(`[url-scraper] LinkedIn API yielded 0 posts — falling back to DOM extraction...`);
+  return extractLinkedinDOM(page);
+}
+
+// ---------------------------------------------------------------------------
+// LinkedIn DOM extractor (original approach, used as fallback)
+// ---------------------------------------------------------------------------
+
+async function extractLinkedinDOM(page: Page): Promise<Omit<ScrapedPost, "platform" | "source">[]> {
+  console.log(`[url-scraper] DOM fallback: extracting LinkedIn posts from feed cards...`);
 
   const posts = await page.evaluate(() => {
     const results: { author: string; text: string; url: string; rawTs: string }[] = [];
@@ -862,14 +1116,13 @@ async function extractLinkedin(page: import("playwright").Page): Promise<Omit<Sc
     return results;
   });
 
-  // Filter to current week
   const resolved = posts.map((p) => ({
     ...p,
     resolvedTs: resolveTimestamp(p.rawTs),
   }));
   const filtered = resolved.filter((p) => isCurrentWeek(p.resolvedTs));
 
-  console.log(`[url-scraper] LinkedIn: found ${posts.length} posts, ${filtered.length} from current week`);
+  console.log(`[url-scraper] LinkedIn DOM: found ${posts.length} posts, ${filtered.length} from current week`);
   filtered.forEach((p, i) => {
     console.log(`[url-scraper]   ${i + 1}. [${p.author}] "${p.text.slice(0, 120)}..."`);
   });
@@ -884,24 +1137,210 @@ async function extractLinkedin(page: import("playwright").Page): Promise<Omit<Sc
 }
 
 // ---------------------------------------------------------------------------
-// X/Twitter extractor
+// X/Twitter: GraphQL API response parser
 // ---------------------------------------------------------------------------
 
-async function extractX(page: import("playwright").Page): Promise<Omit<ScrapedPost, "platform" | "source">[]> {
-  console.log(`[url-scraper] Extracting X/Twitter posts...`);
+interface XApiTweet {
+  tweetId: string;
+  author: string;
+  screenName: string;
+  text: string;
+  timestamp: string;
+  permalink: string;
+  engagement: number;
+}
+
+/**
+ * Recursively walk a parsed X/Twitter GraphQL response looking for tweet data.
+ * X uses GraphQL endpoints at /i/api/graphql/ with responses containing
+ * tweet_results, legacy objects, and core.user_results for author info.
+ */
+function extractTweetsFromGraphQL(obj: unknown): XApiTweet[] {
+  const results: XApiTweet[] = [];
+  const seen = new Set<string>();
+
+  function walk(node: unknown): void {
+    if (node === null || node === undefined) return;
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item);
+      return;
+    }
+    if (typeof node !== "object") return;
+
+    const n = node as Record<string, unknown>;
+
+    // ── Pattern 1: tweet_results > result > legacy (main tweet data) ──
+    if (typeof n.legacy === "object" && n.legacy !== null && typeof n.__typename === "string" && n.__typename.includes("Tweet")) {
+      const legacy = n.legacy as Record<string, unknown>;
+      const text = typeof legacy.full_text === "string" ? legacy.full_text : "";
+
+      if (text.length > 5) {
+        const tweetId = String(legacy.id_str ?? n.rest_id ?? "");
+        if (tweetId && !seen.has(tweetId)) {
+          seen.add(tweetId);
+
+          // Author from core.user_results.result.legacy
+          let author = "unknown";
+          let screenName = "";
+          if (typeof n.core === "object" && n.core !== null) {
+            const core = n.core as Record<string, unknown>;
+            const userResults = core.user_results as Record<string, unknown> | undefined;
+            const userResult = userResults?.result as Record<string, unknown> | undefined;
+            const userLegacy = userResult?.legacy as Record<string, unknown> | undefined;
+            if (userLegacy) {
+              author = typeof userLegacy.name === "string" ? userLegacy.name : "unknown";
+              screenName = typeof userLegacy.screen_name === "string" ? userLegacy.screen_name : "";
+            }
+          }
+
+          // Timestamp
+          let timestamp = "";
+          if (typeof legacy.created_at === "string") {
+            // Twitter format: "Wed Oct 10 20:19:24 +0000 2018"
+            const parsed = new Date(legacy.created_at);
+            if (!isNaN(parsed.getTime())) {
+              timestamp = parsed.toISOString();
+            }
+          }
+
+          // Engagement
+          const engagement = (typeof legacy.favorite_count === "number" ? legacy.favorite_count : 0)
+            + (typeof legacy.retweet_count === "number" ? legacy.retweet_count : 0);
+
+          // Permalink
+          const permalink = screenName && tweetId
+            ? `https://x.com/${screenName}/status/${tweetId}`
+            : "";
+
+          results.push({ tweetId, author, screenName, text, timestamp, permalink, engagement });
+        }
+      }
+    }
+
+    // ── Pattern 2: result > tweet > legacy (TweetWithVisibilityResults wrapper) ──
+    if (typeof n.tweet === "object" && n.tweet !== null) {
+      walk(n.tweet);
+    }
+
+    // ── Pattern 3: tweet_results wrapper ──
+    if (typeof n.tweet_results === "object" && n.tweet_results !== null) {
+      walk(n.tweet_results);
+    }
+
+    // ── Pattern 4: result wrapper ──
+    if (typeof n.result === "object" && n.result !== null && typeof (n.result as Record<string, unknown>).__typename === "string") {
+      walk(n.result);
+    }
+
+    // ── Pattern 5: entries / instructions arrays (timeline responses) ──
+    if (Array.isArray(n.entries)) {
+      for (const entry of n.entries) walk(entry);
+    }
+    if (Array.isArray(n.instructions)) {
+      for (const instr of n.instructions) {
+        const i = instr as Record<string, unknown>;
+        if (Array.isArray(i.entries)) {
+          for (const entry of i.entries) walk(entry);
+        }
+        if (i.entry) walk(i.entry);
+      }
+    }
+
+    // ── Pattern 6: content.itemContent / content.items ──
+    if (typeof n.content === "object" && n.content !== null) {
+      walk(n.content);
+    }
+    if (typeof n.itemContent === "object" && n.itemContent !== null) {
+      walk(n.itemContent);
+    }
+    if (Array.isArray(n.items)) {
+      for (const item of n.items) {
+        if (typeof item === "object" && item !== null) {
+          walk((item as Record<string, unknown>).item ?? item);
+        }
+      }
+    }
+
+    // ── Pattern 7: data wrapper (top-level response) ──
+    if (typeof n.data === "object" && n.data !== null) {
+      walk(n.data);
+    }
+
+    // Recurse into remaining properties
+    for (const key of Object.keys(n)) {
+      if (["legacy", "core", "tweet", "tweet_results", "result", "entries", "instructions", "content", "itemContent", "items", "data"].includes(key)) continue;
+      const val = n[key];
+      if (typeof val === "object" && val !== null) {
+        walk(val);
+      }
+    }
+  }
+
+  walk(obj);
+  return results;
+}
+
+/**
+ * Parse an X/Twitter GraphQL response body.
+ */
+function parseXGraphQLResponseBody(body: string): XApiTweet[] {
+  try {
+    const json = JSON.parse(body);
+    return extractTweetsFromGraphQL(json);
+  } catch {
+    return [];
+  }
+}
+
+// ---------------------------------------------------------------------------
+// X/Twitter extractor — GraphQL interception + DOM fallback
+// ---------------------------------------------------------------------------
+
+async function extractX(page: Page): Promise<Omit<ScrapedPost, "platform" | "source">[]> {
+  console.log(`[url-scraper] Extracting X/Twitter posts via GraphQL interception + DOM fallback...`);
+
+  const apiTweets: XApiTweet[] = [];
+  let apiResponseCount = 0;
+
+  // ── Step 1: Set up GraphQL response interception ──
+  const responseHandler = async (response: PlaywrightResponse) => {
+    const url = response.url();
+    // X/Twitter GraphQL endpoints
+    if (!url.includes("/i/api/graphql/") && !url.includes("/i/api/2/")) return;
+
+    try {
+      const contentType = response.headers()["content-type"] || "";
+      if (!contentType.includes("json")) return;
+
+      const body = await response.text();
+      apiResponseCount++;
+      const tweets = parseXGraphQLResponseBody(body);
+      if (tweets.length > 0) {
+        apiTweets.push(...tweets);
+        console.log(`[url-scraper]   X GraphQL response #${apiResponseCount}: extracted ${tweets.length} tweets (total: ${apiTweets.length})`);
+      }
+    } catch {
+      // Response may not be readable
+    }
+  };
+
+  page.on("response", responseHandler);
+
+  // ── Step 2: Wait for initial load then scroll ──
   await page.waitForTimeout(3000);
 
   let hitOldPost = false;
 
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 8; i++) {
     if (hitOldPost) {
       console.log(`[url-scraper]   Stopping scroll — detected posts older than current week`);
       break;
     }
     await page.evaluate(() => window.scrollBy(0, window.innerHeight));
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(2000);
+    console.log(`[url-scraper]   X scroll ${i + 1}/8 (GraphQL tweets so far: ${apiTweets.length})`);
 
-    // Check for old tweets via time[datetime]
+    // Check for old tweets via time[datetime] in DOM
     const oldDetected = await page.evaluate(() => {
       const times = document.querySelectorAll('article[data-testid="tweet"] time[datetime]');
       for (const t of times) {
@@ -922,6 +1361,66 @@ async function extractX(page: import("playwright").Page): Promise<Omit<ScrapedPo
     if (oldDetected) hitOldPost = true;
   }
 
+  page.off("response", responseHandler);
+
+  console.log(`[url-scraper] X GraphQL interception complete: ${apiResponseCount} responses, ${apiTweets.length} tweets extracted`);
+
+  // ── Step 3: Process API tweets ──
+  if (apiTweets.length > 0) {
+    const seen = new Set<string>();
+    const deduped = apiTweets.filter((t) => {
+      if (seen.has(t.tweetId)) return false;
+      seen.add(t.tweetId);
+      return true;
+    });
+
+    const withTs = deduped.map((t) => ({
+      ...t,
+      resolvedTs: resolveTimestamp(t.timestamp),
+    }));
+
+    const currentWeek = withTs.filter((t) => isCurrentWeek(t.resolvedTs));
+    const oldCount = withTs.filter((t) => isOlderThanCurrentWeek(t.resolvedTs)).length;
+
+    console.log(`[url-scraper] X GraphQL: ${deduped.length} unique tweets, ${currentWeek.length} current week, ${oldCount} older (skipped)`);
+
+    // ── Step 4: Keyword/NLP filtering ──
+    const keywords = config.targets.xSearchQueries;
+    const keywordFiltered = currentWeek.map((t) => ({
+      ...t,
+      matchedKeywords: matchKeywords(t.text, keywords),
+    }));
+
+    const withMatches = keywordFiltered.filter((t) => t.matchedKeywords.length > 0);
+    const noMatches = keywordFiltered.filter((t) => t.matchedKeywords.length === 0);
+
+    console.log(`[url-scraper] X keyword filtering: ${withMatches.length} matched, ${noMatches.length} unmatched`);
+    keywordFiltered.forEach((t, i) => {
+      const kwTag = t.matchedKeywords.length > 0 ? ` [KW: ${t.matchedKeywords.join(", ")}]` : " [no keyword match]";
+      console.log(`[url-scraper]   ${i + 1}. [@${t.screenName}] "${t.text.slice(0, 120)}..."${kwTag}`);
+    });
+
+    return keywordFiltered.map((t) => ({
+      author: t.author || `@${t.screenName}`,
+      text: t.text,
+      url: t.permalink,
+      timestamp: t.resolvedTs || new Date().toISOString(),
+      engagement: t.engagement,
+    }));
+  }
+
+  // ── Step 5: DOM fallback ──
+  console.log(`[url-scraper] X GraphQL yielded 0 tweets — falling back to DOM extraction...`);
+  return extractXDOM(page);
+}
+
+// ---------------------------------------------------------------------------
+// X/Twitter DOM extractor (original approach, used as fallback)
+// ---------------------------------------------------------------------------
+
+async function extractXDOM(page: Page): Promise<Omit<ScrapedPost, "platform" | "source">[]> {
+  console.log(`[url-scraper] DOM fallback: extracting X/Twitter tweets from article elements...`);
+
   const posts = await page.evaluate(() => {
     const results: { author: string; text: string; url: string; rawTs: string }[] = [];
 
@@ -940,14 +1439,13 @@ async function extractX(page: import("playwright").Page): Promise<Omit<ScrapedPo
     return results;
   });
 
-  // Filter to current week
   const resolved = posts.map((p) => ({
     ...p,
     resolvedTs: resolveTimestamp(p.rawTs),
   }));
   const filtered = resolved.filter((p) => isCurrentWeek(p.resolvedTs));
 
-  console.log(`[url-scraper] X: found ${posts.length} tweets, ${filtered.length} from current week`);
+  console.log(`[url-scraper] X DOM: found ${posts.length} tweets, ${filtered.length} from current week`);
   filtered.forEach((p, i) => {
     console.log(`[url-scraper]   ${i + 1}. [${p.author}] "${p.text.slice(0, 120)}..."`);
   });
