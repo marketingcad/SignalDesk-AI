@@ -713,5 +713,137 @@
     "postsFound": 0,
     "leadsInserted": 0,
     "errorMessage": null
+  },
+  {
+    "id": "7b86a9d6-cbb2-47fb-bd68-98da25dfe3b5",
+    "scheduleId": "5140e9c5-77c4-4ddd-8b06-fd2f1d8ffdab",
+    "scheduleName": "FB VAs Group (#1)",
+    "startedAt": "2026-03-13T20:30:00.299Z",
+    "finishedAt": "2026-03-13T20:30:42.640Z",
+    "status": "ok",
+    "postsFound": 30,
+    "leadsInserted": 15,
+    "errorMessage": null
+  },
+  {
+    "id": "ed5831a9-35f7-4d9b-b9e0-68d78361066e",
+    "scheduleId": "7d7996c7-b143-4371-ba81-59f6cb549547",
+    "scheduleName": "FB VAs Group (#2)",
+    "startedAt": "2026-03-13T20:30:00.309Z",
+    "finishedAt": "2026-03-13T20:30:31.256Z",
+    "status": "ok",
+    "postsFound": 44,
+    "leadsInserted": 0,
+    "errorMessage": null
+  },
+  {
+    "id": "3366eef4-5b95-47e5-983a-0bed370de4ab",
+    "scheduleId": "57dee8cc-8cd6-4dcd-8db1-19c9f77d84cc",
+    "scheduleName": "FB VAs Group (#4)",
+    "startedAt": "2026-03-13T20:30:00.312Z",
+    "finishedAt": "2026-03-13T20:30:42.627Z",
+    "status": "ok",
+    "postsFound": 30,
+    "leadsInserted": 15,
+    "errorMessage": null
+  },
+  {
+    "id": "d3fdbb9b-c99e-4615-af2c-2a930fce0d61",
+    "scheduleId": "28bf2d0e-7011-4c84-8f9a-8ad01e813b01",
+    "scheduleName": "FB VAs Group (#3)",
+    "startedAt": "2026-03-13T20:30:00.566Z",
+    "finishedAt": "2026-03-13T20:30:43.258Z",
+    "status": "ok",
+    "postsFound": 38,
+    "leadsInserted": 17,
+    "errorMessage": null
+  },
+  {
+    "id": "a2a8e09e-e308-4af2-aa79-651950deeb58",
+    "scheduleId": "5140e9c5-77c4-4ddd-8b06-fd2f1d8ffdab",
+    "scheduleName": "FB VAs Group (#1)",
+    "startedAt": "2026-03-13T21:00:00.079Z",
+    "finishedAt": "2026-03-13T21:00:33.016Z",
+    "status": "ok",
+    "postsFound": 34,
+    "leadsInserted": 3,
+    "errorMessage": null
+  },
+  {
+    "id": "b459900b-2d61-404c-b675-18c152bdc77b",
+    "scheduleId": "7d7996c7-b143-4371-ba81-59f6cb549547",
+    "scheduleName": "FB VAs Group (#2)",
+    "startedAt": "2026-03-13T21:00:00.093Z",
+    "finishedAt": "2026-03-13T21:00:32.071Z",
+    "status": "ok",
+    "postsFound": 44,
+    "leadsInserted": 0,
+    "errorMessage": null
+  },
+  {
+    "id": "887297e5-edc5-4873-a93f-bbe2bf16b826",
+    "scheduleId": "28bf2d0e-7011-4c84-8f9a-8ad01e813b01",
+    "scheduleName": "FB VAs Group (#3)",
+    "startedAt": "2026-03-13T21:00:00.307Z",
+    "finishedAt": "2026-03-13T21:00:32.731Z",
+    "status": "ok",
+    "postsFound": 38,
+    "leadsInserted": 2,
+    "errorMessage": null
+  },
+  {
+    "id": "c7c6fc0c-a9fd-42c3-ac1a-1b7a4c94cd01",
+    "scheduleId": "57dee8cc-8cd6-4dcd-8db1-19c9f77d84cc",
+    "scheduleName": "FB VAs Group (#4)",
+    "startedAt": "2026-03-13T21:00:01.118Z",
+    "finishedAt": "2026-03-13T21:00:31.800Z",
+    "status": "ok",
+    "postsFound": 30,
+    "leadsInserted": 0,
+    "errorMessage": null
+  },
+  {
+    "id": "6ebe4422-dfa1-423e-8502-7ce03e80dd7f",
+    "scheduleId": "7d7996c7-b143-4371-ba81-59f6cb549547",
+    "scheduleName": "FB VAs Group (#2)",
+    "startedAt": "2026-03-13T21:30:00.031Z",
+    "finishedAt": "2026-03-13T21:30:33.116Z",
+    "status": "ok",
+    "postsFound": 44,
+    "leadsInserted": 4,
+    "errorMessage": null
+  },
+  {
+    "id": "78c95c66-e588-4740-aa31-0346b8d07dd4",
+    "scheduleId": "5140e9c5-77c4-4ddd-8b06-fd2f1d8ffdab",
+    "scheduleName": "FB VAs Group (#1)",
+    "startedAt": "2026-03-13T21:30:00.384Z",
+    "finishedAt": "2026-03-13T21:30:32.272Z",
+    "status": "ok",
+    "postsFound": 28,
+    "leadsInserted": 3,
+    "errorMessage": null
+  },
+  {
+    "id": "9a8d47df-2d96-4435-aaa9-71c17edeeb80",
+    "scheduleId": "28bf2d0e-7011-4c84-8f9a-8ad01e813b01",
+    "scheduleName": "FB VAs Group (#3)",
+    "startedAt": "2026-03-13T21:30:00.390Z",
+    "finishedAt": "2026-03-13T21:30:34.437Z",
+    "status": "ok",
+    "postsFound": 38,
+    "leadsInserted": 0,
+    "errorMessage": null
+  },
+  {
+    "id": "1ac308b3-da17-4c9e-94b4-057d53495632",
+    "scheduleId": "57dee8cc-8cd6-4dcd-8db1-19c9f77d84cc",
+    "scheduleName": "FB VAs Group (#4)",
+    "startedAt": "2026-03-13T21:30:00.396Z",
+    "finishedAt": "2026-03-13T21:30:31.167Z",
+    "status": "ok",
+    "postsFound": 30,
+    "leadsInserted": 0,
+    "errorMessage": null
   }
 ]

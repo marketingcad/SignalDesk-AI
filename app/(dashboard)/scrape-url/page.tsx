@@ -16,6 +16,17 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import {
+  AlertDialog,
+  AlertDialogTrigger,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from "@/components/ui/alert-dialog";
+import {
   Globe,
   Link2,
   Search,
@@ -341,67 +352,113 @@ function ScheduleTableRow({
       : null;
 
   return (
-    <div className={cn(
-      "group grid items-start gap-3 px-4 py-3.5 border-b border-border last:border-0 hover:bg-muted/20 transition-colors",
-      onRunNow ? "grid-cols-[1fr_116px_76px_108px_56px_96px]" : "grid-cols-[1fr_116px_76px_108px_56px]"
-    )}>
-
-      {/* Col 1 — Name + URL + progress bar */}
-      <div className="min-w-0 space-y-0.5">
-        <div className="flex items-center gap-2 flex-wrap">
-          <PlatformBadge platform={platform} />
-          <span className="text-sm font-semibold text-foreground leading-tight truncate max-w-65">
-            {schedule.name}
-          </span>
-        </div>
-        <p className="text-[11px] text-muted-foreground font-mono truncate" title={schedule.url}>
-          {schedule.url}
-        </p>
-        {/* Progress bar */}
-        {schedule.status === "active" && progress !== null && (
-          <div className="flex items-center gap-2 pt-1">
-            <div className="flex-1 h-1 rounded-full bg-muted/80 overflow-hidden">
-              <div
-                className={cn(
-                  "h-full rounded-full transition-all duration-1000",
-                  isRunning ? "animate-pulse bg-primary w-full" : "bg-emerald-500"
-                )}
-                style={{ width: isRunning ? "100%" : `${progress}%` }}
-              />
-            </div>
+    <div className="group px-4 py-3.5 border-b border-border last:border-0 hover:bg-muted/20 transition-colors space-y-2.5">
+      {/* Row 1 — Main info */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          {/* Status icon */}
+          <div className={cn(
+            "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border",
+            schedule.status === "active"
+              ? "bg-emerald-500/10 border-emerald-500/20"
+              : "bg-muted/40 border-border"
+          )}>
+            {isRunning ? (
+              <Loader2 className="h-4 w-4 animate-spin text-primary" />
+            ) : schedule.status === "active" ? (
+              <Play className="h-4 w-4 text-emerald-400" />
+            ) : (
+              <Pause className="h-4 w-4 text-muted-foreground" />
+            )}
           </div>
-        )}
+          {/* Name + URL */}
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-[13px] font-semibold text-foreground leading-tight truncate">
+                {schedule.name}
+              </span>
+              <PlatformBadge platform={platform} />
+              <Badge
+                variant="outline"
+                className={cn(
+                  "text-[10px] px-1.5 rounded-full h-5 whitespace-nowrap shrink-0",
+                  schedule.status === "active"
+                    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+                    : "border-border bg-muted/30 text-muted-foreground"
+                )}
+              >
+                <span className={cn(
+                  "mr-1 h-1.5 w-1.5 rounded-full inline-block shrink-0",
+                  schedule.status === "active" ? "bg-emerald-400 animate-pulse" : "bg-muted-foreground"
+                )} />
+                {schedule.status === "active" ? "Active" : "Paused"}
+              </Badge>
+            </div>
+            <p className="text-[11px] text-muted-foreground font-mono truncate mt-0.5" title={schedule.url}>
+              {schedule.url}
+            </p>
+          </div>
+        </div>
+        {/* Actions */}
+        <div className="flex items-center gap-0.5 shrink-0">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button size="sm" variant="ghost" className="h-7 gap-1 px-1.5 text-muted-foreground hover:text-primary"
+                  onClick={() => onViewRuns(schedule.id)}>
+                  <Activity className="h-3.5 w-3.5" />
+                  <span className="text-[11px] font-medium">{schedule.totalRuns}</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>View runs</TooltipContent>
+            </Tooltip>
+            {onRunNow && (
+              <>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-primary"
+                      onClick={() => onRunNow(schedule.id)} disabled={isRunning}>
+                      {isRunning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Run now</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    {schedule.status === "active" ? (
+                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-amber-400"
+                        onClick={() => onPause?.(schedule.id)}>
+                        <Pause className="h-3.5 w-3.5" />
+                      </Button>
+                    ) : (
+                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-emerald-400"
+                        onClick={() => onResume?.(schedule.id)}>
+                        <Play className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                  </TooltipTrigger>
+                  <TooltipContent>{schedule.status === "active" ? "Pause" : "Resume"}</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-rose-400"
+                      onClick={() => onDelete?.(schedule.id)}>
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Delete</TooltipContent>
+                </Tooltip>
+              </>
+            )}
+          </TooltipProvider>
+        </div>
       </div>
-
-      {/* Col 2 — Frequency */}
-      <div className="flex items-start pt-0.5">
-        <span className="inline-flex items-center gap-1 rounded-md bg-muted/60 border border-border px-2 py-1 text-[11px] font-mono text-foreground whitespace-nowrap">
-          <Timer className="h-3 w-3 text-muted-foreground shrink-0" />
+      {/* Row 2 — Metadata + progress */}
+      <div className="flex items-center gap-3 ml-12 flex-wrap">
+        <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+          <Timer className="h-3 w-3 shrink-0" />
           {cronLabel(schedule.cron)}
         </span>
-      </div>
-
-      {/* Col 3 — Status */}
-      <div className="flex items-start pt-0.5">
-        <Badge
-          variant="outline"
-          className={cn(
-            "text-[10px] px-1.5 rounded-full h-5 whitespace-nowrap",
-            schedule.status === "active"
-              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
-              : "border-border bg-muted/30 text-muted-foreground"
-          )}
-        >
-          <span className={cn(
-            "mr-1 h-1.5 w-1.5 rounded-full inline-block shrink-0",
-            schedule.status === "active" ? "bg-emerald-400 animate-pulse" : "bg-muted-foreground"
-          )} />
-          {schedule.status === "active" ? "Active" : "Paused"}
-        </Badge>
-      </div>
-
-      {/* Col 4 — Next run */}
-      <div className="flex items-start pt-0.5">
         {isRunning ? (
           <span className="text-[11px] text-primary font-medium flex items-center gap-1">
             <Loader2 className="h-3 w-3 animate-spin" /> Running…
@@ -409,71 +466,26 @@ function ScheduleTableRow({
         ) : schedule.status === "paused" ? (
           <span className="text-[11px] text-muted-foreground/50 italic">Paused</span>
         ) : msLeft !== null ? (
-          <span className="text-[11px] text-emerald-400 font-medium">
+          <span className="inline-flex items-center gap-1 text-[11px] text-emerald-400 font-medium">
+            <Clock className="h-3 w-3 shrink-0" />
             in {formatMs(msLeft)}
           </span>
         ) : schedule.status === "active" ? (
           <span className="text-[11px] text-muted-foreground">Scheduled</span>
         ) : null}
+        {/* Progress bar */}
+        {schedule.status === "active" && progress !== null && (
+          <div className="flex-1 min-w-16 h-1 rounded-full bg-muted/80 overflow-hidden">
+            <div
+              className={cn(
+                "h-full rounded-full transition-all duration-1000",
+                isRunning ? "animate-pulse bg-primary w-full" : "bg-emerald-500"
+              )}
+              style={{ width: isRunning ? "100%" : `${progress}%` }}
+            />
+          </div>
+        )}
       </div>
-
-      {/* Col 5 — Runs count + view */}
-      <div className="flex items-start justify-end pt-0.5">
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button size="sm" variant="ghost" className="h-7 gap-1 px-1.5 text-muted-foreground hover:text-primary"
-                onClick={() => onViewRuns(schedule.id)}>
-                <Activity className="h-3.5 w-3.5" />
-                <span className="text-[11px] font-medium">{schedule.totalRuns}</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>View {schedule.totalRuns} run{schedule.totalRuns !== 1 ? "s" : ""}</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      </div>
-
-      {/* Col 6 — Actions (Run tab) */}
-      {onRunNow && (
-        <div className="flex items-start justify-end gap-0 pt-0.5">
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-primary"
-                  onClick={() => onRunNow(schedule.id)} disabled={isRunning}>
-                  {isRunning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Run now</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                {schedule.status === "active" ? (
-                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-amber-400"
-                    onClick={() => onPause?.(schedule.id)}>
-                    <Pause className="h-3.5 w-3.5" />
-                  </Button>
-                ) : (
-                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-emerald-400"
-                    onClick={() => onResume?.(schedule.id)}>
-                    <Play className="h-3.5 w-3.5" />
-                  </Button>
-                )}
-              </TooltipTrigger>
-              <TooltipContent>{schedule.status === "active" ? "Pause" : "Resume"}</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-rose-400"
-                  onClick={() => onDelete?.(schedule.id)}>
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Delete</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
-      )}
     </div>
   );
 }
@@ -511,6 +523,7 @@ export default function ScrapeUrlPage() {
   const [schedError, setSchedError] = useState<string | null>(null);
   const [runHistory, setRunHistory] = useState<ScheduleRun[]>([]);
   const [runHistoryLoading, setRunHistoryLoading] = useState(false);
+  const [clearingRuns, setClearingRuns] = useState(false);
   const [selectedRunScheduleId, setSelectedRunScheduleId] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -540,7 +553,6 @@ export default function ScrapeUrlPage() {
 
   // ── Delete history ─────────────────────────────────────
   const clearAllHistory = useCallback(async () => {
-    if (!confirm("Clear all scrape history? This cannot be undone.")) return;
     setClearingHistory(true);
     try {
       const res = await fetch("/api/leads/scrape-url", { method: "DELETE" });
@@ -573,6 +585,16 @@ export default function ScrapeUrlPage() {
     } finally {
       setRunHistoryLoading(false);
     }
+  }, []);
+
+  // ── Delete all runs ─────────────────────────────────────
+  const clearAllRuns = useCallback(async () => {
+    setClearingRuns(true);
+    try {
+      const res = await fetch("/api/schedules/runs", { method: "DELETE" });
+      if (res.ok) setRunHistory([]);
+    } catch { /* ignore */ }
+    finally { setClearingRuns(false); }
   }, []);
 
   // ── Load schedules + auto-poll every 30s when on tab ────
@@ -925,18 +947,38 @@ export default function ScrapeUrlPage() {
                 </div>
                 {history.length > 0 && <Badge variant="secondary" className="text-[10px]">{history.length}</Badge>}
               </div>
-              <div className="flex items-center justify-end px">
+              <div className="flex items-center justify-end gap-2 px-4 py-2">
                 {history.length > 0 && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 px-2 text-[11px] text-muted-foreground hover:text-rose-400"
-                  onClick={clearAllHistory}
-                  disabled={clearingHistory}
-                >
-                  {clearingHistory ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Trash2 className="h-3 w-3 mr-1" />}
-                  Clear All
-                </Button>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-[11px] text-muted-foreground hover:text-rose-400"
+                      disabled={clearingHistory}
+                    >
+                      {clearingHistory ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Trash2 className="h-3 w-3 mr-1" />}
+                      Clear All
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Clear all scrape history?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This will permanently delete all {history.length} history {history.length === 1 ? "entry" : "entries"}. This action cannot be undone.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={clearAllHistory}
+                        className="bg-rose-600 text-white hover:bg-rose-700"
+                      >
+                        Clear All
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               )}
               </div>
               {historyLoading ? (
@@ -950,7 +992,7 @@ export default function ScrapeUrlPage() {
                   <p className="text-sm text-muted-foreground">No scrapes yet</p>
                 </div>
               ) : (
-                <div className="divide-y divide-border max-h-[520px] overflow-y-auto">
+                <div className="divide-y divide-border max-h-130 overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border hover:[&::-webkit-scrollbar-thumb]:bg-muted-foreground/30">
                   {history.map((entry, idx) => (
                     <div key={entry.id ?? idx} className="px-4 py-3 space-y-1.5">
                       <div className="flex items-start justify-between gap-2">
@@ -1184,34 +1226,35 @@ export default function ScrapeUrlPage() {
           TAB: RUN
       ═══════════════════════════════════════════════════ */}
       {activeTab === "runs" && (
-        <div className="space-y-5">
+        <div className="space-y-4">
 
-          {/* ── Schedule table ───────────────────────────── */}
-          <div className="space-y-3">
-            {/* Summary stats */}
-            {!schedulesLoading && schedules.length > 0 && (
-              <div className="grid grid-cols-2 gap-3">
-                {[
-                  { label: "Total",  value: schedules.length,                                      icon: Calendar, cls: "bg-primary/10 text-primary" },
-                  { label: "Active", value: schedules.filter((s) => s.status === "active").length,  icon: Play,     cls: "bg-emerald-500/10 text-emerald-400" },
-                  { label: "Paused", value: schedules.filter((s) => s.status === "paused").length,  icon: Pause,    cls: "bg-amber-500/10 text-amber-400" },
-                ].map((stat) => (
-                  <Card key={stat.label} className="border-border bg-card p-4 flex items-center gap-3">
-                    <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-lg", stat.cls)}>
-                      <stat.icon className="h-4 w-4" />
-                    </div>
-                    <div>
-                      <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide">{stat.label}</p>
-                      <p className="text-xl font-bold text-foreground leading-tight">{stat.value}</p>
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            )}
+          {/* Summary stats */}
+          {!schedulesLoading && schedules.length > 0 && (
+            <div className="flex items-center gap-3 flex-nowrap max-sm:flex-wrap">
+              {[
+                { label: "Total",  value: schedules.length,                                      icon: Calendar, cls: "bg-primary/10 text-primary" },
+                { label: "Active", value: schedules.filter((s) => s.status === "active").length,  icon: Play,     cls: "bg-emerald-500/10 text-emerald-400" },
+                { label: "Paused", value: schedules.filter((s) => s.status === "paused").length,  icon: Pause,    cls: "bg-amber-500/10 text-amber-400" },
+              ].map((stat) => (
+                <Card key={stat.label} className="border-border bg-card p-3 px-4 flex items-center gap-3 flex-1 min-w-0">
+                  <div className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg", stat.cls)}>
+                    <stat.icon className="h-4 w-4" />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <p className="text-xl font-bold text-foreground leading-tight">{stat.value}</p>
+                    <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide">{stat.label}</p>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
 
-            {/* Table card */}
-            <Card className="border-border bg-card overflow-hidden">
-              <div className="border-b border-border px-5 py-3 flex items-center justify-between">
+          {/* Two-column layout: Schedules | Run History */}
+          <div className="flex justify-center gap-4">
+
+            {/* ── Schedule list ───────────────────────────── */}
+            <div className="rounded-lg border border-border bg-card overflow-hidden w-full">
+              <div className="border-b border-border px-4 py-3 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Calendar className="h-4 w-4 text-muted-foreground" />
                   <span className="text-sm font-semibold text-foreground">Schedules</span>
@@ -1238,17 +1281,7 @@ export default function ScrapeUrlPage() {
                 </div>
               ) : (
                 <>
-                  {/* Table header */}
-                  <div className="grid grid-cols-[1fr_116px_76px_108px_56px_96px] gap-3 px-4 py-2 border-b border-border bg-muted/30">
-                    <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Schedule</span>
-                    <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Frequency</span>
-                    <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Status</span>
-                    <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Next Run</span>
-                    <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Runs</span>
-                    <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide text-right">Actions</span>
-                  </div>
-                  {/* Rows */}
-                  <div>
+                  <div className="divide-y divide-border h-130 overflow-y-scroll [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border hover:[&::-webkit-scrollbar-thumb]:bg-muted-foreground/30">
                     {schedules.map((s) => (
                       <ScheduleTableRow
                         key={s.id}
@@ -1262,10 +1295,9 @@ export default function ScrapeUrlPage() {
                       />
                     ))}
                   </div>
-                  {/* Footer */}
                   <div className="border-t border-border px-4 py-3 bg-muted/20 flex items-center justify-between">
                     <p className="text-[11px] text-muted-foreground flex items-center gap-1">
-                      Click <Activity className="inline h-3 w-3" /> to filter run history below by schedule
+                      Click <Activity className="inline h-3 w-3" /> to filter runs by schedule
                     </p>
                     <p className="text-[11px] text-muted-foreground">
                       {schedules.filter((s) => s.status === "active").length} of {schedules.length} active
@@ -1273,37 +1305,67 @@ export default function ScrapeUrlPage() {
                   </div>
                 </>
               )}
-            </Card>
-          </div>
-
-          {/* ── Run history ──────────────────────────────── */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-semibold text-foreground">
-                  {selectedRunScheduleId
-                    ? (schedules.find((s) => s.id === selectedRunScheduleId)?.name ?? "Schedule Runs")
-                    : "All Runs"}
-                </p>
-                <p className="text-xs text-muted-foreground">History of automated scrape executions</p>
-              </div>
-              <div className="flex items-center gap-2">
-                {selectedRunScheduleId && (
-                  <Button variant="ghost" size="sm" className="gap-1.5 h-8 text-xs text-muted-foreground"
-                    onClick={() => { setSelectedRunScheduleId(null); loadRunHistory(); }}>
-                    <XCircle className="h-3.5 w-3.5" />
-                    Clear filter
-                  </Button>
-                )}
-                <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs"
-                  onClick={() => loadRunHistory(selectedRunScheduleId ?? undefined)}>
-                  <RefreshCw className={cn("h-3.5 w-3.5", runHistoryLoading && "animate-spin")} />
-                  Refresh
-                </Button>
-              </div>
             </div>
 
-            <Card className="border-border bg-card overflow-hidden">
+            {/* ── Run history ──────────────────────────────── */}
+            <div className="rounded-lg border border-border bg-card overflow-hidden min-w-0">
+              <div className="border-b border-border px-4 py-3 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-semibold text-foreground">
+                    {selectedRunScheduleId
+                      ? (schedules.find((s) => s.id === selectedRunScheduleId)?.name ?? "Schedule Runs")
+                      : "All Runs"}
+                  </span>
+                  {runHistory.length > 0 && (
+                    <Badge variant="secondary" className="text-[10px]">{runHistory.length}</Badge>
+                  )}
+                </div>
+                <div className="flex items-center gap-1">
+                  {selectedRunScheduleId && (
+                    <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px] text-muted-foreground"
+                      onClick={() => { setSelectedRunScheduleId(null); loadRunHistory(); }}>
+                      <XCircle className="h-3 w-3 mr-1" />
+                      Clear filter
+                    </Button>
+                  )}
+                  <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px] text-muted-foreground"
+                    onClick={() => loadRunHistory(selectedRunScheduleId ?? undefined)}>
+                    <RefreshCw className={cn("h-3 w-3", runHistoryLoading && "animate-spin")} />
+                  </Button>
+                  {runHistory.length > 0 && (
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-[11px] text-muted-foreground hover:text-rose-400"
+                          disabled={clearingRuns}
+                        >
+                          {clearingRuns ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Clear all run history?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            This will permanently delete all {runHistory.length} run {runHistory.length === 1 ? "entry" : "entries"}. This action cannot be undone.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={clearAllRuns}
+                            className="bg-rose-600 text-white hover:bg-rose-700"
+                          >
+                            Clear All
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  )}
+                </div>
+              </div>
               {runHistoryLoading ? (
                 <div className="flex items-center justify-center py-16 gap-2">
                   <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
@@ -1322,7 +1384,7 @@ export default function ScrapeUrlPage() {
                   </div>
                 </div>
               ) : (
-                <div className="divide-y divide-border">
+                <div className="divide-y divide-border h-130 overflow-y-scroll [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border hover:[&::-webkit-scrollbar-thumb]:bg-muted-foreground/30">
                   {runHistory.map((run) => {
                     const schedInfo = schedules.find((s) => s.id === run.scheduleId);
                     const platform = schedInfo ? detectPlatform(schedInfo.url) : null;
@@ -1330,48 +1392,71 @@ export default function ScrapeUrlPage() {
                       ? Math.round((new Date(run.finishedAt).getTime() - new Date(run.startedAt).getTime()) / 1000)
                       : null;
                     return (
-                      <div key={run.id} className="px-4 py-3.5 border-b border-border last:border-0 hover:bg-muted/20 transition-colors space-y-1.5">
-                        {/* Row 1 — platform badge + schedule name */}
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <PlatformBadge platform={platform} />
-                          <span className="text-sm font-semibold text-foreground leading-tight truncate">
-                            {run.scheduleName ?? run.scheduleId}
-                          </span>
+                      <div key={run.id} className="px-4 py-3 hover:bg-muted/20 transition-colors">
+                        {/* Top row — status + name + platform + time */}
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            {/* Status indicator */}
+                            {run.status === "running" ? (
+                              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 border border-primary/20">
+                                <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                              </div>
+                            ) : run.status === "ok" ? (
+                              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                              </div>
+                            ) : (
+                              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-rose-500/10 border border-rose-500/20">
+                                <XCircle className="h-3.5 w-3.5 text-rose-400" />
+                              </div>
+                            )}
+                            {/* Name + platform */}
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[13px] font-semibold text-foreground truncate">
+                                  {run.scheduleName ?? run.scheduleId}
+                                </span>
+                                <PlatformBadge platform={platform} />
+                              </div>
+                              {schedInfo && (
+                                <p className="text-[11px] text-muted-foreground font-mono truncate mt-0.5" title={schedInfo.url}>
+                                  {schedInfo.url}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          {/* Right side — status badge */}
+                          <div className="shrink-0">
+                            {run.status === "running" ? (
+                              <Badge variant="outline" className="text-[10px] px-2 rounded-full h-5 border-primary/30 bg-primary/10 text-primary">
+                                Running
+                              </Badge>
+                            ) : run.status === "ok" ? (
+                              <Badge variant="outline" className="text-[10px] px-2 rounded-full h-5 border-emerald-500/30 bg-emerald-500/10 text-emerald-400">
+                                Success
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-[10px] px-2 rounded-full h-5 border-rose-500/30 bg-rose-500/10 text-rose-400">
+                                Failed
+                              </Badge>
+                            )}
+                          </div>
                         </div>
-                        {/* Row 2 — URL */}
-                        {schedInfo && (
-                          <p className="text-[11px] text-muted-foreground font-mono truncate" title={schedInfo.url}>
-                            {schedInfo.url}
-                          </p>
-                        )}
-                        {/* Row 3 — metadata pills */}
-                        <div className="flex items-center gap-2 flex-wrap pt-0.5">
-                          <span className="inline-flex items-center gap-1 rounded-md bg-muted/60 border border-border px-2 py-0.5 text-[11px] font-mono text-foreground whitespace-nowrap">
-                            <Clock className="h-3 w-3 text-muted-foreground shrink-0" />
+                        {/* Bottom row — metadata */}
+                        <div className="flex items-center gap-3 mt-2 ml-10.5 flex-wrap">
+                          <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                            <Clock className="h-3 w-3 shrink-0" />
                             {formatTs(run.startedAt)}
                           </span>
                           {durationSec !== null && (
-                            <span className="inline-flex items-center gap-1 rounded-md bg-muted/60 border border-border px-2 py-0.5 text-[11px] font-mono text-foreground whitespace-nowrap">
-                              <Timer className="h-3 w-3 text-muted-foreground shrink-0" />
+                            <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                              <Timer className="h-3 w-3 shrink-0" />
                               {durationSec}s
                             </span>
                           )}
-                          {run.status === "running" ? (
-                            <Badge variant="outline" className="text-[10px] px-1.5 rounded-full h-5 border-primary/30 bg-primary/10 text-primary whitespace-nowrap">
-                              <Loader2 className="h-2.5 w-2.5 animate-spin mr-1" />Running
-                            </Badge>
-                          ) : run.status === "ok" ? (
-                            <Badge variant="outline" className="text-[10px] px-1.5 rounded-full h-5 border-emerald-500/30 bg-emerald-500/10 text-emerald-400 whitespace-nowrap">
-                              <span className="mr-1 h-1.5 w-1.5 rounded-full bg-emerald-400 inline-block" />OK
-                            </Badge>
-                          ) : (
-                            <Badge variant="outline" className="text-[10px] px-1.5 rounded-full h-5 border-rose-500/30 bg-rose-500/10 text-rose-400 whitespace-nowrap">
-                              <span className="mr-1 h-1.5 w-1.5 rounded-full bg-rose-400 inline-block" />Error
-                            </Badge>
-                          )}
                           {run.status === "ok" && (
                             <>
-                              <span className="text-[11px] text-foreground font-medium">{run.postsFound} posts</span>
+                              <span className="text-[11px] text-muted-foreground">{run.postsFound} posts found</span>
                               <span className="text-[11px] text-emerald-400 font-semibold">+{run.leadsInserted} leads</span>
                             </>
                           )}
@@ -1384,8 +1469,8 @@ export default function ScrapeUrlPage() {
                   })}
                 </div>
               )}
-            </Card>
-          </div>
+            </div>
+          </div>{/* end grid */}
         </div>
       )}
     </div>

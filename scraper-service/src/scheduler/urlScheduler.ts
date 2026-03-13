@@ -312,6 +312,10 @@ export async function runScheduleNow(id: string): Promise<void> {
 // Run history queries — called by route handlers
 // ---------------------------------------------------------------------------
 
+export function clearRuns(): void {
+  writeRuns([]);
+}
+
 export function listRuns(scheduleId?: string): ScheduleRun[] {
   const runs = readRuns();
   const filtered = scheduleId
