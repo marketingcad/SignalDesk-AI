@@ -3,6 +3,7 @@ import { config } from "../config";
 import { useStorageDir, cleanStorage } from "../crawler/storage";
 import { isOlderThanCurrentWeek, resolveTimestamp } from "../utils/dateHelpers";
 import type { ScrapedPost, ScrapeResult } from "../types";
+import { BROWSER_ARGS } from "./browserArgs";
 
 /**
  * Reddit Scraper — crawls public subreddit feeds using NEW reddit (www.reddit.com).
@@ -54,12 +55,7 @@ export async function scrapeReddit(): Promise<ScrapeResult> {
     useSessionPool: false,
     launchContext: {
       launchOptions: {
-        args: [
-          "--disable-blink-features=AutomationControlled",
-          "--no-sandbox",
-          "--disable-dev-shm-usage",
-          "--disable-setuid-sandbox",
-        ],
+        args: BROWSER_ARGS,
       },
     },
 

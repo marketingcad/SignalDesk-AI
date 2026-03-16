@@ -4,6 +4,7 @@ import { config } from "../config";
 import { hasSavedCookies, getProfileDir, getStorageState, shouldUseStorageState } from "../crawler/browserAuth";
 import { isCurrentWeek, isOlderThanCurrentWeek, resolveTimestamp } from "../utils/dateHelpers";
 import type { Platform, ScrapedPost, ScrapeResult } from "../types";
+import { BROWSER_ARGS } from "./browserArgs";
 
 // ---------------------------------------------------------------------------
 // Detect platform from a URL
@@ -1609,12 +1610,7 @@ export async function scrapeUrl(targetUrl: string): Promise<ScrapeResult> {
       console.log(`[url-scraper] Using storageState: ${statePath ? "yes" : "none"}`);
       browser = await chromium.launch({
         headless: config.headless,
-        args: [
-          "--disable-blink-features=AutomationControlled",
-          "--no-sandbox",
-          "--disable-dev-shm-usage",
-          "--disable-setuid-sandbox",
-        ],
+        args: BROWSER_ARGS,
       });
       context = await browser.newContext({
         storageState: statePath,
@@ -1626,12 +1622,7 @@ export async function scrapeUrl(targetUrl: string): Promise<ScrapeResult> {
       console.log(`[url-scraper] Using persistent profile: ${getProfileDir()}`);
       context = await chromium.launchPersistentContext(getProfileDir(), {
         headless: config.headless,
-        args: [
-          "--disable-blink-features=AutomationControlled",
-          "--no-sandbox",
-          "--disable-dev-shm-usage",
-          "--disable-setuid-sandbox",
-        ],
+        args: BROWSER_ARGS,
         userAgent:
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
       });
@@ -1639,12 +1630,7 @@ export async function scrapeUrl(targetUrl: string): Promise<ScrapeResult> {
     } else {
       browser = await chromium.launch({
         headless: config.headless,
-        args: [
-          "--disable-blink-features=AutomationControlled",
-          "--no-sandbox",
-          "--disable-dev-shm-usage",
-          "--disable-setuid-sandbox",
-        ],
+        args: BROWSER_ARGS,
       });
       context = await browser.newContext({
         userAgent:

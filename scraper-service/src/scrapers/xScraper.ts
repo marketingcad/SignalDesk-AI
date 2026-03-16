@@ -2,6 +2,7 @@ import { PlaywrightCrawler } from "crawlee";
 import { config } from "../config";
 import { useStorageDir, cleanStorage } from "../crawler/storage";
 import type { ScrapedPost, ScrapeResult } from "../types";
+import { BROWSER_ARGS } from "./browserArgs";
 
 /**
  * X (Twitter) Scraper — uses Google dorking for public tweet search.
@@ -34,12 +35,7 @@ export async function scrapeX(): Promise<ScrapeResult> {
     useSessionPool: false,
     launchContext: {
       launchOptions: {
-        args: [
-          "--disable-blink-features=AutomationControlled",
-          "--no-sandbox",
-          "--disable-dev-shm-usage",
-          "--disable-setuid-sandbox",
-        ],
+        args: BROWSER_ARGS,
       },
     },
 

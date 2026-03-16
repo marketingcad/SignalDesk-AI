@@ -2,6 +2,7 @@ import { PlaywrightCrawler } from "crawlee";
 import { config } from "../config";
 import { useStorageDir, cleanStorage } from "../crawler/storage";
 import type { ScrapedPost, ScrapeResult } from "../types";
+import { BROWSER_ARGS } from "./browserArgs";
 
 /**
  * LinkedIn Scraper — crawls public LinkedIn post search via Google.
@@ -32,12 +33,7 @@ export async function scrapeLinkedin(): Promise<ScrapeResult> {
     useSessionPool: false,
     launchContext: {
       launchOptions: {
-        args: [
-          "--disable-blink-features=AutomationControlled",
-          "--no-sandbox",
-          "--disable-dev-shm-usage",
-          "--disable-setuid-sandbox",
-        ],
+        args: BROWSER_ARGS,
       },
     },
 

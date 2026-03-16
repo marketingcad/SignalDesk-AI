@@ -3,6 +3,7 @@ import { config } from "../config";
 import { useStorageDir, cleanStorage } from "../crawler/storage";
 import { isCurrentWeek, isOlderThanCurrentWeek, resolveTimestamp } from "../utils/dateHelpers";
 import type { ScrapedPost, ScrapeResult } from "../types";
+import { BROWSER_ARGS } from "./browserArgs";
 
 /**
  * Facebook Scraper — crawls publicly accessible Facebook group posts.
@@ -47,12 +48,7 @@ export async function scrapeFacebook(): Promise<ScrapeResult> {
     useSessionPool: false,
     launchContext: {
       launchOptions: {
-        args: [
-          "--disable-blink-features=AutomationControlled",
-          "--no-sandbox",
-          "--disable-dev-shm-usage",
-          "--disable-setuid-sandbox",
-        ],
+        args: BROWSER_ARGS,
       },
     },
 
