@@ -229,6 +229,13 @@ app.get("/api/schedules/runs", (req, res) => {
     const runs = (0, urlScheduler_1.listRuns)();
     res.json({ success: true, runs });
 });
+/** DELETE /api/schedules/runs — clear all run history */
+app.delete("/api/schedules/runs", (req, res) => {
+    if (!checkAuth(req, res))
+        return;
+    (0, urlScheduler_1.clearRuns)();
+    res.json({ success: true });
+});
 /** GET /api/schedules/:id — get one */
 app.get("/api/schedules/:id", (req, res) => {
     if (!checkAuth(req, res))

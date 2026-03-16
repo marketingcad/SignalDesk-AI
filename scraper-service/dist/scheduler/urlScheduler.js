@@ -43,6 +43,7 @@ exports.deleteSchedule = deleteSchedule;
 exports.pauseSchedule = pauseSchedule;
 exports.resumeSchedule = resumeSchedule;
 exports.runScheduleNow = runScheduleNow;
+exports.clearRuns = clearRuns;
 exports.listRuns = listRuns;
 const cron = __importStar(require("node-cron"));
 const fs = __importStar(require("fs"));
@@ -313,6 +314,9 @@ async function runScheduleNow(id) {
 // ---------------------------------------------------------------------------
 // Run history queries — called by route handlers
 // ---------------------------------------------------------------------------
+function clearRuns() {
+    writeRuns([]);
+}
 function listRuns(scheduleId) {
     const runs = readRuns();
     const filtered = scheduleId

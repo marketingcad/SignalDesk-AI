@@ -185,6 +185,51 @@ npm run scrape:linkedin
 npm run scrape:facebook
 ```
 
+### Platform Commands
+
+#### Facebook
+```bash
+# CLI
+npm run scrape:facebook
+
+# API
+curl -X POST http://localhost:4000/api/run/Facebook \
+  -H "Authorization: Bearer your_token"
+```
+Scrapes Facebook Groups via Google dorking (`site:facebook.com/groups "query"`). No login required.
+
+#### LinkedIn
+```bash
+# CLI
+npm run scrape:linkedin
+
+# API
+curl -X POST http://localhost:4000/api/run/LinkedIn \
+  -H "Authorization: Bearer your_token"
+```
+Scrapes LinkedIn posts via Google dorking (`site:linkedin.com/posts "query"`). No login required.
+
+#### X (Twitter)
+```bash
+# CLI
+npm run scrape:x
+
+# API
+curl -X POST http://localhost:4000/api/run/X \
+  -H "Authorization: Bearer your_token"
+```
+Scrapes X posts via Nitter mirror instances. No login required.
+
+### Browser Authentication
+
+To log in to platforms that require authenticated sessions (e.g. Facebook, LinkedIn, X):
+
+```bash
+npm run auth:login
+```
+
+This opens a visible Chromium browser where you can manually log in. Session cookies are saved to `auth/storage-state.json` and reused by scrapers.
+
 ---
 
 ## Project Structure
@@ -278,3 +323,168 @@ Check:
 1. `BACKEND_AUTH_TOKEN` matches a valid JWT
 2. `BACKEND_API_URL` points to running Next.js server
 3. Posts aren't being filtered as duplicates
+
+---
+
+## Deployment (Free Hosting)
+
+### Recommended: Render (Free Tier)
+
+Render is the best free option for this service — it supports background workers, Docker, and has a generous free tier for web services.
+
+#### Step 1: Prepare a Dockerfile
+
+Create a `Dockerfile` in the `scraper-service/` folder:
+
+```dockerfile
+FROM node:20-slim
+
+# Install Playwright system dependencies
+RUN apt-get update && apt-get install -y \
+    libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
+    libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 libgbm1 \
+    libpango-1.0-0 libcairo2 libasound2 libxshmfence1 \
+    fonts-liberation wget ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci --omit=dev
+
+# Install Playwright Chromium
+RUN npx playwright install chromium
+
+COPY tsconfig.json ./
+COPY src/ ./src/
+
+RUN npm run build
+
+EXPOSE 4000
+
+CMD ["node", "dist/index.js"]
+```
+
+#### Step 2: Push to GitHub
+
+Make sure your `scraper-service/` directory is pushed to your GitHub repository.
+
+#### Step 3: Create a Render Web Service
+
+1. Go to [render.com](https://render.com) and sign up / log in
+2. Click **New** → **Web Service**
+3. Connect your GitHub repo
+4. Configure the service:
+
+| Setting | Value |
+|---------|-------|
+| **Name** | `signaldesk-scraper` |
+| **Root Directory** | `scraper-service` |
+| **Environment** | `Docker` |
+| **Instance Type** | `Free` |
+| **Region** | Pick closest to your backend |
+
+5. Click **Advanced** → Add environment variables:
+
+| Variable | Value |
+|----------|-------|
+| `BACKEND_API_URL` | Your deployed Next.js URL (e.g. `https://signaldesk.vercel.app`) |
+| `BACKEND_AUTH_TOKEN` | Your JWT token |
+| `DISCORD_WEBHOOK_URL` | Your Discord webhook |
+| `PORT` | `4000` |
+| `NODE_ENV` | `production` |
+
+6. Click **Create Web Service**
+
+#### Step 4: Verify deployment
+
+Once deployed, check the health endpoint:
+
+```bash
+curl https://signaldesk-scraper.onrender.com/health
+```
+
+Trigger a test run:
+
+```bash
+curl -X POST https://signaldesk-scraper.onrender.com/api/run \
+  -H "Authorization: Bearer your_token"
+```
+
+#### Render Free Tier Limitations
+
+- Service **spins down after 15 minutes** of inactivity — cron jobs won't run while spun down
+- To keep it alive, set up a free uptime monitor (e.g. UptimeRobot) to ping `/health` every 14 minutes
+- 750 free hours/month (enough for one always-on service)
+
+---
+
+### Alternative: Railway (Free Tier)
+
+Railway offers $5/month free credit — enough for a lightweight scraper.
+
+1. Go to [railway.app](https://railway.app) and sign up
+2. Click **New Project** → **Deploy from GitHub Repo**
+3. Select your repo and set **Root Directory** to `scraper-service`
+4. Railway auto-detects the Dockerfile
+5. Add environment variables in the **Variables** tab (same as Render above)
+6. Deploy — Railway gives you a public URL automatically
+
+---
+
+### Alternative: Fly.io (Free Tier)
+
+Fly.io gives 3 free shared VMs — great for always-on services.
+
+#### Step 1: Install the Fly CLI
+
+```bash
+# Windows (PowerShell)
+powershell -Command "iwr https://fly.io/install.ps1 -useb | iex"
+
+# macOS / Linux
+curl -L https://fly.io/install.sh | sh
+```
+
+#### Step 2: Launch the app
+
+```bash
+cd scraper-service
+fly auth login
+fly launch --name signaldesk-scraper --region iad --no-deploy
+```
+
+#### Step 3: Set environment variables
+
+```bash
+fly secrets set BACKEND_API_URL=https://signaldesk.vercel.app
+fly secrets set BACKEND_AUTH_TOKEN=your_jwt_token
+fly secrets set DISCORD_WEBHOOK_URL=your_discord_webhook
+fly secrets set PORT=4000
+```
+
+#### Step 4: Deploy
+
+```bash
+fly deploy
+```
+
+#### Step 5: Verify
+
+```bash
+curl https://signaldesk-scraper.fly.dev/health
+```
+
+---
+
+### Keeping Cron Jobs Alive (Important)
+
+Free tiers on Render and Railway spin down idle services. Since this scraper relies on `node-cron`, it needs to stay awake. Options:
+
+| Method | How |
+|--------|-----|
+| **UptimeRobot** (free) | Ping `https://your-service.onrender.com/health` every 14 min |
+| **cron-job.org** (free) | Hit `/api/run` on a schedule as a fallback |
+| **Fly.io** | Does **not** spin down — best for always-on cron |
+
+**Recommendation**: Use **Render** for easiest setup, or **Fly.io** if you need reliable cron scheduling without workarounds.

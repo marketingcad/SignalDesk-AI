@@ -9,4 +9,5 @@ export declare function deleteSchedule(id: string): boolean;
 export declare function pauseSchedule(id: string): UrlSchedule | null;
 export declare function resumeSchedule(id: string): UrlSchedule | null;
 export declare function runScheduleNow(id: string): Promise<void>;
+export declare function clearRuns(): void;
 export declare function listRuns(scheduleId?: string): ScheduleRun[];
