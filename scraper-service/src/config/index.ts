@@ -26,12 +26,12 @@ export const config = {
   // Server
   port: parseInt(envOrDefault("PORT", "4000"), 10),
 
-  // Cron schedules
+  // Cron schedules (defaults tuned for free-tier: avoid Google IP bans)
   cron: {
-    reddit: envOrDefault("CRON_REDDIT", "*/15 * * * *"),
-    x: envOrDefault("CRON_X", "*/5 * * * *"),
-    linkedin: envOrDefault("CRON_LINKEDIN", "*/10 * * * *"),
-    facebook: envOrDefault("CRON_FACEBOOK", "*/30 * * * *"),
+    reddit: envOrDefault("CRON_REDDIT", "0 */1 * * *"),
+    x: envOrDefault("CRON_X", "15 */1 * * *"),
+    linkedin: envOrDefault("CRON_LINKEDIN", "30 */2 * * *"),
+    facebook: envOrDefault("CRON_FACEBOOK", "45 */2 * * *"),
   },
 
   // Targets

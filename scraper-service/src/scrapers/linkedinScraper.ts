@@ -30,7 +30,11 @@ export async function scrapeLinkedin(): Promise<ScrapeResult> {
     maxRequestsPerCrawl: urls.length,
     requestHandlerTimeoutSecs: 60,
     maxConcurrency: 1,
+    maxRequestRetries: 1,
     useSessionPool: false,
+    browserPoolOptions: {
+      retireBrowserAfterPageCount: 1,
+    },
     launchContext: {
       launchOptions: {
         args: BROWSER_ARGS,

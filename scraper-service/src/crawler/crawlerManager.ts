@@ -76,41 +76,44 @@ export async function runAllPlatforms(): Promise<ScrapeResult[]> {
   runInProgress = true;
   const results: ScrapeResult[] = [];
 
-  console.log("\n[crawler] ╔══════════════════════════════════════════╗");
-  console.log("[crawler] ║      STARTING FULL SCRAPER RUN           ║");
-  console.log("[crawler] ╚══════════════════════════════════════════╝\n");
+  try {
+    console.log("\n[crawler] ╔══════════════════════════════════════════╗");
+    console.log("[crawler] ║      STARTING FULL SCRAPER RUN           ║");
+    console.log("[crawler] ╚══════════════════════════════════════════╝\n");
 
-  const platforms: Platform[] = ["Reddit", "X", "LinkedIn", "Facebook"];
+    const platforms: Platform[] = ["Reddit", "X", "LinkedIn", "Facebook"];
 
-  for (const platform of platforms) {
-    try {
-      const result = await runPlatform(platform);
-      results.push(result);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[crawler] ${platform} FAILED: ${msg}`);
-      results.push({
-        platform,
-        posts: [],
-        duration: 0,
-        errors: [msg],
-      });
-      await sendErrorAlert(platform, msg);
+    for (const platform of platforms) {
+      try {
+        const result = await runPlatform(platform);
+        results.push(result);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`[crawler] ${platform} FAILED: ${msg}`);
+        results.push({
+          platform,
+          posts: [],
+          duration: 0,
+          errors: [msg],
+        });
+        await sendErrorAlert(platform, msg);
+      }
+
+      // Pause between platforms to avoid detection
+      console.log("[crawler] Pausing 5s between platforms...");
+      await new Promise((r) => setTimeout(r, 5000));
     }
 
-    // Pause between platforms to avoid detection
-    console.log("[crawler] Pausing 5s between platforms...");
-    await new Promise((r) => setTimeout(r, 5000));
+    // Summary
+    const totalPosts = results.reduce((s, r) => s + r.posts.length, 0);
+    const totalErrors = results.reduce((s, r) => s + r.errors.length, 0);
+    console.log(`\n[crawler] ══════════ RUN COMPLETE ══════════`);
+    console.log(`[crawler] Total: ${totalPosts} posts, ${totalErrors} errors`);
+
+    await sendRunSummary(results);
+  } finally {
+    runInProgress = false;
   }
 
-  // Summary
-  const totalPosts = results.reduce((s, r) => s + r.posts.length, 0);
-  const totalErrors = results.reduce((s, r) => s + r.errors.length, 0);
-  console.log(`\n[crawler] ══════════ RUN COMPLETE ══════════`);
-  console.log(`[crawler] Total: ${totalPosts} posts, ${totalErrors} errors`);
-
-  await sendRunSummary(results);
-
-  runInProgress = false;
   return results;
 }

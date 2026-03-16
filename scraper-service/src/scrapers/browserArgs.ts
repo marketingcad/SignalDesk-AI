@@ -1,4 +1,4 @@
-// Memory-optimized Chromium flags for low-RAM environments (Render free = 512MB)
+// Chromium launch flags — stable for both local and containerized environments
 export const BROWSER_ARGS = [
   "--disable-blink-features=AutomationControlled",
   "--no-sandbox",
@@ -11,6 +11,4 @@ export const BROWSER_ARGS = [
   "--disable-sync",
   "--disable-translate",
   "--no-first-run",
-  "--single-process",
-  "--js-flags=--max-old-space-size=256",
 ];

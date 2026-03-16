@@ -1,0 +1,23 @@
+# Cloudflare Tunnel config for SignalDesk AI
+#
+# SETUP STEPS:
+# 1. Install: winget install Cloudflare.cloudflared
+# 2. Login:   cloudflared tunnel login
+# 3. Create:  cloudflared tunnel create signaldesk
+# 4. Copy this file to: C:\Users\hecew\.cloudflared\config.yml
+# 5. Replace TUNNEL_ID with your actual tunnel ID
+# 6. Add DNS: cloudflared tunnel route dns signaldesk app.yourdomain.com
+# 7. Run:     cloudflared tunnel run signaldesk
+#
+# QUICK START (no account needed):
+#   cloudflared tunnel --url http://localhost:3000
+
+tunnel: TUNNEL_ID_HERE
+credentials-file: C:\Users\hecew\.cloudflared\TUNNEL_ID_HERE.json
+
+ingress:
+  # Next.js app (main dashboard)
+  - hostname: app.yourdomain.com
+    service: http://localhost:3000
+  # Catch-all (required by cloudflared)
+  - service: http_status:404

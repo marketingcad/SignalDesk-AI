@@ -33,6 +33,9 @@ export async function scrapeX(): Promise<ScrapeResult> {
     maxConcurrency: 1,
     maxRequestRetries: 1,
     useSessionPool: false,
+    browserPoolOptions: {
+      retireBrowserAfterPageCount: 1,
+    },
     launchContext: {
       launchOptions: {
         args: BROWSER_ARGS,

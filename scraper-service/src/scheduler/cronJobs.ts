@@ -43,13 +43,17 @@ export function startScheduler(): void {
   scheduleJob("LinkedIn", config.cron.linkedin, "LinkedIn (Google dork)");
   scheduleJob("Facebook", config.cron.facebook, "Facebook (Google dork)");
 
-  // Full run every 2 hours
-  const fullRunTask = cron.schedule("0 */2 * * *", async () => {
+  // Full run every 6 hours (free-tier friendly)
+  const fullRunTask = cron.schedule("0 */6 * * *", async () => {
+    if (isRunning()) {
+      console.log("[scheduler] Full run — skipped (another run in progress)");
+      return;
+    }
     console.log("[scheduler] Full scraper run — triggered by cron");
     await runAllPlatforms();
   });
   activeTasks.push(fullRunTask);
-  console.log("[scheduler] ✅ Full run scheduled: every 2 hours\n");
+  console.log("[scheduler] ✅ Full run scheduled: every 6 hours\n");
 }
 
 export function stopScheduler(): void {

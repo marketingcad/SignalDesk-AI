@@ -45,7 +45,11 @@ export async function scrapeFacebook(): Promise<ScrapeResult> {
     maxRequestsPerCrawl: allUrls.length,
     requestHandlerTimeoutSecs: 90,
     maxConcurrency: 1,
+    maxRequestRetries: 1,
     useSessionPool: false,
+    browserPoolOptions: {
+      retireBrowserAfterPageCount: 1,
+    },
     launchContext: {
       launchOptions: {
         args: BROWSER_ARGS,

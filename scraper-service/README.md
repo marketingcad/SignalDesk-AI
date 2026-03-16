@@ -401,13 +401,13 @@ Make sure your `scraper-service/` directory is pushed to your GitHub repository.
 Once deployed, check the health endpoint:
 
 ```bash
-curl https://signaldesk-scraper.onrender.com/health
+curl https://your-scraper-service.example.com/health
 ```
 
 Trigger a test run:
 
 ```bash
-curl -X POST https://signaldesk-scraper.onrender.com/api/run \
+curl -X POST https://your-scraper-service.example.com/api/run \
   -H "Authorization: Bearer your_token"
 ```
 
