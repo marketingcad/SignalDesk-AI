@@ -6,10 +6,10 @@
     "cron": "*/15 * * * *",
     "status": "active",
     "createdAt": "2026-03-16T21:22:59.655Z",
-    "updatedAt": "2026-03-16T21:22:59.655Z",
-    "lastRunAt": null,
-    "lastRunStatus": null,
-    "totalRuns": 0
+    "updatedAt": "2026-03-16T21:45:37.954Z",
+    "lastRunAt": "2026-03-16T21:45:37.954Z",
+    "lastRunStatus": "ok",
+    "totalRuns": 2
   },
   {
     "id": "8dd4b7de-9b82-4a57-b7ca-ec3c2c804880",
@@ -18,10 +18,10 @@
     "cron": "*/15 * * * *",
     "status": "active",
     "createdAt": "2026-03-16T21:23:00.059Z",
-    "updatedAt": "2026-03-16T21:23:00.059Z",
-    "lastRunAt": null,
-    "lastRunStatus": null,
-    "totalRuns": 0
+    "updatedAt": "2026-03-16T21:45:37.919Z",
+    "lastRunAt": "2026-03-16T21:45:37.919Z",
+    "lastRunStatus": "ok",
+    "totalRuns": 2
   },
   {
     "id": "afb4052f-68af-45ef-8440-7b5786e75845",
@@ -30,10 +30,10 @@
     "cron": "*/15 * * * *",
     "status": "active",
     "createdAt": "2026-03-16T21:23:00.458Z",
-    "updatedAt": "2026-03-16T21:23:00.458Z",
-    "lastRunAt": null,
-    "lastRunStatus": null,
-    "totalRuns": 0
+    "updatedAt": "2026-03-16T21:45:43.393Z",
+    "lastRunAt": "2026-03-16T21:45:43.393Z",
+    "lastRunStatus": "ok",
+    "totalRuns": 2
   },
   {
     "id": "6c6f3597-086b-4644-a6f2-d53272aa1d7f",
@@ -42,10 +42,10 @@
     "cron": "*/15 * * * *",
     "status": "active",
     "createdAt": "2026-03-16T21:23:00.851Z",
-    "updatedAt": "2026-03-16T21:23:00.851Z",
-    "lastRunAt": null,
-    "lastRunStatus": null,
-    "totalRuns": 0
+    "updatedAt": "2026-03-16T21:45:37.651Z",
+    "lastRunAt": "2026-03-16T21:45:37.651Z",
+    "lastRunStatus": "ok",
+    "totalRuns": 2
   },
   {
     "id": "c9c73d9a-ecb8-47ca-9653-1a6552e53cdb",
@@ -54,10 +54,10 @@
     "cron": "*/15 * * * *",
     "status": "active",
     "createdAt": "2026-03-16T21:24:14.914Z",
-    "updatedAt": "2026-03-16T21:24:14.914Z",
-    "lastRunAt": null,
-    "lastRunStatus": null,
-    "totalRuns": 0
+    "updatedAt": "2026-03-16T21:45:37.411Z",
+    "lastRunAt": "2026-03-16T21:45:37.411Z",
+    "lastRunStatus": "ok",
+    "totalRuns": 2
   },
   {
     "id": "1dccc68d-32dc-4749-bee5-ab6607fbf249",
@@ -66,10 +66,10 @@
     "cron": "*/15 * * * *",
     "status": "active",
     "createdAt": "2026-03-16T21:24:15.323Z",
-    "updatedAt": "2026-03-16T21:24:15.323Z",
-    "lastRunAt": null,
-    "lastRunStatus": null,
-    "totalRuns": 0
+    "updatedAt": "2026-03-16T21:45:37.965Z",
+    "lastRunAt": "2026-03-16T21:45:37.965Z",
+    "lastRunStatus": "ok",
+    "totalRuns": 2
   },
   {
     "id": "c20dbe93-30ba-4e84-a809-7cd6c93fbae5",
@@ -78,10 +78,10 @@
     "cron": "*/15 * * * *",
     "status": "active",
     "createdAt": "2026-03-16T21:24:15.717Z",
-    "updatedAt": "2026-03-16T21:24:15.717Z",
-    "lastRunAt": null,
-    "lastRunStatus": null,
-    "totalRuns": 0
+    "updatedAt": "2026-03-16T21:45:37.450Z",
+    "lastRunAt": "2026-03-16T21:45:37.450Z",
+    "lastRunStatus": "ok",
+    "totalRuns": 2
   },
   {
     "id": "b1f8d348-4b64-4d5c-9d82-9d1b16fbdfd0",
@@ -90,10 +90,10 @@
     "cron": "*/15 * * * *",
     "status": "active",
     "createdAt": "2026-03-16T21:24:16.107Z",
-    "updatedAt": "2026-03-16T21:24:16.107Z",
-    "lastRunAt": null,
-    "lastRunStatus": null,
-    "totalRuns": 0
+    "updatedAt": "2026-03-16T21:45:39.795Z",
+    "lastRunAt": "2026-03-16T21:45:39.795Z",
+    "lastRunStatus": "ok",
+    "totalRuns": 2
   },
   {
     "id": "2dde988a-0ee9-4b25-bde2-6be7c380ebbe",
@@ -102,10 +102,10 @@
     "cron": "*/15 * * * *",
     "status": "active",
     "createdAt": "2026-03-16T21:24:16.501Z",
-    "updatedAt": "2026-03-16T21:24:16.501Z",
-    "lastRunAt": null,
-    "lastRunStatus": null,
-    "totalRuns": 0
+    "updatedAt": "2026-03-16T21:45:39.551Z",
+    "lastRunAt": "2026-03-16T21:45:39.551Z",
+    "lastRunStatus": "ok",
+    "totalRuns": 2
   },
   {
     "id": "5cdcf5c6-c215-4736-beb2-a67406a4008d",
@@ -114,10 +114,10 @@
     "cron": "*/15 * * * *",
     "status": "active",
     "createdAt": "2026-03-16T21:24:16.890Z",
-    "updatedAt": "2026-03-16T21:24:16.890Z",
-    "lastRunAt": null,
-    "lastRunStatus": null,
-    "totalRuns": 0
+    "updatedAt": "2026-03-16T21:45:49.081Z",
+    "lastRunAt": "2026-03-16T21:45:49.081Z",
+    "lastRunStatus": "ok",
+    "totalRuns": 2
   },
   {
     "id": "42269cf5-dc4f-46ac-822c-3e86b8351a0d",
@@ -126,9 +126,9 @@
     "cron": "*/15 * * * *",
     "status": "active",
     "createdAt": "2026-03-16T21:24:17.308Z",
-    "updatedAt": "2026-03-16T21:24:17.308Z",
-    "lastRunAt": null,
-    "lastRunStatus": null,
-    "totalRuns": 0
+    "updatedAt": "2026-03-16T21:45:35.339Z",
+    "lastRunAt": "2026-03-16T21:45:35.339Z",
+    "lastRunStatus": "ok",
+    "totalRuns": 2
   }
 ]
