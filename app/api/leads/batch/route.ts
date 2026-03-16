@@ -3,6 +3,7 @@ import { verifySession } from "@/lib/auth";
 import { qualifyLeadsBatch } from "@/lib/ai-lead-qualifier";
 import { supabase } from "@/lib/supabase";
 import { alertEngine } from "@/lib/alert-engine";
+import { HIRING_KEYWORDS } from "@/lib/keywords";
 import type { Platform, AIQualificationResult } from "@/lib/types";
 
 interface IncomingPost {
@@ -75,6 +76,25 @@ export async function POST(request: NextRequest) {
   const dupCount = existingUrlMap.size + existingTextMap.size;
   console.log(`[leads/batch] ${dupCount} duplicates found (${existingUrlMap.size} by URL, ${existingTextMap.size} by content)`);
 
+  // --- Load user keywords (DB first, fallback to static) ---
+  let userKeywords: string[] = [];
+  const { data: dbKeywords } = await supabase
+    .from("keywords")
+    .select("keyword, category")
+    .order("created_at", { ascending: true });
+
+  if (dbKeywords && dbKeywords.length > 0) {
+    // Only use positive keywords (high_intent + medium_intent) for matching
+    userKeywords = dbKeywords
+      .filter((k: { category: string }) => k.category === "high_intent" || k.category === "medium_intent")
+      .map((k: { keyword: string }) => k.keyword.toLowerCase());
+  } else {
+    // Fallback to static hiring keywords
+    userKeywords = HIRING_KEYWORDS.map((kw) => kw.toLowerCase());
+  }
+
+  console.log(`[leads/batch] Loaded ${userKeywords.length} keywords for filtering`);
+
   // --- Filter valid, non-duplicate posts ---
   const results: BatchResult[] = [];
   const toInsert: Array<Record<string, unknown>> = [];
@@ -82,6 +102,7 @@ export async function POST(request: NextRequest) {
 
   const validPosts: IncomingPost[] = [];
   const seenTexts = new Set<string>(); // also dedup within the batch itself
+  let skippedNoKeyword = 0;
 
   for (const post of posts) {
     if (!post.platform || !post.text || !post.username || !post.url) {
@@ -105,7 +126,21 @@ export async function POST(request: NextRequest) {
       continue;
     }
     seenTexts.add(textKey);
+
+    // --- Keyword gate: only keep posts that match at least one user keyword ---
+    const lowerText = post.text.toLowerCase();
+    const hasKeywordMatch = userKeywords.some((kw) => lowerText.includes(kw));
+    if (!hasKeywordMatch) {
+      skippedNoKeyword++;
+      results.push({ url: post.url, error: "No keyword match — skipped" });
+      continue;
+    }
+
     validPosts.push(post);
+  }
+
+  if (skippedNoKeyword > 0) {
+    console.log(`[leads/batch] Skipped ${skippedNoKeyword} posts — no keyword match`);
   }
 
   // --- Score all valid posts (rate-limited chunks with retry + keyword fallback) ---
@@ -204,7 +239,7 @@ export async function POST(request: NextRequest) {
   }
 
   console.log(
-    `[leads/batch] Done — ${insertedCount} inserted, ${existingUrlMap.size} duplicates, ${results.filter((r) => r.error).length} errors`
+    `[leads/batch] Done — ${insertedCount} inserted, ${existingUrlMap.size} duplicates, ${skippedNoKeyword} no-keyword-match, ${results.filter((r) => r.error && !r.error.includes("No keyword match")).length} errors`
   );
 
   return NextResponse.json(
@@ -213,6 +248,7 @@ export async function POST(request: NextRequest) {
       processed: posts.length,
       inserted: insertedCount,
       duplicates: existingUrlMap.size,
+      skippedNoKeyword,
       results,
     },
     { status: 201 }

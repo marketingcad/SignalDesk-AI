@@ -265,7 +265,7 @@ function UrlResultRow({ item, index }: { item: UrlItemResult; index: number }) {
           </div>
         )}
         {hasError && (
-          <span className="text-xs text-rose-400 truncate max-w-[200px]">
+          <span className="text-xs text-rose-400 truncate max-w-50">
             {item.error ?? item.errors?.[0] ?? "Failed"}
           </span>
         )}

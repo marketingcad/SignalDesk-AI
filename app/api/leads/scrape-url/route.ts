@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifySession, SESSION_COOKIE_NAME } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
+import { HIRING_KEYWORDS } from "@/lib/keywords";
 
 const SCRAPER_URL = process.env.SCRAPER_SERVICE_URL || "http://localhost:4000";
 const SCRAPER_TOKEN = process.env.BACKEND_AUTH_TOKEN || "";
@@ -81,22 +82,44 @@ async function logScrapedPosts(
 ): Promise<void> {
   if (posts.length === 0) return;
 
+  // Load user keywords (DB first, fallback to static)
+  let userKeywords: string[] = [];
+  const { data: dbKeywords } = await supabase
+    .from("keywords")
+    .select("keyword, category")
+    .order("created_at", { ascending: true });
+
+  if (dbKeywords && dbKeywords.length > 0) {
+    userKeywords = dbKeywords
+      .filter((k: { category: string }) => k.category === "high_intent" || k.category === "medium_intent")
+      .map((k: { keyword: string }) => k.keyword.toLowerCase());
+  } else {
+    userKeywords = HIRING_KEYWORDS.map((kw) => kw.toLowerCase());
+  }
+
   // Filter out posts with unknown authors — their URLs are broken/unusable
   const validPosts = posts.filter((p) => {
     if (!p.author || p.author.toLowerCase() === "unknown" || p.author.startsWith("urn:li:")) {
       console.log(`[scrape-url] Skipping post with unknown/invalid author: "${p.author}" — ${p.url}`);
       return false;
     }
+    // Keyword gate: only keep posts that match at least one user keyword
+    const lowerText = (p.text || "").toLowerCase();
+    const hasKeywordMatch = userKeywords.some((kw) => lowerText.includes(kw));
+    if (!hasKeywordMatch) {
+      console.log(`[scrape-url] Skipping post with no keyword match: "${p.text?.slice(0, 80)}..." — ${p.url}`);
+      return false;
+    }
     return true;
   });
 
   if (validPosts.length === 0) {
-    console.log(`[scrape-url] All ${posts.length} posts had unknown authors — nothing to save`);
+    console.log(`[scrape-url] All ${posts.length} posts filtered out (unknown authors or no keyword match) — nothing to save`);
     return;
   }
 
   if (validPosts.length < posts.length) {
-    console.log(`[scrape-url] Filtered out ${posts.length - validPosts.length} posts with unknown authors`);
+    console.log(`[scrape-url] Filtered out ${posts.length - validPosts.length} posts (unknown authors or no keyword match)`);
   }
 
   const resultByUrl = new Map<string, BatchResultEntry>();
