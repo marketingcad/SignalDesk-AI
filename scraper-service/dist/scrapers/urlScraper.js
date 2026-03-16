@@ -1415,7 +1415,12 @@ async function scrapeUrl(targetUrl) {
             console.log(`[url-scraper] Using storageState: ${statePath ? "yes" : "none"}`);
             browser = await playwright_1.chromium.launch({
                 headless: config_1.config.headless,
-                args: ["--disable-blink-features=AutomationControlled"],
+                args: [
+                    "--disable-blink-features=AutomationControlled",
+                    "--no-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-setuid-sandbox",
+                ],
             });
             context = await browser.newContext({
                 storageState: statePath,
@@ -1427,7 +1432,12 @@ async function scrapeUrl(targetUrl) {
             console.log(`[url-scraper] Using persistent profile: ${(0, browserAuth_1.getProfileDir)()}`);
             context = await playwright_1.chromium.launchPersistentContext((0, browserAuth_1.getProfileDir)(), {
                 headless: config_1.config.headless,
-                args: ["--disable-blink-features=AutomationControlled"],
+                args: [
+                    "--disable-blink-features=AutomationControlled",
+                    "--no-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-setuid-sandbox",
+                ],
                 userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             });
             page = context.pages()[0] || (await context.newPage());
@@ -1435,7 +1445,12 @@ async function scrapeUrl(targetUrl) {
         else {
             browser = await playwright_1.chromium.launch({
                 headless: config_1.config.headless,
-                args: ["--disable-blink-features=AutomationControlled"],
+                args: [
+                    "--disable-blink-features=AutomationControlled",
+                    "--no-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-setuid-sandbox",
+                ],
             });
             context = await browser.newContext({
                 userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",

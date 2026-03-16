@@ -2,6 +2,9 @@ FROM node:20-slim
 
 WORKDIR /app
 
+# Install procps (provides 'ps' command required by Crawlee)
+RUN apt-get update && apt-get install -y procps && rm -rf /var/lib/apt/lists/*
+
 # Install dependencies (include dev for building TypeScript)
 COPY package.json package-lock.json ./
 RUN npm ci
