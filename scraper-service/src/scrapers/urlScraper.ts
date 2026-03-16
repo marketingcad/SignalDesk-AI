@@ -1609,7 +1609,12 @@ export async function scrapeUrl(targetUrl: string): Promise<ScrapeResult> {
       console.log(`[url-scraper] Using storageState: ${statePath ? "yes" : "none"}`);
       browser = await chromium.launch({
         headless: config.headless,
-        args: ["--disable-blink-features=AutomationControlled"],
+        args: [
+          "--disable-blink-features=AutomationControlled",
+          "--no-sandbox",
+          "--disable-dev-shm-usage",
+          "--disable-setuid-sandbox",
+        ],
       });
       context = await browser.newContext({
         storageState: statePath,
@@ -1621,7 +1626,12 @@ export async function scrapeUrl(targetUrl: string): Promise<ScrapeResult> {
       console.log(`[url-scraper] Using persistent profile: ${getProfileDir()}`);
       context = await chromium.launchPersistentContext(getProfileDir(), {
         headless: config.headless,
-        args: ["--disable-blink-features=AutomationControlled"],
+        args: [
+          "--disable-blink-features=AutomationControlled",
+          "--no-sandbox",
+          "--disable-dev-shm-usage",
+          "--disable-setuid-sandbox",
+        ],
         userAgent:
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
       });
@@ -1629,7 +1639,12 @@ export async function scrapeUrl(targetUrl: string): Promise<ScrapeResult> {
     } else {
       browser = await chromium.launch({
         headless: config.headless,
-        args: ["--disable-blink-features=AutomationControlled"],
+        args: [
+          "--disable-blink-features=AutomationControlled",
+          "--no-sandbox",
+          "--disable-dev-shm-usage",
+          "--disable-setuid-sandbox",
+        ],
       });
       context = await browser.newContext({
         userAgent:

@@ -32,7 +32,12 @@ export async function scrapeLinkedin(): Promise<ScrapeResult> {
     useSessionPool: false,
     launchContext: {
       launchOptions: {
-        args: ["--disable-blink-features=AutomationControlled"],
+        args: [
+          "--disable-blink-features=AutomationControlled",
+          "--no-sandbox",
+          "--disable-dev-shm-usage",
+          "--disable-setuid-sandbox",
+        ],
       },
     },
 
