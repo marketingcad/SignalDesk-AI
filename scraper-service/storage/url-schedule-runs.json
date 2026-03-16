@@ -1373,5 +1373,71 @@
     "postsFound": 30,
     "leadsInserted": 0,
     "errorMessage": null
+  },
+  {
+    "id": "cd10c233-59e5-46e7-9efd-6a94eae9ac45",
+    "scheduleId": "e676b1e3-6ff8-4767-b6e4-5ab889c20dd8",
+    "scheduleName": "LInkedIn VAs Group Post (#1)",
+    "startedAt": "2026-03-16T16:00:00.053Z",
+    "finishedAt": "2026-03-16T16:00:28.843Z",
+    "status": "ok",
+    "postsFound": 5,
+    "leadsInserted": 0,
+    "errorMessage": null
+  },
+  {
+    "id": "20990ffa-97d3-4ca6-9112-b2ae6e3ebdf4",
+    "scheduleId": "1639ed3b-accb-48bb-a667-3b85cb79fab1",
+    "scheduleName": "LInkedIn VAs Group Post (#4)",
+    "startedAt": "2026-03-16T16:00:00.057Z",
+    "finishedAt": "2026-03-16T16:00:29.641Z",
+    "status": "ok",
+    "postsFound": 18,
+    "leadsInserted": 0,
+    "errorMessage": null
+  },
+  {
+    "id": "dbf541ff-af29-48ea-948b-9ed615e09e9c",
+    "scheduleId": "16d333d3-e989-4de5-8496-a7abb2dd45aa",
+    "scheduleName": "LInkedIn VAs Group Post (#5)",
+    "startedAt": "2026-03-16T16:00:00.062Z",
+    "finishedAt": "2026-03-16T16:00:29.158Z",
+    "status": "ok",
+    "postsFound": 15,
+    "leadsInserted": 0,
+    "errorMessage": null
+  },
+  {
+    "id": "310b947b-9d8d-4b11-bc9b-ac373c8e8df4",
+    "scheduleId": "57086dce-798c-4792-886f-860575af27dd",
+    "scheduleName": "LInkedIn VAs Group Post (#2)",
+    "startedAt": "2026-03-16T16:00:00.067Z",
+    "finishedAt": "2026-03-16T16:00:28.675Z",
+    "status": "ok",
+    "postsFound": 16,
+    "leadsInserted": 0,
+    "errorMessage": null
+  },
+  {
+    "id": "26515e97-792d-45a8-9ed2-3f659ecc942a",
+    "scheduleId": "65104ed4-0157-49cf-82f0-e4b03aef326a",
+    "scheduleName": "FB VAs Group (#2)",
+    "startedAt": "2026-03-16T16:00:00.072Z",
+    "finishedAt": "2026-03-16T16:00:29.575Z",
+    "status": "ok",
+    "postsFound": 40,
+    "leadsInserted": 0,
+    "errorMessage": null
+  },
+  {
+    "id": "4fae3736-af5d-4336-aeb2-a5baab2a6ea6",
+    "scheduleId": "b78f96e0-2c4a-479b-bc2b-3ef75df1a89a",
+    "scheduleName": "FB VAs Group (#4)",
+    "startedAt": "2026-03-16T16:00:00.076Z",
+    "finishedAt": "2026-03-16T16:00:29.966Z",
+    "status": "ok",
+    "postsFound": 30,
+    "leadsInserted": 0,
+    "errorMessage": null
   }
 ]
