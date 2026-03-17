@@ -38,7 +38,7 @@ export default function DashboardLayout({
   const toggleAskAi = useCallback(() => setAskAiOpen((v) => !v), []);
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background pb-[var(--desktop-statusbar-height,0px)]">
       {/* Mobile overlay backdrop */}
       {mobileOpen && (
         <div

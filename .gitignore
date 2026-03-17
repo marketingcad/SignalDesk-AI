@@ -49,3 +49,12 @@ next-env.d.ts
 
 # apify service
 /apify-service/node_modules
+
+# Tauri
+/src-tauri/target/
+/src-tauri/keys/updater.key
+/src-tauri/gen/
+
+# scraper-service build output
+/scraper-service/dist/
+/scraper-service/node_modules/

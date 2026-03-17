@@ -1,0 +1,201 @@
+name: "Release Desktop App"
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (e.g. 1.0.1)"
+        required: false
+
+permissions:
+  contents: write
+
+env:
+  TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+  TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+            label: windows
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+            label: macos-arm
+          - platform: macos-latest
+            target: x86_64-apple-darwin
+            label: macos-intel
+          - platform: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            label: linux
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # Linux dependencies for Tauri
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libgtk-3-dev \
+            libsoup-3.0-dev \
+            libjavascriptcoregtk-4.1-dev
+
+      # Install root deps (Next.js)
+      - name: Install root dependencies
+        run: npm ci
+
+      # Install scraper-service deps and build
+      - name: Build scraper-service
+        run: |
+          cd scraper-service
+          npm ci
+          npm run build
+
+      # Build Next.js (server mode — Tauri loads via localhost)
+      - name: Build Next.js
+        run: npm run build
+
+      # Install Tauri CLI
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --version "^2"
+
+      # Build Tauri app
+      - name: Build Tauri app
+        run: cargo tauri build --target ${{ matrix.target }}
+
+      # Upload artifacts
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: va-hub-${{ matrix.label }}
+          path: |
+            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.exe
+            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.msi
+            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.dmg
+            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.AppImage
+            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.deb
+            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.sig
+            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.json
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Display artifacts
+        run: find artifacts -type f | sort
+
+      - name: Generate latest.json for updater
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          # Find signature files
+          WIN_SIG=$(find artifacts -name "*.msi.sig" -o -name "*.nsis.sig" | head -1)
+          MAC_SIG=$(find artifacts -name "*.dmg.sig" -o -name "*.app.tar.gz.sig" | head -1)
+          LINUX_SIG=$(find artifacts -name "*.AppImage.sig" | head -1)
+
+          # Find binary files
+          WIN_BIN=$(find artifacts -name "*.msi" -o -name "*-setup.exe" | head -1)
+          MAC_BIN=$(find artifacts -name "*.dmg" | head -1)
+          LINUX_BIN=$(find artifacts -name "*.AppImage" | head -1)
+
+          # Read signatures
+          WIN_SIG_CONTENT=""
+          MAC_SIG_CONTENT=""
+          LINUX_SIG_CONTENT=""
+          [ -f "$WIN_SIG" ] && WIN_SIG_CONTENT=$(cat "$WIN_SIG")
+          [ -f "$MAC_SIG" ] && MAC_SIG_CONTENT=$(cat "$MAC_SIG")
+          [ -f "$LINUX_SIG" ] && LINUX_SIG_CONTENT=$(cat "$LINUX_SIG")
+
+          REPO="${{ github.repository }}"
+          TAG="${GITHUB_REF_NAME}"
+
+          cat > latest.json << EOF
+          {
+            "version": "${VERSION}",
+            "notes": "VA Hub v${VERSION}",
+            "pub_date": "${DATE}",
+            "platforms": {
+              "windows-x86_64": {
+                "signature": "${WIN_SIG_CONTENT}",
+                "url": "https://github.com/${REPO}/releases/download/${TAG}/$(basename ${WIN_BIN:-va-hub.msi})"
+              },
+              "darwin-aarch64": {
+                "signature": "${MAC_SIG_CONTENT}",
+                "url": "https://github.com/${REPO}/releases/download/${TAG}/$(basename ${MAC_BIN:-va-hub.dmg})"
+              },
+              "darwin-x86_64": {
+                "signature": "${MAC_SIG_CONTENT}",
+                "url": "https://github.com/${REPO}/releases/download/${TAG}/$(basename ${MAC_BIN:-va-hub.dmg})"
+              },
+              "linux-x86_64": {
+                "signature": "${LINUX_SIG_CONTENT}",
+                "url": "https://github.com/${REPO}/releases/download/${TAG}/$(basename ${LINUX_BIN:-va-hub.AppImage})"
+              }
+            }
+          }
+          EOF
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "VA Hub ${{ github.ref_name }}"
+          body: |
+            ## VA Hub ${{ github.ref_name }}
+
+            ### Downloads
+            - **Windows:** `.msi` (recommended) or `.exe`
+            - **macOS:** `.dmg`
+            - **Linux:** `.AppImage` or `.deb`
+
+            ### Auto-Update
+            Existing installations will auto-update when this release is published.
+          draft: false
+          prerelease: false
+          files: |
+            artifacts/**/*.exe
+            artifacts/**/*.msi
+            artifacts/**/*.dmg
+            artifacts/**/*.AppImage
+            artifacts/**/*.deb
+            artifacts/**/*.sig
+            latest.json

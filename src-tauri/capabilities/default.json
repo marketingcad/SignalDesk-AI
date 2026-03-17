@@ -1,0 +1,13 @@
+{
+  "identifier": "default",
+  "description": "Default capabilities for the VA Hub desktop app",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "shell:allow-open",
+    "dialog:default",
+    "process:default",
+    "notification:default",
+    "updater:default"
+  ]
+}

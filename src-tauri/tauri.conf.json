@@ -1,0 +1,66 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nicholasgeraldscott/tauri/main/crates/tauri-config-schema/schema.json",
+  "productName": "VA Hub",
+  "version": "1.0.0",
+  "identifier": "com.signaldesk.vahub",
+  "build": {
+    "beforeDevCommand": "",
+    "devUrl": "http://localhost:3000",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "http://localhost:3000"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "VA Hub — SignalDesk AI",
+        "width": 1400,
+        "height": 900,
+        "minWidth": 1024,
+        "minHeight": 700,
+        "resizable": true,
+        "fullscreen": false,
+        "visible": false,
+        "center": true,
+        "decorations": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src 'self' http://localhost:3000 http://localhost:4000 https://*.supabase.co wss://*.supabase.co https://*.trycloudflare.com; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self' 'unsafe-inline' 'unsafe-eval'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "wix": {
+        "language": "en-US"
+      },
+      "nsis": {
+        "installMode": "both",
+        "displayLanguageSelector": false
+      }
+    },
+    "macOS": {
+      "minimumSystemVersion": "10.15"
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "REPLACE_WITH_YOUR_UPDATER_PUBLIC_KEY",
+      "endpoints": [
+        "https://github.com/YOUR_USERNAME/signal-desk-ai/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}
