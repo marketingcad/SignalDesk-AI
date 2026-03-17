@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
+import { openUrl } from "@/lib/open-url";
 import { Header } from "@/components/header";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -290,11 +291,11 @@ function UrlResultRow({ item, index }: { item: UrlItemResult; index: number }) {
                 </div>
                 <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-2">{post.text}</p>
                 {post.url && (
-                  <a href={post.url} target="_blank" rel="noopener noreferrer"
+                  <button onClick={() => openUrl(post.url)}
                     className="inline-flex items-center gap-1 text-[10px] text-primary hover:underline">
                     <ExternalLink className="h-2.5 w-2.5" />
                     <span className="truncate max-w-xs">{post.url}</span>
-                  </a>
+                  </button>
                 )}
               </div>
             </div>

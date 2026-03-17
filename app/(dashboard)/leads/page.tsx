@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
+import { openUrl } from "@/lib/open-url";
 import { Header } from "@/components/header";
 import { IntentBadge } from "@/components/intent-badge";
 import { PlatformBadge } from "@/components/platform-badge";
@@ -934,7 +935,7 @@ const [isShowActions, setIsShowActions] = useState(false);
             size="sm"
             className="gap-1.5 shadow-sm shadow-primary/25 whitespace-nowrap"
             onClick={() => {
-              if (lead.url) window.open(lead.url, "_blank");
+              if (lead.url) openUrl(lead.url);
             }}
           >
             <ExternalLink className="h-3.5 w-3.5" />

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { openUrl } from "@/lib/open-url";
 import { Header } from "@/components/header";
 import { IntentBadge } from "@/components/intent-badge";
 import { PlatformBadge } from "@/components/platform-badge";
@@ -256,12 +257,10 @@ export default function ReportsPage() {
                         </p>
                         <div className="space-y-2">
                           {report.topLeads.map((lead) => (
-                            <a
+                            <button
                               key={lead.id}
-                              href={lead.url || "#"}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex items-center gap-3 rounded-lg border border-border bg-accent/30 px-3 py-2.5 transition-colors hover:bg-accent/50 hover:border-primary/30 cursor-pointer group"
+                              onClick={() => lead.url && openUrl(lead.url)}
+                              className="flex items-center gap-3 rounded-lg border border-border bg-accent/30 px-3 py-2.5 transition-colors hover:bg-accent/50 hover:border-primary/30 cursor-pointer group w-full text-left"
                             >
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-1.5">
@@ -278,7 +277,7 @@ export default function ReportsPage() {
                                 score={lead.intentScore}
                                 size="sm"
                               />
-                            </a>
+                            </button>
                           ))}
                         </div>
                       </div>

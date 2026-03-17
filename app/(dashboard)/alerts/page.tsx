@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { openUrl } from "@/lib/open-url";
 import { Header } from "@/components/header";
 import { IntentBadge } from "@/components/intent-badge";
 import { PlatformBadge } from "@/components/platform-badge";
@@ -201,7 +202,7 @@ export default function AlertsPage() {
                       onClick={(e) => {
                         e.stopPropagation();
                         markAsRead(alert.id);
-                        if (alert.url) window.open(alert.url, "_blank");
+                        if (alert.url) openUrl(alert.url);
                       }}
                     >
                       <MessageSquare className="h-3 w-3" />
