@@ -37,9 +37,8 @@ impl ManagedProcesses {
 fn project_root() -> std::path::PathBuf {
     // In development, src-tauri is a subdirectory of the project root
     if cfg!(debug_assertions) {
-        let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
-            .unwrap_or_else(|_| ".".to_string());
-        std::path::PathBuf::from(manifest_dir)
+        // Use compile-time macro — always available, even when not run via cargo
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .unwrap_or_else(|| std::path::Path::new("."))
             .to_path_buf()
@@ -209,11 +208,13 @@ async fn check_auth_status() -> serde_json::Value {
 fn find_scraper_dir() -> Option<std::path::PathBuf> {
     let mut candidates: Vec<std::path::PathBuf> = Vec::new();
 
-    // 1. Via CARGO_MANIFEST_DIR (dev builds run from src-tauri/)
-    if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
-        if let Some(parent) = std::path::PathBuf::from(manifest_dir).parent() {
-            candidates.push(parent.join("scraper-service"));
-        }
+    // 1. Compile-time path from CARGO_MANIFEST_DIR (baked into the binary at build time)
+    //    In dev: src-tauri/ -> parent is project root
+    let manifest_parent = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .map(|p| p.to_path_buf());
+    if let Some(parent) = manifest_parent {
+        candidates.push(parent.join("scraper-service"));
     }
 
     // 2. Relative to project_root()
