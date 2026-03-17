@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { openUrl } from "@/lib/open-url";
+import { isTauri, launchAuthLogin, checkAuthLoginStatus } from "@/lib/tauri";
 import { Header } from "@/components/header";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -242,8 +243,32 @@ function PlatformBadge({ platform }: { platform: string | null }) {
 
 function UrlResultRow({ item, index }: { item: UrlItemResult; index: number }) {
   const [expanded, setExpanded] = useState(false);
+  const [authLaunching, setAuthLaunching] = useState(false);
   const hasError = !item.success || !!item.error;
+  const errorMsg = item.error ?? item.errors?.[0] ?? "";
+  const needsLogin = errorMsg.toLowerCase().includes("requires login");
   const posts = item.scrapedPosts ?? [];
+
+  const handleAuthLogin = async () => {
+    if (!isTauri()) return;
+    setAuthLaunching(true);
+    try {
+      const platform = item.platform?.toLowerCase();
+      await launchAuthLogin(platform === "x / twitter" || platform === "twitter" ? "twitter" : platform ?? undefined);
+      // Poll until done
+      const poll = setInterval(async () => {
+        try {
+          const status = await checkAuthLoginStatus();
+          if (!status.running) {
+            clearInterval(poll);
+            setAuthLaunching(false);
+          }
+        } catch { clearInterval(poll); setAuthLaunching(false); }
+      }, 2000);
+    } catch {
+      setAuthLaunching(false);
+    }
+  };
 
   return (
     <div className={cn(
@@ -266,9 +291,24 @@ function UrlResultRow({ item, index }: { item: UrlItemResult; index: number }) {
           </div>
         )}
         {hasError && (
-          <span className="text-xs text-rose-400 truncate max-w-50">
-            {item.error ?? item.errors?.[0] ?? "Failed"}
-          </span>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-xs text-rose-400 truncate max-w-50">
+              {needsLogin ? `${item.platform ?? "Platform"} requires login` : errorMsg || "Failed"}
+            </span>
+            {needsLogin && isTauri() && (
+              <button
+                onClick={handleAuthLogin}
+                disabled={authLaunching}
+                className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-colors disabled:opacity-50 whitespace-nowrap"
+              >
+                {authLaunching ? (
+                  <><Loader2 className="h-3 w-3 animate-spin" /> Logging in...</>
+                ) : (
+                  <><User className="h-3 w-3" /> Open Login</>
+                )}
+              </button>
+            )}
+          </div>
         )}
         {posts.length > 0 && (
           <button
@@ -654,6 +694,15 @@ export default function ScrapeUrlPage() {
         const items = data.items ?? [];
         setResults(items);
         setTotals({ inserted: data.totalInserted ?? 0, found: data.totalPostsFound ?? 0, dupes: data.totalDuplicates ?? 0 });
+        // Surface login errors to the top-level banner
+        const loginErrors = items.filter((i) => {
+          const err = (i.error ?? i.errors?.[0] ?? "").toLowerCase();
+          return err.includes("requires login");
+        });
+        if (loginErrors.length > 0) {
+          const platforms = loginErrors.map((i) => i.platform).filter(Boolean).join(", ");
+          setScrapeError(`${platforms || "Platform"} requires login. Click "Open Login" to authenticate.`);
+        }
         setHistory((prev) => [
           ...items.map((item) => ({
             url: item.url, platform: item.platform ?? undefined,
@@ -859,10 +908,20 @@ export default function ScrapeUrlPage() {
           {scrapeError && (
             <div className="rounded-lg border border-rose-500/20 bg-rose-500/10 px-4 py-3 flex items-start gap-3">
               <AlertTriangle className="h-4 w-4 text-rose-400 mt-0.5 shrink-0" />
-              <div>
+              <div className="flex-1">
                 <p className="text-sm font-medium text-rose-400">Scrape failed</p>
                 <p className="text-xs text-rose-400/80">{scrapeError}</p>
               </div>
+              {scrapeError.toLowerCase().includes("requires login") && isTauri() && (
+                <button
+                  onClick={async () => {
+                    try { await launchAuthLogin(); } catch {}
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-colors whitespace-nowrap shrink-0"
+                >
+                  <User className="h-3.5 w-3.5" /> Open Login
+                </button>
+              )}
             </div>
           )}
 
