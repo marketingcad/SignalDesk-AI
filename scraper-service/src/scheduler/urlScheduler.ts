@@ -138,7 +138,7 @@ async function runSchedule(id: string): Promise<void> {
     if (result.errors.length > 0) {
       runStatus = "error";
       errorMessage = result.errors.join("; ");
-      const discordErrors = result.errors.filter((e) => !e.includes("requires login"));
+      const discordErrors = result.errors.filter((e) => !e.includes("requires login") && !e.includes("page.goto: Timeout"));
       if (discordErrors.length > 0) {
         await sendErrorAlert(result.platform, discordErrors.join("\n"));
       }

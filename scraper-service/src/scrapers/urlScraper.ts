@@ -1653,7 +1653,7 @@ export async function scrapeUrl(targetUrl: string): Promise<ScrapeResult> {
 
     // Navigate
     console.log(`[url-scraper] Navigating to: ${navigateUrl}`);
-    await page.goto(navigateUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
+    await page.goto(navigateUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
     await page.waitForTimeout(3000);
 
     // Log page state
