@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ThemeProvider } from "@/components/theme-provider";
 import { DesktopStatusBar } from "@/components/desktop-status-bar";
+import { DesktopAuthPrompt } from "@/components/desktop-auth-prompt";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -29,6 +30,7 @@ export default function RootLayout({
       <body className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}>
         <ThemeProvider>
           {children}
+          <DesktopAuthPrompt />
           <DesktopStatusBar />
         </ThemeProvider>
       </body>

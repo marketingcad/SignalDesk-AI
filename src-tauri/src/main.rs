@@ -11,6 +11,7 @@ struct ManagedProcesses {
     scraper: Option<Child>,
     tunnel: Option<Child>,
     tunnel_url: Option<String>,
+    auth: Option<Child>,
 }
 
 impl ManagedProcesses {
@@ -19,6 +20,7 @@ impl ManagedProcesses {
             ("Next.js", &mut self.nextjs),
             ("Scraper", &mut self.scraper),
             ("Tunnel", &mut self.tunnel),
+            ("Auth", &mut self.auth),
         ] {
             if let Some(ref mut c) = child {
                 log::info!("[tauri] Killing {} (pid={})", name, c.id());
@@ -179,6 +181,114 @@ async fn wait_for_server(url: &str, timeout_secs: u64) -> bool {
     false
 }
 
+/// Check if browser auth cookies exist (storage-state.json or browser-profile)
+#[tauri::command]
+async fn check_auth_status() -> serde_json::Value {
+    let root = project_root();
+    let scraper_dir = root.join("scraper-service");
+    let storage_state = scraper_dir.join("auth").join("storage-state.json");
+    let profile_dir = scraper_dir.join("auth").join("browser-profile");
+
+    let has_storage_state = storage_state.exists();
+    let has_profile = profile_dir.exists()
+        && std::fs::read_dir(&profile_dir)
+            .map(|entries| entries.count() > 0)
+            .unwrap_or(false);
+    let has_env = std::env::var("BROWSER_STORAGE_STATE").is_ok();
+
+    serde_json::json!({
+        "authenticated": has_storage_state || has_profile || has_env,
+        "hasStorageState": has_storage_state,
+        "hasProfile": has_profile,
+        "hasEnvVar": has_env,
+    })
+}
+
+/// Launch the auth:login browser (interactive — opens visible Playwright browser)
+#[tauri::command]
+async fn launch_auth_login(
+    state: tauri::State<'_, Mutex<ManagedProcesses>>,
+    platform: Option<String>,
+) -> Result<String, String> {
+    // Check if auth process is already running
+    {
+        let procs = state.lock().map_err(|e| e.to_string())?;
+        if procs.auth.is_some() {
+            return Err("Auth login is already running. Close the browser first.".to_string());
+        }
+    }
+
+    let root = project_root();
+    let scraper_dir = root.join("scraper-service");
+    let npm = find_npm();
+
+    let mut cmd = Command::new(&npm);
+    cmd.arg("run").arg("auth:login");
+
+    // Pass platform arg if specified (e.g., "facebook", "linkedin", "twitter")
+    if let Some(ref p) = platform {
+        cmd.arg("--").arg(p);
+    }
+
+    cmd.current_dir(&scraper_dir);
+
+    // Don't pipe stdout/stderr — let the user see the auth instructions in the console
+    // On Windows, hide the console window in release mode
+    #[cfg(all(target_os = "windows", not(debug_assertions)))]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW — but Playwright opens its own GUI
+    }
+
+    let child = cmd
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Failed to launch auth login: {}", e))?;
+
+    let pid = child.id();
+    log::info!("[tauri] Auth login started (pid={})", pid);
+
+    let mut procs = state.lock().map_err(|e| e.to_string())?;
+    procs.auth = Some(child);
+
+    let platform_name = platform.unwrap_or_else(|| "all platforms".to_string());
+    Ok(format!(
+        "Auth browser opened for {}. Log in, then close the browser.",
+        platform_name
+    ))
+}
+
+/// Check if auth login process is still running, and clean up if done
+#[tauri::command]
+async fn check_auth_login_status(
+    state: tauri::State<'_, Mutex<ManagedProcesses>>,
+) -> Result<serde_json::Value, String> {
+    let mut procs = state.lock().map_err(|e| e.to_string())?;
+
+    let running = if let Some(ref mut child) = procs.auth {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                log::info!("[tauri] Auth login exited with: {}", status);
+                procs.auth = None;
+                false
+            }
+            Ok(None) => true, // still running
+            Err(e) => {
+                log::error!("[tauri] Error checking auth process: {}", e);
+                procs.auth = None;
+                false
+            }
+        }
+    } else {
+        false
+    };
+
+    Ok(serde_json::json!({
+        "running": running,
+    }))
+}
+
 #[tauri::command]
 async fn get_app_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
@@ -286,6 +396,7 @@ fn main() {
         scraper,
         tunnel: None,
         tunnel_url: None,
+        auth: None,
     });
 
     let app = tauri::Builder::default()
@@ -301,6 +412,9 @@ fn main() {
             restart_services,
             start_tunnel,
             stop_tunnel,
+            check_auth_status,
+            launch_auth_login,
+            check_auth_login_status,
         ])
         .setup(|app| {
             let app_handle = app.handle().clone();

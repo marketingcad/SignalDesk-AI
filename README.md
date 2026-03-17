@@ -453,6 +453,30 @@ Pre-built installers are published as [GitHub Releases](../../releases). Downloa
 5. **Browser auth for scrapers** — Run `npm run scraper:auth` to open a browser and log in to social platforms (saves cookies for automated scraping).
 6. **Launch** — Open VA Hub from your Start Menu / Applications / desktop shortcut.
 
+### Browser Auth (Auto-Login on Launch)
+
+When the desktop app starts, it automatically checks if you have saved browser cookies for social media scraping. If not, a login prompt appears:
+
+1. **Auto-check** — The app detects whether `scraper-service/auth/storage-state.json` or `scraper-service/auth/browser-profile/` exist
+2. **Login prompt** — If no auth is found, a modal appears with:
+   - **"Login to All Platforms"** — Opens a Playwright browser with tabs for Facebook, LinkedIn, and Twitter
+   - **Individual platform buttons** — Log in to just one platform
+3. **Save & close** — Log in to your accounts in the browser that opens, then close it. Your session cookies are saved automatically.
+4. **Skip** — You can dismiss the prompt and log in later via `npm run scraper:auth`
+
+The auth session persists between app restarts. You only need to log in again if:
+- Your session cookies expire (varies by platform, usually weeks/months)
+- You clear the `scraper-service/auth/` directory
+- You reinstall the app
+
+To re-login at any time:
+```bash
+npm run scraper:auth                # All platforms
+npm run scraper:auth -- facebook    # Just Facebook
+npm run scraper:auth -- linkedin    # Just LinkedIn
+npm run scraper:auth -- twitter     # Just Twitter
+```
+
 ### Auto-Updates
 
 VA Hub checks for updates automatically on startup. When a new version is available, a notification appears in the desktop status bar at the bottom of the window:

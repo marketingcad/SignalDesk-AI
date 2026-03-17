@@ -53,6 +53,33 @@ export async function stopTunnel(): Promise<string> {
 }
 
 // ---------------------------------------------------------------------------
+// Browser Auth (Playwright login for scraping)
+// ---------------------------------------------------------------------------
+
+export interface AuthStatus {
+  authenticated: boolean;
+  hasStorageState: boolean;
+  hasProfile: boolean;
+  hasEnvVar: boolean;
+}
+
+export async function checkAuthStatus(): Promise<AuthStatus> {
+  return invoke<AuthStatus>("check_auth_status");
+}
+
+export async function launchAuthLogin(platform?: string): Promise<string> {
+  return invoke<string>("launch_auth_login", { platform: platform ?? null });
+}
+
+export interface AuthLoginStatus {
+  running: boolean;
+}
+
+export async function checkAuthLoginStatus(): Promise<AuthLoginStatus> {
+  return invoke<AuthLoginStatus>("check_auth_login_status");
+}
+
+// ---------------------------------------------------------------------------
 // Updater
 // ---------------------------------------------------------------------------
 
