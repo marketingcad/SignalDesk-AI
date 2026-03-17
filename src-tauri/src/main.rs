@@ -326,27 +326,31 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("Failed to build Tauri application");
 
-    app.run(|app_handle, event| match event {
-        RunEvent::WindowEvent {
-            label,
-            event: WindowEvent::CloseRequested { .. },
-            ..
-        } => {
-            if label == "main" {
-                log::info!("[tauri] Main window closed — shutting down services");
-                let state = app_handle.state::<Mutex<ManagedProcesses>>();
-                if let Ok(mut procs) = state.lock() {
-                    procs.kill_all();
-                }
-            }
-        }
-        RunEvent::ExitRequested { .. } => {
-            log::info!("[tauri] Exit requested — shutting down services");
-            let state = app_handle.state::<Mutex<ManagedProcesses>>();
-            if let Ok(mut procs) = state.lock() {
+    app.run(|app_handle, event| {
+        let shutdown = |msg: &str| {
+            log::info!("[tauri] {}", msg);
+            let state: tauri::State<'_, Mutex<ManagedProcesses>> =
+                app_handle.state();
+            let mutex: &Mutex<ManagedProcesses> = state.inner();
+            if let Ok(mut procs) = mutex.lock() {
                 procs.kill_all();
             }
+        };
+
+        match event {
+            RunEvent::WindowEvent {
+                label,
+                event: WindowEvent::CloseRequested { .. },
+                ..
+            } => {
+                if label == "main" {
+                    shutdown("Main window closed — shutting down services");
+                }
+            }
+            RunEvent::ExitRequested { .. } => {
+                shutdown("Exit requested — shutting down services");
+            }
+            _ => {}
         }
-        _ => {}
     });
 }

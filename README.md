@@ -61,6 +61,8 @@ Lead intelligence dashboard for **Virtual Assistant hiring detection**. Scrapes 
 | Notifications | Discord Webhooks, Nodemailer (email) |
 | AI | Google Generative AI (Gemini) for lead qualification |
 | Browser Extension | Chrome MV3, content scripts + service worker |
+| Desktop App | Tauri v2 (Rust), auto-updater, NSIS/MSI/DMG/AppImage |
+| CI/CD | GitHub Actions (multi-OS matrix builds + GitHub Releases) |
 | UI Components | Radix UI, Shadcn/ui, Lucide icons |
 
 ---
@@ -79,8 +81,13 @@ signal-desk-ai/
 ├── scraper-service/        # Standalone Playwright + Crawlee scraper (node-cron)
 ├── apify-service/          # Apify actor orchestrator + webhook receiver
 ├── extension/              # Chrome MV3 extension (content scripts + popup)
+├── src-tauri/              # Tauri desktop app shell (Rust)
+│   ├── src/main.rs         # Spawns Next.js + scraper, manages lifecycle
+│   ├── tauri.conf.json     # Window, updater, CSP, bundle config
+│   └── capabilities/       # Tauri permission capabilities
+├── .github/workflows/      # CI/CD (release.yml — multi-OS builds)
 ├── supabase/               # Database migrations and schema
-├── scripts/                # Utility scripts (token generation)
+├── scripts/                # Utility scripts (setup, token generation)
 └── public/                 # Static assets
 ```
 
@@ -378,7 +385,7 @@ SCRAPER_SERVICE_AUTH_TOKEN=
 
 ---
 
-## Getting Started
+## Getting Started (Web)
 
 ```bash
 # Install dependencies
@@ -417,3 +424,138 @@ npm start
 3. Enable "Developer mode"
 4. Click "Load unpacked" and select the `extension/dist` directory
 5. Configure your API URL and login token in the extension popup
+
+---
+
+## Desktop App (VA Hub)
+
+VA Hub wraps the entire Signal Desk AI platform into a native desktop application using [Tauri v2](https://v2.tauri.app). When launched, the app automatically starts Next.js and the scraper service locally, then opens a native window — no browser needed.
+
+### Download & Install
+
+Pre-built installers are published as [GitHub Releases](../../releases). Download the latest version for your OS:
+
+| Platform | File | Install Method |
+|----------|------|---------------|
+| **Windows** | `VA-Hub_x.x.x_x64-setup.exe` | Double-click → follow installer (NSIS) |
+| **Windows** | `VA-Hub_x.x.x_x64_en-US.msi` | Double-click → follow installer (MSI) |
+| **macOS (Apple Silicon)** | `VA-Hub_x.x.x_aarch64.dmg` | Open DMG → drag to Applications |
+| **macOS (Intel)** | `VA-Hub_x.x.x_x64.dmg` | Open DMG → drag to Applications |
+| **Linux** | `VA-Hub_x.x.x_amd64.AppImage` | `chmod +x *.AppImage && ./VA-Hub.AppImage` |
+| **Linux** | `VA-Hub_x.x.x_amd64.deb` | `sudo dpkg -i VA-Hub_*.deb` |
+
+### First-Time Setup After Installing
+
+1. **Configure environment** — Create a `.env.local` file in the app's working directory with your API keys (Supabase, Discord, Google AI, etc.). Use `.env.desktop` as a template.
+2. **Install Node.js** — The app requires [Node.js 20+](https://nodejs.org) installed on the machine, as it runs Next.js and the scraper service locally.
+3. **Install dependencies** — Run `npm install` in both the root and `scraper-service/` directories.
+4. **Build scraper** — Run `cd scraper-service && npm run build`.
+5. **Browser auth for scrapers** — Run `npm run scraper:auth` to open a browser and log in to social platforms (saves cookies for automated scraping).
+6. **Launch** — Open VA Hub from your Start Menu / Applications / desktop shortcut.
+
+### Auto-Updates
+
+VA Hub checks for updates automatically on startup. When a new version is available, a notification appears in the desktop status bar at the bottom of the window:
+
+- Click **"Update to vX.X.X"** to download and install
+- The app will restart automatically with the new version
+- You can also click **"Check Updates"** manually at any time
+
+### Sharing the App with Others
+
+#### Option A: Share the Installer (Simplest)
+
+1. Go to [Releases](../../releases) and download the appropriate installer
+2. Send it to the other person (email, file share, USB drive, etc.)
+3. They install it like any normal desktop app
+4. They'll need to set up their own `.env.local` with API keys
+
+#### Option B: Build From Source
+
+On the target machine:
+
+```bash
+# Prerequisites
+# - Node.js 20+
+# - Rust (https://rustup.rs)
+# - Visual Studio Build Tools (Windows) / Xcode CLI (macOS) / libwebkit2gtk (Linux)
+
+# Clone the repo
+git clone https://github.com/YOUR_USERNAME/signal-desk-ai.git
+cd signal-desk-ai
+
+# Run automated setup
+bash scripts/setup-desktop.sh
+
+# Build the installer
+npm run tauri:build
+```
+
+The built installer will be in `src-tauri/target/release/bundle/`.
+
+#### Option C: Remote Access via Cloudflare Tunnel
+
+Instead of installing the app on every device, you can run it on one machine and share access remotely:
+
+```bash
+# Start the app with Cloudflare Tunnel
+./start-local.sh
+```
+
+This generates a public URL like `https://abc-xyz.trycloudflare.com` that anyone can access from their browser — no installation needed. The Tauri desktop app also has built-in tunnel controls in the status bar.
+
+### Desktop App Scripts
+
+| Command | Description |
+|---------|-------------|
+| `npm run tauri:dev` | Launch desktop app in development mode |
+| `npm run tauri:build` | Build production installer for your OS |
+| `npm run desktop:dev` | Run Next.js + scraper without Tauri window |
+| `npm run scraper:auth` | Open browser to log in for scraper cookies |
+| `npm run scraper:build` | Build scraper service (TypeScript → JS) |
+| `npm run updater:keygen` | Generate signing keys for auto-updates |
+
+### Releasing a New Version
+
+```bash
+# 1. Bump version in package.json AND src-tauri/tauri.conf.json
+# 2. Commit
+git add -A && git commit -m "release: v1.0.1"
+
+# 3. Tag and push
+git tag v1.0.1
+git push origin main --tags
+```
+
+GitHub Actions will automatically:
+1. Build installers for Windows, macOS (ARM + Intel), and Linux
+2. Sign the update artifacts
+3. Generate `latest.json` for the auto-updater
+4. Publish everything as a GitHub Release
+
+Existing installations will detect and offer the update within minutes.
+
+### Signing Keys for Auto-Updates
+
+The auto-updater requires a signing key pair so users can trust that updates come from you:
+
+```bash
+# Generate keys (one-time)
+npm run updater:keygen
+```
+
+This creates:
+- `src-tauri/keys/updater.key` — **Private key** (never commit, add to GitHub Secrets)
+- `src-tauri/keys/updater.key.pub` — **Public key** (paste into `src-tauri/tauri.conf.json`)
+
+Add these GitHub Secrets to your repository:
+- `TAURI_SIGNING_PRIVATE_KEY` — entire content of `updater.key`
+- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` — the password you set during generation
+
+### Platform-Specific Requirements
+
+| Platform | Prerequisite |
+|----------|-------------|
+| **Windows** | [Visual Studio Build Tools 2022](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with "Desktop development with C++". Disable Smart App Control for local builds. |
+| **macOS** | Xcode Command Line Tools: `xcode-select --install` |
+| **Linux** | `sudo apt install libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libgtk-3-dev libsoup-3.0-dev` |
