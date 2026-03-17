@@ -114,6 +114,8 @@ jobs:
             src-tauri/target/${{ matrix.target }}/release/bundle/**/*.dmg
             src-tauri/target/${{ matrix.target }}/release/bundle/**/*.AppImage
             src-tauri/target/${{ matrix.target }}/release/bundle/**/*.deb
+            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.rpm
+            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.tar.gz
             src-tauri/target/${{ matrix.target }}/release/bundle/**/*.sig
             src-tauri/target/${{ matrix.target }}/release/bundle/**/*.json
 
@@ -137,15 +139,20 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-          # Find signature files
-          WIN_SIG=$(find artifacts -name "*.msi.sig" -o -name "*.nsis.sig" | head -1)
-          MAC_SIG=$(find artifacts -name "*.dmg.sig" -o -name "*.app.tar.gz.sig" | head -1)
+          # Find signature files for updater artifacts (.msi.sig for Windows, .app.tar.gz.sig for macOS, .AppImage.sig for Linux)
+          WIN_SIG=$(find artifacts -name "*.msi.sig" | head -1)
+          MAC_SIG=$(find artifacts -name "*.app.tar.gz.sig" | head -1)
           LINUX_SIG=$(find artifacts -name "*.AppImage.sig" | head -1)
 
-          # Find binary files
-          WIN_BIN=$(find artifacts -name "*.msi" -o -name "*-setup.exe" | head -1)
-          MAC_BIN=$(find artifacts -name "*.dmg" | head -1)
-          LINUX_BIN=$(find artifacts -name "*.AppImage" | head -1)
+          # Find updater binary files (.msi for Windows, .app.tar.gz for macOS, .AppImage for Linux)
+          WIN_BIN=$(find artifacts -name "*.msi" ! -name "*.sig" | head -1)
+          MAC_ARM_BIN=$(find artifacts/va-hub-macos-arm -name "*.app.tar.gz" ! -name "*.sig" 2>/dev/null | head -1)
+          MAC_INTEL_BIN=$(find artifacts/va-hub-macos-intel -name "*.app.tar.gz" ! -name "*.sig" 2>/dev/null | head -1)
+          LINUX_BIN=$(find artifacts -name "*.AppImage" ! -name "*.sig" | head -1)
+
+          # Fall back: if no separate arm/intel, use same binary
+          [ -z "$MAC_ARM_BIN" ] && MAC_ARM_BIN=$(find artifacts -name "*.app.tar.gz" ! -name "*.sig" | head -1)
+          [ -z "$MAC_INTEL_BIN" ] && MAC_INTEL_BIN=$(find artifacts -name "*.app.tar.gz" ! -name "*.sig" | head -1)
 
           # Read signatures
           WIN_SIG_CONTENT=""
@@ -158,7 +165,15 @@ jobs:
           REPO="${{ github.repository }}"
           TAG="${GITHUB_REF_NAME}"
 
-          cat > latest.json << EOF
+          # URL-encode filenames (replace spaces with %20)
+          url_encode() { echo "$1" | sed 's/ /%20/g'; }
+
+          WIN_NAME=$(url_encode "$(basename "${WIN_BIN:-va-hub.msi}")")
+          MAC_ARM_NAME=$(url_encode "$(basename "${MAC_ARM_BIN:-va-hub.app.tar.gz}")")
+          MAC_INTEL_NAME=$(url_encode "$(basename "${MAC_INTEL_BIN:-va-hub.app.tar.gz}")")
+          LINUX_NAME=$(url_encode "$(basename "${LINUX_BIN:-va-hub.AppImage}")")
+
+          cat > latest.json <<ENDJSON
           {
             "version": "${VERSION}",
             "notes": "VA Hub v${VERSION}",
@@ -166,23 +181,26 @@ jobs:
             "platforms": {
               "windows-x86_64": {
                 "signature": "${WIN_SIG_CONTENT}",
-                "url": "https://github.com/${REPO}/releases/download/${TAG}/$(basename ${WIN_BIN:-va-hub.msi})"
+                "url": "https://github.com/${REPO}/releases/download/${TAG}/${WIN_NAME}"
               },
               "darwin-aarch64": {
                 "signature": "${MAC_SIG_CONTENT}",
-                "url": "https://github.com/${REPO}/releases/download/${TAG}/$(basename ${MAC_BIN:-va-hub.dmg})"
+                "url": "https://github.com/${REPO}/releases/download/${TAG}/${MAC_ARM_NAME}"
               },
               "darwin-x86_64": {
                 "signature": "${MAC_SIG_CONTENT}",
-                "url": "https://github.com/${REPO}/releases/download/${TAG}/$(basename ${MAC_BIN:-va-hub.dmg})"
+                "url": "https://github.com/${REPO}/releases/download/${TAG}/${MAC_INTEL_NAME}"
               },
               "linux-x86_64": {
                 "signature": "${LINUX_SIG_CONTENT}",
-                "url": "https://github.com/${REPO}/releases/download/${TAG}/$(basename ${LINUX_BIN:-va-hub.AppImage})"
+                "url": "https://github.com/${REPO}/releases/download/${TAG}/${LINUX_NAME}"
               }
             }
           }
-          EOF
+          ENDJSON
+
+          echo "=== Generated latest.json ==="
+          cat latest.json
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -206,5 +224,7 @@ jobs:
             artifacts/**/*.dmg
             artifacts/**/*.AppImage
             artifacts/**/*.deb
+            artifacts/**/*.rpm
+            artifacts/**/*.tar.gz
             artifacts/**/*.sig
             latest.json

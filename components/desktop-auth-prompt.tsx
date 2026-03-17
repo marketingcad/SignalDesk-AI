@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   isTauri,
   checkAuthStatus,
@@ -26,39 +26,69 @@ import {
 export function DesktopAuthPrompt() {
   const [isDesktop, setIsDesktop] = useState(false);
   const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
+  const [checked, setChecked] = useState(false);
   const [dismissed, setDismissed] = useState(false);
   const [launching, setLaunching] = useState(false);
   const [authRunning, setAuthRunning] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Check auth status on mount
+  // Check auth status on mount — with a small delay to let Tauri bridge init
   useEffect(() => {
     const desktop = isTauri();
     setIsDesktop(desktop);
-    if (!desktop) return;
+    if (!desktop) {
+      setChecked(true);
+      return;
+    }
 
-    checkAuthStatus()
-      .then(setAuthStatus)
-      .catch(() => {});
+    // Delay check slightly to ensure Tauri IPC bridge is ready
+    const timer = setTimeout(async () => {
+      try {
+        const status = await checkAuthStatus();
+        console.log("[auth-prompt] Auth status:", status);
+        setAuthStatus(status);
+      } catch (err) {
+        console.error("[auth-prompt] Failed to check auth status:", err);
+        // If the command fails, assume not authenticated to show the prompt
+        setAuthStatus({
+          authenticated: false,
+          hasStorageState: false,
+          hasProfile: false,
+          hasEnvVar: false,
+        });
+      } finally {
+        setChecked(true);
+      }
+    }, 1500);
+
+    return () => clearTimeout(timer);
   }, []);
 
   // Poll auth login process status while it's running
   useEffect(() => {
     if (!authRunning) return;
 
-    const interval = setInterval(async () => {
+    pollRef.current = setInterval(async () => {
       try {
         const status = await checkAuthLoginStatus();
         if (!status.running) {
           setAuthRunning(false);
           setMessage("");
+          if (pollRef.current) clearInterval(pollRef.current);
           // Re-check auth status after login completes
-          const newStatus = await checkAuthStatus();
-          setAuthStatus(newStatus);
-          if (newStatus.authenticated) {
-            setMessage("Login saved successfully!");
-            setTimeout(() => setDismissed(true), 2000);
+          try {
+            const newStatus = await checkAuthStatus();
+            setAuthStatus(newStatus);
+            if (newStatus.authenticated) {
+              setMessage("Login saved successfully! You can now scrape.");
+              setTimeout(() => setDismissed(true), 3000);
+            } else {
+              setError("Login completed but cookies were not saved. Try again.");
+            }
+          } catch {
+            // ignore
           }
         }
       } catch {
@@ -66,27 +96,32 @@ export function DesktopAuthPrompt() {
       }
     }, 2000);
 
-    return () => clearInterval(interval);
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
   }, [authRunning]);
 
   const handleLogin = useCallback(async (platform?: string) => {
     setLaunching(true);
     setError("");
+    setMessage("");
     try {
       const result = await launchAuthLogin(platform);
+      console.log("[auth-prompt] Launch result:", result);
       setMessage(result);
       setAuthRunning(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      const errMsg = err instanceof Error ? err.message : String(err);
+      console.error("[auth-prompt] Failed to launch auth:", errMsg);
+      setError(errMsg);
     } finally {
       setLaunching(false);
     }
   }, []);
 
-  // Don't show if: not desktop, already authenticated, or dismissed
-  if (!isDesktop || dismissed || !authStatus || authStatus.authenticated) {
-    return null;
-  }
+  // Don't show if: not desktop, not checked yet, already authenticated, or dismissed
+  if (!isDesktop || !checked || dismissed) return null;
+  if (authStatus?.authenticated) return null;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm">
@@ -117,9 +152,9 @@ export function DesktopAuthPrompt() {
         {message && (
           <div className="flex items-center gap-2 mb-4 p-2 rounded bg-primary/10 text-primary text-sm">
             {authRunning ? (
-              <Loader2 className="h-4 w-4 animate-spin flex-shrink-0" />
+              <Loader2 className="h-4 w-4 animate-spin shrink-0" />
             ) : (
-              <CheckCircle className="h-4 w-4 flex-shrink-0" />
+              <CheckCircle className="h-4 w-4 shrink-0" />
             )}
             <span>{message}</span>
           </div>
@@ -127,7 +162,7 @@ export function DesktopAuthPrompt() {
 
         {error && (
           <div className="flex items-center gap-2 mb-4 p-2 rounded bg-destructive/10 text-destructive text-sm">
-            <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+            <AlertTriangle className="h-4 w-4 shrink-0" />
             <span>{error}</span>
           </div>
         )}
@@ -138,7 +173,7 @@ export function DesktopAuthPrompt() {
             <button
               onClick={() => handleLogin()}
               disabled={launching}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 font-medium"
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 font-medium cursor-pointer"
             >
               {launching ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -155,7 +190,7 @@ export function DesktopAuthPrompt() {
                     key={platform}
                     onClick={() => handleLogin(platform)}
                     disabled={launching}
-                    className="px-3 py-1.5 rounded-md border border-border text-sm hover:bg-accent transition-colors disabled:opacity-50 capitalize"
+                    className="px-3 py-1.5 rounded-md border border-border text-sm hover:bg-accent transition-colors disabled:opacity-50 capitalize cursor-pointer"
                   >
                     {platform}
                   </button>
@@ -165,10 +200,21 @@ export function DesktopAuthPrompt() {
           </div>
         )}
 
+        {/* While auth is running */}
+        {authRunning && (
+          <div className="flex items-center gap-3 mb-4 p-3 rounded bg-muted">
+            <Loader2 className="h-5 w-5 animate-spin text-primary shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-foreground">Browser is open</p>
+              <p className="text-xs text-muted-foreground">Log in to your accounts, then close the browser window.</p>
+            </div>
+          </div>
+        )}
+
         {/* Skip button */}
         <button
           onClick={() => setDismissed(true)}
-          className="w-full text-center text-sm text-muted-foreground hover:text-foreground transition-colors py-1"
+          className="w-full text-center text-sm text-muted-foreground hover:text-foreground transition-colors py-1 cursor-pointer"
         >
           {authRunning ? "Hide (login continues in background)" : "Skip for now"}
         </button>

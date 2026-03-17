@@ -56,6 +56,7 @@ import {
   ChevronUp,
   Zap,
   Activity,
+  LogIn,
 } from "lucide-react";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -244,17 +245,23 @@ function PlatformBadge({ platform }: { platform: string | null }) {
 function UrlResultRow({ item, index }: { item: UrlItemResult; index: number }) {
   const [expanded, setExpanded] = useState(false);
   const [authLaunching, setAuthLaunching] = useState(false);
+  const [desktop, setDesktop] = useState(false);
   const hasError = !item.success || !!item.error;
   const errorMsg = item.error ?? item.errors?.[0] ?? "";
   const needsLogin = errorMsg.toLowerCase().includes("requires login");
   const posts = item.scrapedPosts ?? [];
 
-  const handleAuthLogin = async () => {
-    if (!isTauri()) return;
+  useEffect(() => { setDesktop(isTauri()); }, []);
+
+  const handleAuthLogin = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!desktop) return;
     setAuthLaunching(true);
     try {
-      const platform = item.platform?.toLowerCase();
-      await launchAuthLogin(platform === "x / twitter" || platform === "twitter" ? "twitter" : platform ?? undefined);
+      const p = item.platform?.toLowerCase();
+      const platform = p === "x / twitter" || p === "twitter" || p === "x" ? "twitter" : p ?? undefined;
+      await launchAuthLogin(platform);
       // Poll until done
       const poll = setInterval(async () => {
         try {
@@ -265,7 +272,8 @@ function UrlResultRow({ item, index }: { item: UrlItemResult; index: number }) {
           }
         } catch { clearInterval(poll); setAuthLaunching(false); }
       }, 2000);
-    } catch {
+    } catch (err) {
+      console.error("[scrape-url] Auth login failed:", err);
       setAuthLaunching(false);
     }
   };
@@ -295,11 +303,12 @@ function UrlResultRow({ item, index }: { item: UrlItemResult; index: number }) {
             <span className="text-xs text-rose-400 truncate max-w-50">
               {needsLogin ? `${item.platform ?? "Platform"} requires login` : errorMsg || "Failed"}
             </span>
-            {needsLogin && isTauri() && (
+            {needsLogin && desktop && (
               <button
+                type="button"
                 onClick={handleAuthLogin}
                 disabled={authLaunching}
-                className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-colors disabled:opacity-50 whitespace-nowrap"
+                className="relative z-10 flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 whitespace-nowrap cursor-pointer"
               >
                 {authLaunching ? (
                   <><Loader2 className="h-3 w-3 animate-spin" /> Logging in...</>
@@ -567,6 +576,9 @@ export default function ScrapeUrlPage() {
   const [clearingRuns, setClearingRuns] = useState(false);
   const [selectedRunScheduleId, setSelectedRunScheduleId] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [isDesktop, setIsDesktop] = useState(false);
+
+  useEffect(() => { setIsDesktop(isTauri()); }, []);
 
   // ── Load history ─────────────────────────────────────────
   useEffect(() => {
@@ -906,20 +918,25 @@ export default function ScrapeUrlPage() {
 
           {/* Error */}
           {scrapeError && (
-            <div className="rounded-lg border border-rose-500/20 bg-rose-500/10 px-4 py-3 flex items-start gap-3">
-              <AlertTriangle className="h-4 w-4 text-rose-400 mt-0.5 shrink-0" />
-              <div className="flex-1">
-                <p className="text-sm font-medium text-rose-400">Scrape failed</p>
-                <p className="text-xs text-rose-400/80">{scrapeError}</p>
+            <div className="rounded-lg border border-rose-500/20 bg-rose-500/10 px-4 py-3 flex flex-col gap-3">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="h-4 w-4 text-rose-400 mt-0.5 shrink-0" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-rose-400">Scrape failed</p>
+                  <p className="text-xs text-rose-400/80">{scrapeError}</p>
+                </div>
               </div>
-              {scrapeError.toLowerCase().includes("requires login") && isTauri() && (
+              {scrapeError.toLowerCase().includes("requires login") && isDesktop && (
                 <button
-                  onClick={async () => {
-                    try { await launchAuthLogin(); } catch {}
+                  type="button"
+                  onClick={async (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    try { await launchAuthLogin(); } catch (err) { console.error("[scrape-url] Auth launch failed:", err); }
                   }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-colors whitespace-nowrap shrink-0"
+                  className="self-start flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors cursor-pointer"
                 >
-                  <User className="h-3.5 w-3.5" /> Open Login
+                  <LogIn className="h-4 w-4" /> Open Browser Login
                 </button>
               )}
             </div>
