@@ -75,6 +75,10 @@ jobs:
       - name: Install root dependencies
         run: npm ci
 
+      # Generate proper app icons (PNG/ICO) using sharp
+      - name: Generate app icons
+        run: node scripts/generate-icons.js
+
       # Install scraper-service deps and build
       - name: Build scraper-service
         run: |
@@ -84,6 +88,11 @@ jobs:
 
       # Build Next.js (server mode — Tauri loads via localhost)
       - name: Build Next.js
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
         run: npm run build
 
       # Install Tauri CLI
