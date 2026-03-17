@@ -1617,6 +1617,8 @@ export async function scrapeUrl(targetUrl: string): Promise<ScrapeResult> {
         userAgent:
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
       });
+      context.setDefaultNavigationTimeout(90000);
+      context.setDefaultTimeout(60000);
       page = await context.newPage();
     } else if (cookiesExist) {
       console.log(`[url-scraper] Using persistent profile: ${getProfileDir()}`);
@@ -1626,6 +1628,8 @@ export async function scrapeUrl(targetUrl: string): Promise<ScrapeResult> {
         userAgent:
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
       });
+      context.setDefaultNavigationTimeout(90000);
+      context.setDefaultTimeout(60000);
       page = context.pages()[0] || (await context.newPage());
     } else {
       browser = await chromium.launch({
@@ -1636,6 +1640,8 @@ export async function scrapeUrl(targetUrl: string): Promise<ScrapeResult> {
         userAgent:
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
       });
+      context.setDefaultNavigationTimeout(90000);
+      context.setDefaultTimeout(60000);
       page = await context.newPage();
     }
 
@@ -1651,9 +1657,23 @@ export async function scrapeUrl(targetUrl: string): Promise<ScrapeResult> {
       }
     }
 
-    // Navigate
+    // Navigate (with retry for LinkedIn which can be slow)
     console.log(`[url-scraper] Navigating to: ${navigateUrl}`);
-    await page.goto(navigateUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
+    const NAV_TIMEOUT = 90000;
+    let navAttempts = platform === "LinkedIn" ? 2 : 1;
+    for (let attempt = 1; attempt <= navAttempts; attempt++) {
+      try {
+        await page.goto(navigateUrl, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT });
+        break;
+      } catch (navErr) {
+        const isTimeout = navErr instanceof Error && navErr.message.includes("Timeout");
+        if (isTimeout && attempt < navAttempts) {
+          console.warn(`[url-scraper] Navigation timeout on attempt ${attempt}/${navAttempts}, retrying...`);
+          continue;
+        }
+        throw navErr;
+      }
+    }
     await page.waitForTimeout(3000);
 
     // Log page state
