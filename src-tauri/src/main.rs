@@ -184,8 +184,9 @@ async fn wait_for_server(url: &str, timeout_secs: u64) -> bool {
 /// Check if browser auth cookies exist (storage-state.json or browser-profile)
 #[tauri::command]
 async fn check_auth_status() -> serde_json::Value {
-    let root = project_root();
-    let scraper_dir = root.join("scraper-service");
+    let scraper_dir = find_scraper_dir().unwrap_or_else(|| project_root().join("scraper-service"));
+    let scraper_dir = scraper_dir.canonicalize().unwrap_or(scraper_dir);
+    log::info!("[tauri] Checking auth status in {:?}", scraper_dir);
     let storage_state = scraper_dir.join("auth").join("storage-state.json");
     let profile_dir = scraper_dir.join("auth").join("browser-profile");
 
@@ -204,6 +205,50 @@ async fn check_auth_status() -> serde_json::Value {
     })
 }
 
+/// Find the scraper-service directory by checking multiple possible locations
+fn find_scraper_dir() -> Option<std::path::PathBuf> {
+    let mut candidates: Vec<std::path::PathBuf> = Vec::new();
+
+    // 1. Via CARGO_MANIFEST_DIR (dev builds run from src-tauri/)
+    if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
+        if let Some(parent) = std::path::PathBuf::from(manifest_dir).parent() {
+            candidates.push(parent.join("scraper-service"));
+        }
+    }
+
+    // 2. Relative to project_root()
+    candidates.push(project_root().join("scraper-service"));
+
+    // 3. Relative to current working directory
+    if let Ok(cwd) = std::env::current_dir() {
+        candidates.push(cwd.join("scraper-service"));
+    }
+
+    // 4. Walk up from executable (handles src-tauri/target/debug/... layouts)
+    if let Ok(exe) = std::env::current_exe() {
+        for ancestor in exe.ancestors().take(8) {
+            let candidate = ancestor.join("scraper-service");
+            if candidate.exists() {
+                candidates.push(candidate);
+                break;
+            }
+        }
+    }
+
+    for dir in &candidates {
+        if dir.as_os_str().is_empty() {
+            continue;
+        }
+        if dir.exists() && dir.join("package.json").exists() {
+            log::info!("[tauri] Found scraper-service at {:?}", dir);
+            return Some(dir.clone());
+        }
+    }
+
+    log::error!("[tauri] Could not find scraper-service directory. Tried: {:?}", candidates);
+    None
+}
+
 /// Launch the auth:login browser (interactive — opens visible Playwright browser)
 #[tauri::command]
 async fn launch_auth_login(
@@ -218,8 +263,16 @@ async fn launch_auth_login(
         }
     }
 
-    let root = project_root();
-    let scraper_dir = root.join("scraper-service");
+    let scraper_dir = find_scraper_dir()
+        .ok_or_else(|| "Could not find scraper-service directory. Make sure you're running from the project root.".to_string())?;
+
+    // Canonicalize to resolve any relative segments (avoids OS error 267 on Windows)
+    let scraper_dir = scraper_dir.canonicalize().map_err(|e| {
+        format!("scraper-service directory {:?} is not accessible: {}", scraper_dir, e)
+    })?;
+
+    log::info!("[tauri] Launching auth:login from {:?}", scraper_dir);
+
     let npm = find_npm();
 
     let mut cmd = Command::new(&npm);
@@ -232,7 +285,6 @@ async fn launch_auth_login(
 
     cmd.current_dir(&scraper_dir);
 
-    // Don't pipe stdout/stderr — let the user see the auth instructions in the console
     // On Windows, hide the console window in release mode
     #[cfg(all(target_os = "windows", not(debug_assertions)))]
     {
@@ -244,7 +296,7 @@ async fn launch_auth_login(
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
-        .map_err(|e| format!("Failed to launch auth login: {}", e))?;
+        .map_err(|e| format!("Failed to launch auth login (dir={:?}): {}", scraper_dir, e))?;
 
     let pid = child.id();
     log::info!("[tauri] Auth login started (pid={})", pid);
