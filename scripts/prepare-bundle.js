@@ -9,7 +9,6 @@
  * Run: node scripts/prepare-bundle.js
  */
 
-const { execSync } = require("child_process");
 const {
   cpSync,
   mkdirSync,
@@ -107,21 +106,22 @@ mkdirSync(path.join(scraperDest, "auth"), { recursive: true });
 // -------------------------------------------------------------------
 console.log("Creating bundle.tar.gz...");
 
-// On Windows, tar interprets "C:" as a remote host. Use --force-local
-// to treat the archive name as a local file, and use forward slashes.
-const isWin = process.platform === "win32";
-const tarArgs = [
-  "-czf",
-  archivePath,
-  ...(isWin ? ["--force-local"] : []),
-  "-C",
-  stageDir,
-  ".",
-];
+// GNU tar (Git Bash / MSYS) interprets "C:" as a remote host.
+// Windows built-in bsdtar doesn't support --force-local.
+// Solution: cd into the staging dir and use relative output path,
+// so no absolute Windows path is passed to tar.
+const { spawnSync } = require("child_process");
+const relativeArchive = path.relative(stageDir, archivePath);
 
-execSync(`tar ${tarArgs.map((a) => `"${a}"`).join(" ")}`, {
+const tarResult = spawnSync("tar", ["-czf", relativeArchive, "."], {
+  cwd: stageDir,
   stdio: "inherit",
 });
+
+if (tarResult.status !== 0) {
+  console.error("tar failed with status", tarResult.status);
+  process.exit(1);
+}
 
 // Clean staging
 rmSync(stageDir, { recursive: true, force: true });
