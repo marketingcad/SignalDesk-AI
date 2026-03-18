@@ -90,12 +90,118 @@ fn server_root() -> PathBuf {
         .unwrap_or_else(project_root)
 }
 
+/// Search common install locations for a binary.
+/// macOS GUI apps don't inherit the shell PATH, so `node` / `npm`
+/// installed via Homebrew or nvm won't be found by default.
+fn find_binary(name: &str) -> String {
+    if cfg!(target_os = "windows") {
+        // Windows: just use the name; it's in the system PATH
+        let win_name = if name == "node" { "node.exe" } else { "npm.cmd" };
+        return win_name.to_string();
+    }
+
+    // Common Node.js install locations on macOS / Linux
+    let candidates: &[&str] = &[
+        // Homebrew Apple Silicon
+        "/opt/homebrew/bin",
+        // Homebrew Intel
+        "/usr/local/bin",
+        // Official Node.js installer / Volta
+        "/usr/local/bin",
+        // nvm (check common default version paths)
+        // We'll also try to resolve nvm below
+        "/usr/bin",
+    ];
+
+    // 1. Check if it's already on PATH
+    if let Ok(output) = Command::new("which").arg(name).output() {
+        if output.status.success() {
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !path.is_empty() {
+                log::info!("[tauri] Found {} via which: {}", name, path);
+                return path;
+            }
+        }
+    }
+
+    // 2. Check common directories
+    for dir in candidates {
+        let full = format!("{}/{}", dir, name);
+        if std::path::Path::new(&full).exists() {
+            log::info!("[tauri] Found {} at {}", name, full);
+            return full;
+        }
+    }
+
+    // 3. Check nvm directories (common pattern: ~/.nvm/versions/node/v*/bin/)
+    if let Ok(home) = std::env::var("HOME") {
+        let nvm_dir = std::path::PathBuf::from(&home).join(".nvm").join("versions").join("node");
+        if nvm_dir.exists() {
+            // Find the latest installed version
+            if let Ok(entries) = std::fs::read_dir(&nvm_dir) {
+                let mut versions: Vec<_> = entries
+                    .filter_map(|e| e.ok())
+                    .filter(|e| e.path().join("bin").join(name).exists())
+                    .collect();
+                versions.sort_by(|a, b| b.file_name().cmp(&a.file_name()));
+                if let Some(latest) = versions.first() {
+                    let path = latest.path().join("bin").join(name);
+                    let path_str = path.to_string_lossy().to_string();
+                    log::info!("[tauri] Found {} via nvm: {}", name, path_str);
+                    return path_str;
+                }
+            }
+        }
+    }
+
+    // 4. Fallback: just the name (hope it's on PATH)
+    log::warn!("[tauri] Could not find {} in common locations, using bare name", name);
+    name.to_string()
+}
+
 fn find_node() -> String {
-    if cfg!(target_os = "windows") { "node.exe".into() } else { "node".into() }
+    find_binary("node")
 }
 
 fn find_npm() -> String {
-    if cfg!(target_os = "windows") { "npm.cmd".into() } else { "npm".into() }
+    find_binary("npm")
+}
+
+/// Build a PATH string that includes common Node.js install directories.
+/// This ensures child processes (node server.js) can find node and npm
+/// even when launched from a macOS GUI app that has a minimal PATH.
+fn enriched_path() -> String {
+    let current = std::env::var("PATH").unwrap_or_default();
+
+    if cfg!(target_os = "windows") {
+        return current;
+    }
+
+    let extras = [
+        "/opt/homebrew/bin",
+        "/usr/local/bin",
+        "/usr/bin",
+        "/bin",
+    ];
+
+    // Also add the directory where we found node
+    let node_path = find_node();
+    let node_dir = std::path::Path::new(&node_path)
+        .parent()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default();
+
+    let mut parts: Vec<String> = Vec::new();
+    if !node_dir.is_empty() {
+        parts.push(node_dir);
+    }
+    for extra in extras {
+        if !current.contains(extra) {
+            parts.push(extra.to_string());
+        }
+    }
+    parts.push(current);
+    parts.join(":")
 }
 
 // ===========================================================================
@@ -183,6 +289,7 @@ fn spawn_nextjs_bundled(root: &Path) -> Option<Child> {
     match Command::new(&node)
         .arg("server.js")
         .current_dir(&nextjs_dir)
+        .env("PATH", enriched_path())
         .stdout(log_file("nextjs-stdout"))
         .stderr(log_file("nextjs-stderr"))
         .spawn()
@@ -214,6 +321,7 @@ fn spawn_nextjs_dev(root: &Path) -> Option<Child> {
         .arg("run")
         .arg(script)
         .current_dir(root)
+        .env("PATH", enriched_path())
         .stdout(log_file("nextjs-stdout"))
         .stderr(log_file("nextjs-stderr"))
         .spawn()
@@ -244,6 +352,7 @@ fn spawn_scraper_bundled(root: &Path) -> Option<Child> {
     match Command::new(&node)
         .arg(entry.as_os_str())
         .current_dir(&scraper_dir)
+        .env("PATH", enriched_path())
         .stdout(log_file("scraper-stdout"))
         .stderr(log_file("scraper-stderr"))
         .spawn()
@@ -275,6 +384,7 @@ fn spawn_scraper_dev(root: &Path) -> Option<Child> {
         match Command::new(&node)
             .arg(&entry)
             .current_dir(&scraper_dir)
+            .env("PATH", enriched_path())
             .stdout(log_file("scraper-stdout"))
             .stderr(log_file("scraper-stderr"))
             .spawn()
@@ -294,6 +404,7 @@ fn spawn_scraper_dev(root: &Path) -> Option<Child> {
         .arg("run")
         .arg("dev")
         .current_dir(&scraper_dir)
+        .env("PATH", enriched_path())
         .stdout(log_file("scraper-stdout"))
         .stderr(log_file("scraper-stderr"))
         .spawn()
