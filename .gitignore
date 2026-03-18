@@ -57,6 +57,8 @@ next-env.d.ts
 /src-tauri/target/
 /src-tauri/keys/updater.key
 /src-tauri/gen/
+/src-tauri/bundle.tar.gz
+/src-tauri/_bundle-stage/
 
 # scraper-service build output
 /scraper-service/dist/

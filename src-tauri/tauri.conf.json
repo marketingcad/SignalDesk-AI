@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "",
     "devUrl": "http://localhost:3000",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "npm run build && node scripts/prepare-bundle.js",
     "frontendDist": "http://localhost:3000"
   },
   "app": {
@@ -47,6 +47,7 @@
         "displayLanguageSelector": false
       }
     },
+    "resources": ["bundle.tar.gz"],
     "macOS": {
       "minimumSystemVersion": "10.15"
     },

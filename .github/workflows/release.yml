@@ -86,7 +86,19 @@ jobs:
           npm ci
           npm run build
 
-      # Build Next.js (server mode — Tauri loads via localhost)
+      # Create .env.local so it gets baked into the bundle for runtime use
+      - name: Create runtime .env.local
+        run: |
+          cat > .env.local <<'ENVEOF'
+          NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          JWT_SECRET=${{ secrets.JWT_SECRET }}
+          ENVEOF
+          # Trim leading whitespace from heredoc
+          sed -i 's/^[[:space:]]*//' .env.local
+
+      # Build Next.js standalone (output: "standalone" in next.config.ts)
       - name: Build Next.js
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
@@ -99,8 +111,15 @@ jobs:
       - name: Install Tauri CLI
         run: cargo install tauri-cli --version "^2"
 
-      # Build Tauri app
+      # Build Tauri app (beforeBuildCommand in tauri.conf.json runs
+      # 'npm run build && node scripts/prepare-bundle.js' which creates
+      # bundle.tar.gz containing the standalone server + scraper dist)
       - name: Build Tauri app
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
         run: cargo tauri build --target ${{ matrix.target }}
 
       # Upload artifacts

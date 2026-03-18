@@ -429,7 +429,19 @@ npm start
 
 ## Desktop App (VA Hub)
 
-VA Hub wraps the entire Signal Desk AI platform into a native desktop application using [Tauri v2](https://v2.tauri.app). When launched, the app automatically starts Next.js and the scraper service locally, then opens a native window — no browser needed.
+VA Hub wraps the entire Signal Desk AI platform into a native desktop application using [Tauri v2](https://v2.tauri.app). The app **bundles the entire Next.js server and scraper service** inside the installer — no source code, no `npm install`, no `git clone` needed on user devices.
+
+### How the Bundled Desktop App Works
+
+1. **Build time** — `npm run build` creates a Next.js standalone server. `scripts/prepare-bundle.js` packages the standalone server + scraper dist + node_modules into `bundle.tar.gz`. Tauri includes this archive in the installer.
+2. **First launch** — The app extracts `bundle.tar.gz` into the local AppData directory (once per version).
+3. **Every launch** — The app runs `node server.js` (Next.js) and `node dist/index.js` (scraper) from the extracted bundle. The dashboard loads from `localhost:3000` inside a native window.
+4. **Updates** — When a new version is released, the auto-updater downloads and installs it. On next launch, the new bundle is re-extracted automatically.
+
+Extraction locations:
+- **Windows:** `%APPDATA%\com.signaldesk.vahub\server\`
+- **macOS:** `~/Library/Application Support/com.signaldesk.vahub/server/`
+- **Linux:** `~/.local/share/com.signaldesk.vahub/server/`
 
 ### Download & Install
 
@@ -444,14 +456,23 @@ Pre-built installers are published as [GitHub Releases](../../releases). Downloa
 | **Linux** | `VA-Hub_x.x.x_amd64.AppImage` | `chmod +x *.AppImage && ./VA-Hub.AppImage` |
 | **Linux** | `VA-Hub_x.x.x_amd64.deb` | `sudo dpkg -i VA-Hub_*.deb` |
 
+### Prerequisites (Per Device)
+
+The only prerequisite is **Node.js 20+** installed on the device:
+
+| OS | Install Node.js |
+|----|-----------------|
+| **Windows** | Download from https://nodejs.org (LTS recommended) |
+| **macOS** | `brew install node` or download from https://nodejs.org |
+| **Linux** | `sudo apt install nodejs npm` or use [nvm](https://github.com/nvm-sh/nvm) |
+
+Verify: `node --version` (should show v18+ or v20+)
+
 ### First-Time Setup After Installing
 
-1. **Configure environment** — Create a `.env.local` file in the app's working directory with your API keys (Supabase, Discord, Google AI, etc.). Use `.env.desktop` as a template.
-2. **Install Node.js** — The app requires [Node.js 20+](https://nodejs.org) installed on the machine, as it runs Next.js and the scraper service locally.
-3. **Install dependencies** — Run `npm install` in both the root and `scraper-service/` directories.
-4. **Build scraper** — Run `cd scraper-service && npm run build`.
-5. **Browser auth for scrapers** — Run `npm run scraper:auth` to open a browser and log in to social platforms (saves cookies for automated scraping).
-6. **Launch** — Open VA Hub from your Start Menu / Applications / desktop shortcut.
+1. **Install Node.js** — See prerequisites above.
+2. **Launch VA Hub** — Open from Start Menu / Applications / desktop shortcut. The first launch takes ~10-30 seconds to extract the bundled server.
+3. **Browser auth for scrapers** — When the login prompt appears, click "Login to All Platforms" to open a browser and log in to your social accounts. Sessions are saved locally.
 
 ### Browser Auth (Auto-Login on Launch)
 
@@ -487,12 +508,12 @@ VA Hub checks for updates automatically on startup. When a new version is availa
 
 ### Sharing the App with Others
 
-#### Option A: Share the Installer (Simplest)
+#### Option A: Share the Installer (Simplest — Recommended)
 
 1. Go to [Releases](../../releases) and download the appropriate installer
 2. Send it to the other person (email, file share, USB drive, etc.)
 3. They install it like any normal desktop app
-4. They'll need to set up their own `.env.local` with API keys
+4. They only need **Node.js** installed — the server and scraper are bundled in the installer
 
 #### Option B: Build From Source
 
@@ -575,6 +596,24 @@ This creates:
 Add these GitHub Secrets to your repository:
 - `TAURI_SIGNING_PRIVATE_KEY` — entire content of `updater.key`
 - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` — the password you set during generation
+
+### macOS: Fix "Damaged App" Warning
+
+macOS blocks unsigned apps. After downloading the `.dmg`:
+
+```bash
+# 1. Remove quarantine from the DMG
+sudo xattr -cr ~/Downloads/VA\ Hub*.dmg
+
+# 2. Open the DMG and drag VA Hub to Applications
+
+# 3. Remove quarantine from the installed app
+sudo xattr -cr /Applications/VA\ Hub.app
+
+# 4. Launch VA Hub normally
+```
+
+This only needs to be done **once per device**. After that, auto-updates work without this step.
 
 ### Platform-Specific Requirements
 
