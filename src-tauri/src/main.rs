@@ -1,6 +1,7 @@
 // Prevents additional console window on Windows in release
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use std::fs::OpenOptions;
 use std::process::{Child, Command};
 use std::sync::Mutex;
 use std::time::Duration;
@@ -33,23 +34,50 @@ impl ManagedProcesses {
     }
 }
 
-/// Resolve the project root (parent of src-tauri in dev, or resource dir in prod)
+/// Resolve the project root (parent of src-tauri in dev, or source dir in prod).
+/// In production, the exe lives in an install directory that does NOT contain
+/// the project sources (package.json, .next, scraper-service, etc.), so we
+/// must search for the real project root.
 fn project_root() -> std::path::PathBuf {
-    // In development, src-tauri is a subdirectory of the project root
-    if cfg!(debug_assertions) {
-        // Use compile-time macro — always available, even when not run via cargo
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .unwrap_or_else(|| std::path::Path::new("."))
-            .to_path_buf()
-    } else {
-        // In production, the bundled app includes the backend next to the executable
-        std::env::current_exe()
-            .unwrap_or_default()
-            .parent()
-            .unwrap_or_else(|| std::path::Path::new("."))
-            .to_path_buf()
+    // Helper: a valid project root has a package.json
+    fn is_project_root(dir: &std::path::Path) -> bool {
+        dir.join("package.json").exists()
     }
+
+    // 1. Compile-time path — always correct on the build machine
+    let manifest_parent = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .map(|p| p.to_path_buf());
+    if let Some(ref p) = manifest_parent {
+        if is_project_root(p) {
+            return p.clone();
+        }
+    }
+
+    // 2. Walk up from the executable (handles src-tauri/target/debug/... and installed paths)
+    if let Ok(exe) = std::env::current_exe() {
+        for ancestor in exe.ancestors().take(10) {
+            if is_project_root(ancestor) {
+                return ancestor.to_path_buf();
+            }
+        }
+    }
+
+    // 3. Current working directory (user may launch from project root)
+    if let Ok(cwd) = std::env::current_dir() {
+        if is_project_root(&cwd) {
+            return cwd;
+        }
+        // Also walk up from cwd
+        for ancestor in cwd.ancestors().take(6) {
+            if is_project_root(ancestor) {
+                return ancestor.to_path_buf();
+            }
+        }
+    }
+
+    // 4. Fallback: original compile-time parent (may not exist but better than ".")
+    manifest_parent.unwrap_or_else(|| std::path::PathBuf::from("."))
 }
 
 fn find_npm() -> String {
@@ -68,29 +96,40 @@ fn find_node() -> String {
     }
 }
 
+/// Get a log file handle for child process output.
+/// In release mode, stdout/stderr MUST go to a file (not Stdio::piped())
+/// because piped buffers fill up and block the child process when nobody reads them.
+fn log_file(name: &str) -> std::process::Stdio {
+    let log_dir = project_root().join("logs");
+    let _ = std::fs::create_dir_all(&log_dir);
+    let path = log_dir.join(format!("{}.log", name));
+    match OpenOptions::new().create(true).append(true).open(&path) {
+        Ok(file) => file.into(),
+        Err(_) => std::process::Stdio::null(),
+    }
+}
+
 fn spawn_nextjs(root: &std::path::Path) -> Option<Child> {
+    if !root.join("package.json").exists() {
+        log::error!("[tauri] Cannot start Next.js — package.json not found at {:?}", root);
+        return None;
+    }
+
     let npm = find_npm();
     log::info!("[tauri] Starting Next.js from {:?}", root);
 
-    let child = if cfg!(debug_assertions) {
-        // Dev: run `npm run dev`
-        Command::new(&npm)
-            .arg("run")
-            .arg("dev")
-            .current_dir(root)
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .spawn()
-    } else {
-        // Production: run `npm run start` (serves .next build)
-        Command::new(&npm)
-            .arg("run")
-            .arg("start")
-            .current_dir(root)
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .spawn()
-    };
+    // Use `npm run start` if .next build exists, otherwise `npm run dev`
+    let has_build = root.join(".next").exists();
+    let script = if has_build { "start" } else { "dev" };
+    log::info!("[tauri] Using Next.js script: npm run {} (has_build={})", script, has_build);
+
+    let child = Command::new(&npm)
+        .arg("run")
+        .arg(script)
+        .current_dir(root)
+        .stdout(log_file("nextjs-stdout"))
+        .stderr(log_file("nextjs-stderr"))
+        .spawn();
 
     match child {
         Ok(c) => {
@@ -114,47 +153,44 @@ fn spawn_scraper(root: &std::path::Path) -> Option<Child> {
     let node = find_node();
     let entry = scraper_dir.join("dist").join("index.js");
 
-    if !entry.exists() {
-        // Fallback: try ts-node in dev mode
-        if cfg!(debug_assertions) {
-            let npm = find_npm();
-            log::info!("[tauri] Starting scraper via ts-node (dev) from {:?}", scraper_dir);
-            match Command::new(&npm)
-                .arg("run")
-                .arg("dev")
-                .current_dir(&scraper_dir)
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::piped())
-                .spawn()
-            {
-                Ok(c) => {
-                    log::info!("[tauri] Scraper (dev) started (pid={})", c.id());
-                    return Some(c);
-                }
-                Err(e) => {
-                    log::error!("[tauri] Failed to start scraper (dev): {}", e);
-                    return None;
-                }
+    if entry.exists() {
+        // Production: use compiled dist/index.js
+        log::info!("[tauri] Starting scraper from {:?}", entry);
+        match Command::new(&node)
+            .arg(&entry)
+            .current_dir(&scraper_dir)
+            .stdout(log_file("scraper-stdout"))
+            .stderr(log_file("scraper-stderr"))
+            .spawn()
+        {
+            Ok(c) => {
+                log::info!("[tauri] Scraper started (pid={})", c.id());
+                return Some(c);
+            }
+            Err(e) => {
+                log::error!("[tauri] Failed to start scraper: {}", e);
+                // Fall through to try ts-node
             }
         }
-        log::warn!("[tauri] Scraper dist/index.js not found — run `npm run build` in scraper-service");
-        return None;
     }
 
-    log::info!("[tauri] Starting scraper from {:?}", entry);
-    match Command::new(&node)
-        .arg(&entry)
+    // Fallback: run via ts-node (works in both dev and prod if dist not built)
+    let npm = find_npm();
+    log::info!("[tauri] Starting scraper via ts-node from {:?}", scraper_dir);
+    match Command::new(&npm)
+        .arg("run")
+        .arg("dev")
         .current_dir(&scraper_dir)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
+        .stdout(log_file("scraper-stdout"))
+        .stderr(log_file("scraper-stderr"))
         .spawn()
     {
         Ok(c) => {
-            log::info!("[tauri] Scraper started (pid={})", c.id());
+            log::info!("[tauri] Scraper (ts-node) started (pid={})", c.id());
             Some(c)
         }
         Err(e) => {
-            log::error!("[tauri] Failed to start scraper: {}", e);
+            log::error!("[tauri] Failed to start scraper (ts-node): {}", e);
             None
         }
     }
@@ -294,8 +330,8 @@ async fn launch_auth_login(
     }
 
     let child = cmd
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
+        .stdout(log_file("auth-stdout"))
+        .stderr(log_file("auth-stderr"))
         .spawn()
         .map_err(|e| format!("Failed to launch auth login (dir={:?}): {}", scraper_dir, e))?;
 
@@ -388,8 +424,8 @@ async fn start_tunnel(state: tauri::State<'_, Mutex<ManagedProcesses>>) -> Resul
         .arg("tunnel")
         .arg("--url")
         .arg("http://localhost:3000")
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
+        .stdout(log_file("tunnel-stdout"))
+        .stderr(log_file("tunnel-stderr"))
         .spawn()
         .map_err(|e| format!("Failed to start cloudflared: {}", e))?;
 
@@ -439,6 +475,9 @@ fn main() {
 
     let root = project_root();
     log::info!("[tauri] Project root: {:?}", root);
+    log::info!("[tauri] package.json exists: {}", root.join("package.json").exists());
+    log::info!("[tauri] scraper-service exists: {}", root.join("scraper-service").exists());
+    log::info!("[tauri] .next exists: {}", root.join(".next").exists());
 
     // Spawn backend processes
     let nextjs = spawn_nextjs(&root);
@@ -475,7 +514,7 @@ fn main() {
             // Wait for Next.js to be ready, then show the window
             tauri::async_runtime::spawn(async move {
                 log::info!("[tauri] Waiting for Next.js to start...");
-                let ready = wait_for_server("http://localhost:3000", 30).await;
+                let ready = wait_for_server("http://localhost:3000", 45).await;
 
                 if ready {
                     log::info!("[tauri] Next.js is ready — showing window");

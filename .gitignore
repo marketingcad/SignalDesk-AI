@@ -2,6 +2,9 @@
 
 # dependencies
 /node_modules
+
+# runtime logs
+/logs
 /.pnp
 .pnp.*
 .yarn/*
