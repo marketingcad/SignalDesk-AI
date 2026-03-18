@@ -88,15 +88,18 @@ jobs:
 
       # Create .env.local so it gets baked into the bundle for runtime use
       - name: Create runtime .env.local
+        shell: bash
         run: |
-          cat > .env.local <<'ENVEOF'
-          NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-          SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          JWT_SECRET=${{ secrets.JWT_SECRET }}
-          ENVEOF
-          # Trim leading whitespace from heredoc
-          sed -i 's/^[[:space:]]*//' .env.local
+          printf 'NEXT_PUBLIC_SUPABASE_URL=%s\nNEXT_PUBLIC_SUPABASE_ANON_KEY=%s\nSUPABASE_SERVICE_ROLE_KEY=%s\nJWT_SECRET=%s\n' \
+            "$NEXT_PUBLIC_SUPABASE_URL" \
+            "$NEXT_PUBLIC_SUPABASE_ANON_KEY" \
+            "$SUPABASE_SERVICE_ROLE_KEY" \
+            "$JWT_SECRET" > .env.local
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
 
       # Build Next.js standalone (output: "standalone" in next.config.ts)
       - name: Build Next.js
