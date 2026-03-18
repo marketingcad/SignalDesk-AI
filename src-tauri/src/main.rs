@@ -225,7 +225,65 @@ fn log_file(name: &str) -> std::process::Stdio {
 // Bundle extraction (production mode)
 // ===========================================================================
 
-/// Extract `bundle.tar.gz` from the Tauri resource directory into `target`.
+/// Find bundle.tar.gz — Tauri v2 places resources in different locations
+/// depending on the platform and how the app is packaged.
+fn find_bundle_archive(resource_dir: &Path) -> Option<PathBuf> {
+    let mut candidates = vec![
+        resource_dir.join("bundle.tar.gz"),
+    ];
+
+    // macOS: Tauri v2 resource_dir() may return .../Resources/_up_/Resources/
+    // but the actual file is in .../Resources/
+    if cfg!(target_os = "macos") {
+        // Walk up from resource_dir looking for bundle.tar.gz
+        for ancestor in resource_dir.ancestors().take(5) {
+            let candidate = ancestor.join("bundle.tar.gz");
+            if !candidates.iter().any(|c| c == &candidate) {
+                candidates.push(candidate);
+            }
+            // Also check Resources/ directly
+            let res = ancestor.join("Resources").join("bundle.tar.gz");
+            if !candidates.iter().any(|c| c == &res) {
+                candidates.push(res);
+            }
+        }
+
+        // Try the known macOS .app bundle structure
+        if let Ok(exe) = std::env::current_exe() {
+            // exe is at VA Hub.app/Contents/MacOS/va-hub
+            if let Some(contents) = exe.parent().and_then(|p| p.parent()) {
+                let res = contents.join("Resources").join("bundle.tar.gz");
+                if !candidates.iter().any(|c| c == &res) {
+                    candidates.push(res);
+                }
+            }
+        }
+    }
+
+    // Windows: also check next to the executable
+    if cfg!(target_os = "windows") {
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(exe_dir) = exe.parent() {
+                let candidate = exe_dir.join("bundle.tar.gz");
+                if !candidates.iter().any(|c| c == &candidate) {
+                    candidates.push(candidate);
+                }
+            }
+        }
+    }
+
+    for candidate in &candidates {
+        log::info!("[tauri] Checking for bundle at {:?} → exists={}", candidate, candidate.exists());
+        if candidate.exists() {
+            return Some(candidate.clone());
+        }
+    }
+
+    log::error!("[tauri] bundle.tar.gz not found. Searched: {:?}", candidates);
+    None
+}
+
+/// Extract `bundle.tar.gz` into `target`.
 /// Skips extraction if the version marker already matches the current build.
 fn extract_bundle(resource_dir: &Path, target: &Path) {
     let version = env!("CARGO_PKG_VERSION");
@@ -241,13 +299,12 @@ fn extract_bundle(resource_dir: &Path, target: &Path) {
         }
     }
 
-    let archive = resource_dir.join("bundle.tar.gz");
-    if !archive.exists() {
-        log::warn!("[tauri] bundle.tar.gz not found in {:?}", resource_dir);
-        return;
-    }
+    let archive = match find_bundle_archive(resource_dir) {
+        Some(a) => a,
+        None => return,
+    };
 
-    log::info!("[tauri] Extracting bundle v{} to {:?} ...", version, target);
+    log::info!("[tauri] Extracting bundle v{} from {:?} to {:?} ...", version, archive, target);
 
     // Clean previous extraction
     let _ = std::fs::remove_dir_all(target);
