@@ -481,23 +481,45 @@ fn spawn_scraper_dev(root: &Path) -> Option<Child> {
 /// then spawn the appropriate processes.
 fn resolve_and_spawn(app: &tauri::App) -> (PathBuf, Option<Child>, Option<Child>) {
     // --- Try bundled mode (production) ---
-    if let Ok(app_data) = app.path().app_data_dir() {
-        if let Ok(resource_dir) = app.path().resource_dir() {
-            let server_dir = app_data.join("server");
-            extract_bundle(&resource_dir, &server_dir);
+    match app.path().app_data_dir() {
+        Ok(app_data) => {
+            log::info!("[tauri] app_data_dir: {:?}", app_data);
 
-            if server_dir.join("nextjs").join("server.js").exists() {
-                log::info!("[tauri] Using BUNDLED server from {:?}", server_dir);
-                let nextjs = spawn_nextjs_bundled(&server_dir);
-                let scraper = spawn_scraper_bundled(&server_dir);
-                return (server_dir, nextjs, scraper);
+            match app.path().resource_dir() {
+                Ok(resource_dir) => {
+                    log::info!("[tauri] resource_dir: {:?}", resource_dir);
+
+                    let server_dir = app_data.join("server");
+                    extract_bundle(&resource_dir, &server_dir);
+
+                    let server_js = server_dir.join("nextjs").join("server.js");
+                    log::info!("[tauri] Checking for server.js at {:?} → exists={}", server_js, server_js.exists());
+
+                    if server_js.exists() {
+                        log::info!("[tauri] Using BUNDLED server from {:?}", server_dir);
+                        let nextjs = spawn_nextjs_bundled(&server_dir);
+                        let scraper = spawn_scraper_bundled(&server_dir);
+                        return (server_dir, nextjs, scraper);
+                    } else {
+                        log::error!("[tauri] Bundle extraction may have failed — server.js not found");
+                        // List what IS in the server dir for debugging
+                        if let Ok(entries) = std::fs::read_dir(&server_dir) {
+                            for entry in entries.flatten() {
+                                log::info!("[tauri]   server_dir contains: {:?}", entry.path());
+                            }
+                        }
+                    }
+                }
+                Err(e) => log::error!("[tauri] Failed to get resource_dir: {}", e),
             }
         }
+        Err(e) => log::error!("[tauri] Failed to get app_data_dir: {}", e),
     }
 
     // --- Fallback: dev / source mode ---
     let root = project_root();
-    log::info!("[tauri] Using DEV project root: {:?}", root);
+    log::info!("[tauri] Falling back to DEV project root: {:?}", root);
+    log::info!("[tauri] package.json exists: {}", root.join("package.json").exists());
     let nextjs = spawn_nextjs_dev(&root);
     let scraper = spawn_scraper_dev(&root);
     (root, nextjs, scraper)
@@ -768,8 +790,60 @@ async fn restart_services(
 // Entry point
 // ===========================================================================
 
+/// Write a diagnostic log file to a known location so we can debug
+/// macOS issues even when env_logger output is invisible.
+fn write_diagnostic_log(msg: &str) {
+    let log_path = if cfg!(target_os = "macos") {
+        dirs_fallback("com.signaldesk.vahub").join("diagnostic.log")
+    } else if cfg!(target_os = "windows") {
+        std::env::var("APPDATA")
+            .map(|p| PathBuf::from(p).join("com.signaldesk.vahub").join("diagnostic.log"))
+            .unwrap_or_else(|_| PathBuf::from("diagnostic.log"))
+    } else {
+        PathBuf::from("/tmp/vahub-diagnostic.log")
+    };
+
+    let _ = std::fs::create_dir_all(log_path.parent().unwrap_or(Path::new(".")));
+    let _ = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+        .and_then(|mut f| {
+            use std::io::Write;
+            writeln!(f, "[{}] {}", chrono_now(), msg)
+        });
+}
+
+fn dirs_fallback(app_id: &str) -> PathBuf {
+    if cfg!(target_os = "macos") {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+        PathBuf::from(home)
+            .join("Library")
+            .join("Application Support")
+            .join(app_id)
+    } else {
+        PathBuf::from(".")
+    }
+}
+
+fn chrono_now() -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    format!("{}", now)
+}
+
 fn main() {
     env_logger::init();
+
+    write_diagnostic_log("=== VA Hub starting ===");
+    write_diagnostic_log(&format!("Version: {}", env!("CARGO_PKG_VERSION")));
+    write_diagnostic_log(&format!("OS: {}", std::env::consts::OS));
+    write_diagnostic_log(&format!("Arch: {}", std::env::consts::ARCH));
+    write_diagnostic_log(&format!("Exe: {:?}", std::env::current_exe().ok()));
+    write_diagnostic_log(&format!("Node: {}", find_node()));
+    write_diagnostic_log(&format!("PATH: {}", enriched_path()));
 
     let processes = Mutex::new(ManagedProcesses {
         nextjs: None,
@@ -800,10 +874,23 @@ fn main() {
             // Set up log directory
             if let Ok(app_data) = app.path().app_data_dir() {
                 let _ = LOG_DIR.set(app_data.join("logs"));
+                write_diagnostic_log(&format!("app_data_dir: {:?}", app_data));
+            }
+            if let Ok(res) = app.path().resource_dir() {
+                write_diagnostic_log(&format!("resource_dir: {:?}", res));
+                // List files in resource dir for debugging
+                if let Ok(entries) = std::fs::read_dir(&res) {
+                    for entry in entries.flatten() {
+                        write_diagnostic_log(&format!("  resource: {:?}", entry.path()));
+                    }
+                }
             }
 
             // Resolve server root and start services
             let (root, nextjs, scraper) = resolve_and_spawn(app);
+            write_diagnostic_log(&format!("server_root: {:?}", root));
+            write_diagnostic_log(&format!("nextjs spawned: {}", nextjs.is_some()));
+            write_diagnostic_log(&format!("scraper spawned: {}", scraper.is_some()));
             let _ = SERVER_ROOT.set(root);
 
             log::info!(
