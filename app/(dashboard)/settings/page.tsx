@@ -12,7 +12,6 @@ import {
   Radio,
   Zap,
   Hash,
-  Bell,
   Shield,
   Globe,
   Plus,
@@ -43,11 +42,6 @@ export default function SettingsPage() {
   // --- Threshold state ---
   const [threshold, setThreshold] = useState(80);
 
-  // --- Notification state ---
-  const [webhookUrl, setWebhookUrl] = useState("");
-  const [emailEnabled, setEmailEnabled] = useState(true);
-  const [discordEnabled, setDiscordEnabled] = useState(true);
-
   // --- UI state ---
   const [savedSection, setSavedSection] = useState<string | null>(null);
   const [savingSection, setSavingSection] = useState<string | null>(null);
@@ -70,11 +64,6 @@ export default function SettingsPage() {
           }
           if (settings.alert_threshold) {
             setThreshold(settings.alert_threshold.value);
-          }
-          if (settings.notifications) {
-            setDiscordEnabled(settings.notifications.discord_enabled);
-            setEmailEnabled(settings.notifications.email_enabled);
-            setWebhookUrl(settings.notifications.discord_webhook_url || "");
           }
         }
 
@@ -155,14 +144,6 @@ export default function SettingsPage() {
       case "threshold":
         key = "alert_threshold";
         value = { value: threshold };
-        break;
-      case "notifications":
-        key = "notifications";
-        value = {
-          discord_enabled: discordEnabled,
-          email_enabled: emailEnabled,
-          discord_webhook_url: webhookUrl,
-        };
         break;
       default:
         setSavingSection(null);
@@ -331,74 +312,6 @@ export default function SettingsPage() {
               onAdd={(kw) => addKeyword(kw, "negative")}
               onRemove={(kw) => removeKeyword(kw, "negative")}
             />
-          </div>
-        </SettingsSection>
-
-        {/* Notifications */}
-        <SettingsSection
-          icon={Bell}
-          title="Notifications"
-          description="Configure how and where alerts are delivered"
-          onSave={() => handleSectionSave("notifications")}
-          saved={savedSection === "notifications"}
-          saving={savingSection === "notifications"}
-        >
-          <div className="space-y-4">
-            {/* Discord */}
-            <div className="flex items-center justify-between rounded-xl border border-border bg-accent/30 p-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#5865F2]/10">
-                  <span className="text-lg">💬</span>
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-foreground">
-                    Discord Webhook
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Receive real-time alerts in Discord
-                  </p>
-                </div>
-              </div>
-              <ToggleSwitch
-                enabled={discordEnabled}
-                onChange={() => setDiscordEnabled(!discordEnabled)}
-              />
-            </div>
-            {discordEnabled && (
-              <div className="pl-4 animate-fade-in">
-                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-                  Webhook URL
-                </label>
-                <Input
-                  type="url"
-                  value={webhookUrl}
-                  onChange={(e) => setWebhookUrl(e.target.value)}
-                  placeholder="https://discord.com/api/webhooks/..."
-                  className="font-mono bg-secondary/50 border-border"
-                />
-              </div>
-            )}
-
-            {/* Email */}
-            <div className="flex items-center justify-between rounded-xl border border-border bg-accent/30 p-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                  <span className="text-lg">📧</span>
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-foreground">
-                    Email Summary
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Receive daily batch report via email
-                  </p>
-                </div>
-              </div>
-              <ToggleSwitch
-                enabled={emailEnabled}
-                onChange={() => setEmailEnabled(!emailEnabled)}
-              />
-            </div>
           </div>
         </SettingsSection>
 
