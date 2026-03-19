@@ -519,9 +519,54 @@ fn spawn_scraper_dev(root: &Path) -> Option<Child> {
     }
 }
 
+/// Kill any stale processes listening on ports 3000 and 4000.
+/// After an auto-update restart, the old Next.js/scraper processes
+/// may still be alive, blocking the new ones from binding.
+fn kill_stale_port_processes() {
+    for port in [3000, 4000] {
+        if cfg!(target_os = "windows") {
+            // Windows: find PID on port and kill it
+            let output = Command::new("cmd")
+                .args(["/C", &format!("netstat -ano | findstr :{} | findstr LISTENING", port)])
+                .output();
+            if let Ok(out) = output {
+                let text = String::from_utf8_lossy(&out.stdout);
+                for line in text.lines() {
+                    if let Some(pid_str) = line.split_whitespace().last() {
+                        if let Ok(pid) = pid_str.parse::<u32>() {
+                            log::info!("[tauri] Killing stale process on port {} (pid={})", port, pid);
+                            let _ = Command::new("taskkill")
+                                .args(["/F", "/PID", &pid.to_string()])
+                                .status();
+                        }
+                    }
+                }
+            }
+        } else {
+            // macOS / Linux: use lsof to find and kill
+            let output = Command::new("lsof")
+                .args(["-ti", &format!(":{}", port)])
+                .output();
+            if let Ok(out) = output {
+                let pids = String::from_utf8_lossy(&out.stdout);
+                for pid_str in pids.split_whitespace() {
+                    if let Ok(pid) = pid_str.parse::<u32>() {
+                        log::info!("[tauri] Killing stale process on port {} (pid={})", port, pid);
+                        let _ = Command::new("kill")
+                            .args(["-9", &pid.to_string()])
+                            .status();
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// Determine whether we are running in bundled mode or dev mode,
 /// then spawn the appropriate processes.
 fn resolve_and_spawn(app: &tauri::App) -> (PathBuf, Option<Child>, Option<Child>) {
+    // Kill any leftover processes from a previous app instance (e.g. after auto-update)
+    kill_stale_port_processes();
     // --- Try bundled mode (production) ---
     match app.path().app_data_dir() {
         Ok(app_data) => {
