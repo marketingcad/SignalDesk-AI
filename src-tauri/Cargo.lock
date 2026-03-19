@@ -5172,7 +5172,7 @@ dependencies = [
 
 [[package]]
 name = "va-hub"
-version = "1.0.0"
+version = "1.0.8"
 dependencies = [
  "env_logger",
  "log",

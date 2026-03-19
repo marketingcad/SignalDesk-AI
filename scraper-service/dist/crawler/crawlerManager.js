@@ -38,7 +38,7 @@ async function runPlatform(platform) {
     }
     if (result.errors.length > 0) {
         console.warn(`[crawler] ${platform}: ${result.errors.length} errors`);
-        const discordErrors = result.errors.filter((e) => !e.includes("requires login"));
+        const discordErrors = result.errors.filter((e) => !e.includes("requires login") && !e.includes("page.goto: Timeout"));
         if (discordErrors.length > 0) {
             await (0, discord_1.sendErrorAlert)(platform, discordErrors.join("\n"));
         }
@@ -55,37 +55,41 @@ async function runAllPlatforms() {
     }
     runInProgress = true;
     const results = [];
-    console.log("\n[crawler] ╔══════════════════════════════════════════╗");
-    console.log("[crawler] ║      STARTING FULL SCRAPER RUN           ║");
-    console.log("[crawler] ╚══════════════════════════════════════════╝\n");
-    const platforms = ["Reddit", "X", "LinkedIn", "Facebook"];
-    for (const platform of platforms) {
-        try {
-            const result = await runPlatform(platform);
-            results.push(result);
+    try {
+        console.log("\n[crawler] ╔══════════════════════════════════════════╗");
+        console.log("[crawler] ║      STARTING FULL SCRAPER RUN           ║");
+        console.log("[crawler] ╚══════════════════════════════════════════╝\n");
+        const platforms = ["Reddit", "X", "LinkedIn", "Facebook"];
+        for (const platform of platforms) {
+            try {
+                const result = await runPlatform(platform);
+                results.push(result);
+            }
+            catch (err) {
+                const msg = err instanceof Error ? err.message : String(err);
+                console.error(`[crawler] ${platform} FAILED: ${msg}`);
+                results.push({
+                    platform,
+                    posts: [],
+                    duration: 0,
+                    errors: [msg],
+                });
+                await (0, discord_1.sendErrorAlert)(platform, msg);
+            }
+            // Pause between platforms to avoid detection
+            console.log("[crawler] Pausing 5s between platforms...");
+            await new Promise((r) => setTimeout(r, 5000));
         }
-        catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            console.error(`[crawler] ${platform} FAILED: ${msg}`);
-            results.push({
-                platform,
-                posts: [],
-                duration: 0,
-                errors: [msg],
-            });
-            await (0, discord_1.sendErrorAlert)(platform, msg);
-        }
-        // Pause between platforms to avoid detection
-        console.log("[crawler] Pausing 5s between platforms...");
-        await new Promise((r) => setTimeout(r, 5000));
+        // Summary
+        const totalPosts = results.reduce((s, r) => s + r.posts.length, 0);
+        const totalErrors = results.reduce((s, r) => s + r.errors.length, 0);
+        console.log(`\n[crawler] ══════════ RUN COMPLETE ══════════`);
+        console.log(`[crawler] Total: ${totalPosts} posts, ${totalErrors} errors`);
+        await (0, discord_1.sendRunSummary)(results);
     }
-    // Summary
-    const totalPosts = results.reduce((s, r) => s + r.posts.length, 0);
-    const totalErrors = results.reduce((s, r) => s + r.errors.length, 0);
-    console.log(`\n[crawler] ══════════ RUN COMPLETE ══════════`);
-    console.log(`[crawler] Total: ${totalPosts} posts, ${totalErrors} errors`);
-    await (0, discord_1.sendRunSummary)(results);
-    runInProgress = false;
+    finally {
+        runInProgress = false;
+    }
     return results;
 }
 //# sourceMappingURL=crawlerManager.js.map

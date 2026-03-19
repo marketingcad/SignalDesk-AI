@@ -145,7 +145,7 @@ app.post("/api/scrape-url", async (req, res) => {
     for (const targetUrl of rawUrls) {
         try {
             const result = await (0, scrapers_1.scrapeUrl)(targetUrl);
-            const discordErrors = result.errors.filter((e) => !e.includes("requires login"));
+            const discordErrors = result.errors.filter((e) => !e.includes("requires login") && !e.includes("page.goto: Timeout"));
             if (discordErrors.length > 0) {
                 await (0, discord_1.sendErrorAlert)(result.platform, discordErrors.join("\n"));
             }

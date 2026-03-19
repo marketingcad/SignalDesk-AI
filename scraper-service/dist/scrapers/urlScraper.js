@@ -8,6 +8,7 @@ const playwright_1 = require("playwright");
 const config_1 = require("../config");
 const browserAuth_1 = require("../crawler/browserAuth");
 const dateHelpers_1 = require("../utils/dateHelpers");
+const browserArgs_1 = require("./browserArgs");
 // ---------------------------------------------------------------------------
 // Detect platform from a URL
 // ---------------------------------------------------------------------------
@@ -1415,46 +1416,37 @@ async function scrapeUrl(targetUrl) {
             console.log(`[url-scraper] Using storageState: ${statePath ? "yes" : "none"}`);
             browser = await playwright_1.chromium.launch({
                 headless: config_1.config.headless,
-                args: [
-                    "--disable-blink-features=AutomationControlled",
-                    "--no-sandbox",
-                    "--disable-dev-shm-usage",
-                    "--disable-setuid-sandbox",
-                ],
+                args: browserArgs_1.BROWSER_ARGS,
             });
             context = await browser.newContext({
                 storageState: statePath,
                 userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             });
+            context.setDefaultNavigationTimeout(90000);
+            context.setDefaultTimeout(60000);
             page = await context.newPage();
         }
         else if (cookiesExist) {
             console.log(`[url-scraper] Using persistent profile: ${(0, browserAuth_1.getProfileDir)()}`);
             context = await playwright_1.chromium.launchPersistentContext((0, browserAuth_1.getProfileDir)(), {
                 headless: config_1.config.headless,
-                args: [
-                    "--disable-blink-features=AutomationControlled",
-                    "--no-sandbox",
-                    "--disable-dev-shm-usage",
-                    "--disable-setuid-sandbox",
-                ],
+                args: browserArgs_1.BROWSER_ARGS,
                 userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             });
+            context.setDefaultNavigationTimeout(90000);
+            context.setDefaultTimeout(60000);
             page = context.pages()[0] || (await context.newPage());
         }
         else {
             browser = await playwright_1.chromium.launch({
                 headless: config_1.config.headless,
-                args: [
-                    "--disable-blink-features=AutomationControlled",
-                    "--no-sandbox",
-                    "--disable-dev-shm-usage",
-                    "--disable-setuid-sandbox",
-                ],
+                args: browserArgs_1.BROWSER_ARGS,
             });
             context = await browser.newContext({
                 userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             });
+            context.setDefaultNavigationTimeout(90000);
+            context.setDefaultTimeout(60000);
             page = await context.newPage();
         }
         // Reddit: use www.reddit.com (new interface), append /new/ for subreddit feeds
@@ -1468,9 +1460,24 @@ async function scrapeUrl(targetUrl) {
                 console.log(`[url-scraper] Reddit: using /new/ feed for newest posts first`);
             }
         }
-        // Navigate
+        // Navigate (with retry for LinkedIn which can be slow)
         console.log(`[url-scraper] Navigating to: ${navigateUrl}`);
-        await page.goto(navigateUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
+        const NAV_TIMEOUT = 90000;
+        let navAttempts = platform === "LinkedIn" ? 2 : 1;
+        for (let attempt = 1; attempt <= navAttempts; attempt++) {
+            try {
+                await page.goto(navigateUrl, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT });
+                break;
+            }
+            catch (navErr) {
+                const isTimeout = navErr instanceof Error && navErr.message.includes("Timeout");
+                if (isTimeout && attempt < navAttempts) {
+                    console.warn(`[url-scraper] Navigation timeout on attempt ${attempt}/${navAttempts}, retrying...`);
+                    continue;
+                }
+                throw navErr;
+            }
+        }
         await page.waitForTimeout(3000);
         // Log page state
         const pageTitle = await page.title();

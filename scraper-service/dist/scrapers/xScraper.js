@@ -4,6 +4,7 @@ exports.scrapeX = scrapeX;
 const crawlee_1 = require("crawlee");
 const config_1 = require("../config");
 const storage_1 = require("../crawler/storage");
+const browserArgs_1 = require("./browserArgs");
 /**
  * X (Twitter) Scraper — uses Google dorking for public tweet search.
  * Nitter instances are unreliable/dead, so we use:
@@ -27,14 +28,12 @@ async function scrapeX() {
         maxConcurrency: 1,
         maxRequestRetries: 1,
         useSessionPool: false,
+        browserPoolOptions: {
+            retireBrowserAfterPageCount: 1,
+        },
         launchContext: {
             launchOptions: {
-                args: [
-                    "--disable-blink-features=AutomationControlled",
-                    "--no-sandbox",
-                    "--disable-dev-shm-usage",
-                    "--disable-setuid-sandbox",
-                ],
+                args: browserArgs_1.BROWSER_ARGS,
             },
         },
         async requestHandler({ page, request, log }) {

@@ -5,6 +5,7 @@ const crawlee_1 = require("crawlee");
 const config_1 = require("../config");
 const storage_1 = require("../crawler/storage");
 const dateHelpers_1 = require("../utils/dateHelpers");
+const browserArgs_1 = require("./browserArgs");
 /**
  * Facebook Scraper — crawls publicly accessible Facebook group posts.
  *
@@ -37,15 +38,14 @@ async function scrapeFacebook() {
         maxRequestsPerCrawl: allUrls.length,
         requestHandlerTimeoutSecs: 90,
         maxConcurrency: 1,
+        maxRequestRetries: 1,
         useSessionPool: false,
+        browserPoolOptions: {
+            retireBrowserAfterPageCount: 1,
+        },
         launchContext: {
             launchOptions: {
-                args: [
-                    "--disable-blink-features=AutomationControlled",
-                    "--no-sandbox",
-                    "--disable-dev-shm-usage",
-                    "--disable-setuid-sandbox",
-                ],
+                args: browserArgs_1.BROWSER_ARGS,
             },
         },
         async requestHandler({ page, request, log }) {

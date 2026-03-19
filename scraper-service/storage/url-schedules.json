@@ -6,10 +6,10 @@
     "cron": "*/15 * * * *",
     "status": "active",
     "createdAt": "2026-03-16T21:22:59.655Z",
-    "updatedAt": "2026-03-17T21:45:36.189Z",
-    "lastRunAt": "2026-03-17T21:45:36.189Z",
+    "updatedAt": "2026-03-19T14:31:21.518Z",
+    "lastRunAt": "2026-03-19T14:31:21.518Z",
     "lastRunStatus": "ok",
-    "totalRuns": 36
+    "totalRuns": 62
   },
   {
     "id": "8dd4b7de-9b82-4a57-b7ca-ec3c2c804880",
@@ -18,10 +18,10 @@
     "cron": "*/15 * * * *",
     "status": "active",
     "createdAt": "2026-03-16T21:23:00.059Z",
-    "updatedAt": "2026-03-17T21:45:29.038Z",
-    "lastRunAt": "2026-03-17T21:45:29.038Z",
+    "updatedAt": "2026-03-19T14:31:09.055Z",
+    "lastRunAt": "2026-03-19T14:31:09.055Z",
     "lastRunStatus": "ok",
-    "totalRuns": 36
+    "totalRuns": 62
   },
   {
     "id": "afb4052f-68af-45ef-8440-7b5786e75845",
@@ -30,10 +30,10 @@
     "cron": "*/15 * * * *",
     "status": "active",
     "createdAt": "2026-03-16T21:23:00.458Z",
-    "updatedAt": "2026-03-17T21:45:29.339Z",
-    "lastRunAt": "2026-03-17T21:45:29.339Z",
+    "updatedAt": "2026-03-19T14:31:06.817Z",
+    "lastRunAt": "2026-03-19T14:31:06.817Z",
     "lastRunStatus": "ok",
-    "totalRuns": 33
+    "totalRuns": 59
   },
   {
     "id": "6c6f3597-086b-4644-a6f2-d53272aa1d7f",
@@ -42,10 +42,10 @@
     "cron": "*/15 * * * *",
     "status": "active",
     "createdAt": "2026-03-16T21:23:00.851Z",
-    "updatedAt": "2026-03-17T21:45:29.204Z",
-    "lastRunAt": "2026-03-17T21:45:29.204Z",
+    "updatedAt": "2026-03-19T14:31:08.852Z",
+    "lastRunAt": "2026-03-19T14:31:08.852Z",
     "lastRunStatus": "ok",
-    "totalRuns": 34
+    "totalRuns": 60
   },
   {
     "id": "c9c73d9a-ecb8-47ca-9653-1a6552e53cdb",
@@ -54,10 +54,10 @@
     "cron": "*/15 * * * *",
     "status": "active",
     "createdAt": "2026-03-16T21:24:14.914Z",
-    "updatedAt": "2026-03-17T21:45:28.486Z",
-    "lastRunAt": "2026-03-17T21:45:28.486Z",
+    "updatedAt": "2026-03-19T14:31:04.877Z",
+    "lastRunAt": "2026-03-19T14:31:04.877Z",
     "lastRunStatus": "ok",
-    "totalRuns": 36
+    "totalRuns": 62
   },
   {
     "id": "1dccc68d-32dc-4749-bee5-ab6607fbf249",
@@ -66,10 +66,10 @@
     "cron": "*/15 * * * *",
     "status": "active",
     "createdAt": "2026-03-16T21:24:15.323Z",
-    "updatedAt": "2026-03-17T21:45:28.987Z",
-    "lastRunAt": "2026-03-17T21:45:28.987Z",
+    "updatedAt": "2026-03-19T14:31:06.103Z",
+    "lastRunAt": "2026-03-19T14:31:06.103Z",
     "lastRunStatus": "ok",
-    "totalRuns": 37
+    "totalRuns": 63
   },
   {
     "id": "c20dbe93-30ba-4e84-a809-7cd6c93fbae5",
@@ -78,10 +78,10 @@
     "cron": "*/15 * * * *",
     "status": "active",
     "createdAt": "2026-03-16T21:24:15.717Z",
-    "updatedAt": "2026-03-17T21:45:28.698Z",
-    "lastRunAt": "2026-03-17T21:45:28.698Z",
+    "updatedAt": "2026-03-19T14:31:06.578Z",
+    "lastRunAt": "2026-03-19T14:31:06.578Z",
     "lastRunStatus": "ok",
-    "totalRuns": 35
+    "totalRuns": 61
   },
   {
     "id": "b1f8d348-4b64-4d5c-9d82-9d1b16fbdfd0",
@@ -90,10 +90,10 @@
     "cron": "*/15 * * * *",
     "status": "active",
     "createdAt": "2026-03-16T21:24:16.107Z",
-    "updatedAt": "2026-03-17T21:45:29.222Z",
-    "lastRunAt": "2026-03-17T21:45:29.222Z",
+    "updatedAt": "2026-03-19T14:31:13.241Z",
+    "lastRunAt": "2026-03-19T14:31:13.241Z",
     "lastRunStatus": "ok",
-    "totalRuns": 37
+    "totalRuns": 63
   },
   {
     "id": "2dde988a-0ee9-4b25-bde2-6be7c380ebbe",
@@ -102,10 +102,10 @@
     "cron": "*/15 * * * *",
     "status": "active",
     "createdAt": "2026-03-16T21:24:16.501Z",
-    "updatedAt": "2026-03-17T21:45:27.640Z",
-    "lastRunAt": "2026-03-17T21:45:27.640Z",
+    "updatedAt": "2026-03-19T14:31:03.871Z",
+    "lastRunAt": "2026-03-19T14:31:03.871Z",
     "lastRunStatus": "ok",
-    "totalRuns": 35
+    "totalRuns": 61
   },
   {
     "id": "5cdcf5c6-c215-4736-beb2-a67406a4008d",
@@ -114,10 +114,10 @@
     "cron": "*/15 * * * *",
     "status": "active",
     "createdAt": "2026-03-16T21:24:16.890Z",
-    "updatedAt": "2026-03-17T21:45:27.544Z",
-    "lastRunAt": "2026-03-17T21:45:27.544Z",
+    "updatedAt": "2026-03-19T14:31:04.135Z",
+    "lastRunAt": "2026-03-19T14:31:04.135Z",
     "lastRunStatus": "ok",
-    "totalRuns": 35
+    "totalRuns": 61
   },
   {
     "id": "42269cf5-dc4f-46ac-822c-3e86b8351a0d",
@@ -126,9 +126,117 @@
     "cron": "*/15 * * * *",
     "status": "active",
     "createdAt": "2026-03-16T21:24:17.308Z",
-    "updatedAt": "2026-03-17T21:45:27.524Z",
-    "lastRunAt": "2026-03-17T21:45:27.524Z",
+    "updatedAt": "2026-03-19T14:31:05.181Z",
+    "lastRunAt": "2026-03-19T14:31:05.181Z",
     "lastRunStatus": "ok",
-    "totalRuns": 35
+    "totalRuns": 61
+  },
+  {
+    "id": "342dbfae-2632-431b-828d-0c7281d3c8b4",
+    "name": "FB VAs Groups",
+    "url": "https://www.facebook.com/groups/gohighlevelagencyowners",
+    "cron": "*/30 * * * *",
+    "status": "active",
+    "createdAt": "2026-03-18T19:01:31.169Z",
+    "updatedAt": "2026-03-19T14:31:23.078Z",
+    "lastRunAt": "2026-03-19T14:31:23.077Z",
+    "lastRunStatus": "ok",
+    "totalRuns": 8
+  },
+  {
+    "id": "a160cc46-ec9b-418e-8b1b-cd4443f7b297",
+    "name": "FB GHL GROUPS (#1)",
+    "url": "https://www.facebook.com/groups/1058717432924965",
+    "cron": "*/30 * * * *",
+    "status": "active",
+    "createdAt": "2026-03-19T13:25:56.075Z",
+    "updatedAt": "2026-03-19T14:31:08.119Z",
+    "lastRunAt": "2026-03-19T14:31:08.119Z",
+    "lastRunStatus": "ok",
+    "totalRuns": 3
+  },
+  {
+    "id": "027effc0-18e8-43f0-9db8-cdecc4440ee6",
+    "name": "FB GHL GROUPS (#2)",
+    "url": "https://www.facebook.com/groups/3831242283822226",
+    "cron": "*/30 * * * *",
+    "status": "active",
+    "createdAt": "2026-03-19T13:25:56.094Z",
+    "updatedAt": "2026-03-19T14:31:09.145Z",
+    "lastRunAt": "2026-03-19T14:31:09.145Z",
+    "lastRunStatus": "ok",
+    "totalRuns": 3
+  },
+  {
+    "id": "3bb575f4-ac60-45db-ae68-f16516a1b428",
+    "name": "FB GHL GROUPS (#3)",
+    "url": "https://www.facebook.com/groups/gohighlevelagencyowners",
+    "cron": "*/30 * * * *",
+    "status": "active",
+    "createdAt": "2026-03-19T13:25:56.109Z",
+    "updatedAt": "2026-03-19T14:31:09.434Z",
+    "lastRunAt": "2026-03-19T14:31:09.434Z",
+    "lastRunStatus": "ok",
+    "totalRuns": 3
+  },
+  {
+    "id": "93517fd0-a0a5-4104-9370-d41903b1f10a",
+    "name": "FB GHL GROUPS (#4)",
+    "url": "https://www.facebook.com/groups/1650903932035407",
+    "cron": "*/30 * * * *",
+    "status": "active",
+    "createdAt": "2026-03-19T13:25:56.129Z",
+    "updatedAt": "2026-03-19T14:31:04.810Z",
+    "lastRunAt": "2026-03-19T14:31:04.810Z",
+    "lastRunStatus": "ok",
+    "totalRuns": 3
+  },
+  {
+    "id": "eefc33be-646a-43e1-bf36-06d6cef6177e",
+    "name": "FB GHL GROUPS (#5)",
+    "url": "https://www.facebook.com/groups/1271932963438391",
+    "cron": "*/30 * * * *",
+    "status": "active",
+    "createdAt": "2026-03-19T13:25:56.146Z",
+    "updatedAt": "2026-03-19T14:31:26.924Z",
+    "lastRunAt": "2026-03-19T14:31:26.924Z",
+    "lastRunStatus": "ok",
+    "totalRuns": 3
+  },
+  {
+    "id": "0d2d7948-11b6-4c2e-91b5-8c09a59efefe",
+    "name": "FB GHL GROUPS (#6)",
+    "url": "https://www.facebook.com/groups/723770729702446",
+    "cron": "*/30 * * * *",
+    "status": "active",
+    "createdAt": "2026-03-19T13:25:56.163Z",
+    "updatedAt": "2026-03-19T14:31:18.911Z",
+    "lastRunAt": "2026-03-19T14:31:18.911Z",
+    "lastRunStatus": "ok",
+    "totalRuns": 3
+  },
+  {
+    "id": "f75706b0-20cc-4498-bceb-e0084951537d",
+    "name": "FB GHL GROUPS (#7)",
+    "url": "https://www.facebook.com/groups/ghlassistant",
+    "cron": "*/30 * * * *",
+    "status": "active",
+    "createdAt": "2026-03-19T13:25:56.180Z",
+    "updatedAt": "2026-03-19T14:31:07.369Z",
+    "lastRunAt": "2026-03-19T14:31:07.369Z",
+    "lastRunStatus": "ok",
+    "totalRuns": 3
+  },
+  {
+    "id": "7056735d-3682-4069-b352-83445659b740",
+    "name": "FB GHL GROUPS (#8)",
+    "url": "https://www.facebook.com/groups/hire.a.virtual.assistants",
+    "cron": "*/30 * * * *",
+    "status": "active",
+    "createdAt": "2026-03-19T13:25:56.198Z",
+    "updatedAt": "2026-03-19T14:31:17.581Z",
+    "lastRunAt": "2026-03-19T14:31:17.581Z",
+    "lastRunStatus": "ok",
+    "totalRuns": 3
   }
 ]

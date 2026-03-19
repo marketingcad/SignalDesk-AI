@@ -6,7 +6,23 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.config = void 0;
 const dotenv_1 = __importDefault(require("dotenv"));
 const path_1 = __importDefault(require("path"));
-dotenv_1.default.config({ path: path_1.default.resolve(__dirname, "../../.env") });
+const fs_1 = __importDefault(require("fs"));
+// Load .env from multiple possible locations:
+// - Dev: scraper-service/.env (../../.env from src/config/)
+// - Bundled: scraper/.env (../../.env from dist/config/)
+// - CWD fallback: process.cwd()/.env
+const envCandidates = [
+    path_1.default.resolve(__dirname, "../../.env"),
+    path_1.default.resolve(process.cwd(), ".env"),
+    path_1.default.resolve(__dirname, "../../.env.local"),
+    path_1.default.resolve(process.cwd(), ".env.local"),
+];
+for (const envPath of envCandidates) {
+    if (fs_1.default.existsSync(envPath)) {
+        dotenv_1.default.config({ path: envPath });
+        break;
+    }
+}
 function envOrDefault(key, fallback) {
     return process.env[key] || fallback;
 }
@@ -25,12 +41,12 @@ exports.config = {
     discordWebhookUrl: envOrDefault("DISCORD_WEBHOOK_URL", ""),
     // Server
     port: parseInt(envOrDefault("PORT", "4000"), 10),
-    // Cron schedules
+    // Cron schedules (defaults tuned for free-tier: avoid Google IP bans)
     cron: {
-        reddit: envOrDefault("CRON_REDDIT", "*/15 * * * *"),
-        x: envOrDefault("CRON_X", "*/5 * * * *"),
-        linkedin: envOrDefault("CRON_LINKEDIN", "*/10 * * * *"),
-        facebook: envOrDefault("CRON_FACEBOOK", "*/30 * * * *"),
+        reddit: envOrDefault("CRON_REDDIT", "0 */1 * * *"),
+        x: envOrDefault("CRON_X", "15 */1 * * *"),
+        linkedin: envOrDefault("CRON_LINKEDIN", "30 */2 * * *"),
+        facebook: envOrDefault("CRON_FACEBOOK", "45 */2 * * *"),
     },
     // Targets
     targets: {

@@ -5,6 +5,7 @@ const crawlee_1 = require("crawlee");
 const config_1 = require("../config");
 const storage_1 = require("../crawler/storage");
 const dateHelpers_1 = require("../utils/dateHelpers");
+const browserArgs_1 = require("./browserArgs");
 /**
  * Reddit Scraper — crawls public subreddit feeds using NEW reddit (www.reddit.com).
  * Uses the /new feed to get newest posts first, filters to current week only.
@@ -44,16 +45,15 @@ async function scrapeReddit() {
         headless: config_1.config.headless,
         maxRequestsPerCrawl: urls.length,
         requestHandlerTimeoutSecs: 60,
-        maxConcurrency: 2,
+        maxConcurrency: 1,
+        maxRequestRetries: 1,
         useSessionPool: false,
+        browserPoolOptions: {
+            retireBrowserAfterPageCount: 1,
+        },
         launchContext: {
             launchOptions: {
-                args: [
-                    "--disable-blink-features=AutomationControlled",
-                    "--no-sandbox",
-                    "--disable-dev-shm-usage",
-                    "--disable-setuid-sandbox",
-                ],
+                args: browserArgs_1.BROWSER_ARGS,
             },
         },
         async requestHandler({ page, request, log }) {
