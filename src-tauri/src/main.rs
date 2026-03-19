@@ -398,11 +398,27 @@ fn spawn_nextjs_dev(root: &Path) -> Option<Child> {
 /// Required on first run / new devices — without it, any Playwright
 /// scraping call will fail with "Executable doesn't exist".
 fn ensure_playwright_browsers(scraper_dir: &Path) {
-    let npx = find_binary("npx");
-    log::info!("[tauri] Ensuring Playwright chromium is installed...");
+    // Use the playwright CLI directly from node_modules — avoids npx/PATH issues
+    // on macOS where GUI apps have a minimal environment.
+    let cli_candidates = [
+        scraper_dir.join("node_modules").join("playwright").join("cli.js"),
+        scraper_dir.join("node_modules").join("playwright-core").join("cli.js"),
+    ];
 
-    let result = Command::new(&npx)
-        .args(["playwright", "install", "chromium"])
+    let cli = match cli_candidates.iter().find(|p| p.exists()) {
+        Some(p) => p.clone(),
+        None => {
+            log::warn!("[tauri] Playwright CLI not found in node_modules, skipping browser install");
+            return;
+        }
+    };
+
+    let node = find_node();
+    log::info!("[tauri] Installing Playwright chromium via {:?}", cli);
+
+    let result = Command::new(&node)
+        .arg(&cli)
+        .args(["install", "chromium"])
         .current_dir(scraper_dir)
         .env("PATH", enriched_path())
         .stdout(log_file("playwright-install-stdout"))
