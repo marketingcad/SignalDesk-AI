@@ -90,13 +90,15 @@ jobs:
       - name: Create runtime env files
         shell: bash
         run: |
-          printf 'NEXT_PUBLIC_SUPABASE_URL=%s\nNEXT_PUBLIC_SUPABASE_ANON_KEY=%s\nSUPABASE_SERVICE_ROLE_KEY=%s\nJWT_SECRET=%s\nBACKEND_AUTH_TOKEN=%s\nSCRAPER_SERVICE_URL=%s\n' \
+          printf 'NEXT_PUBLIC_SUPABASE_URL=%s\nNEXT_PUBLIC_SUPABASE_ANON_KEY=%s\nSUPABASE_SERVICE_ROLE_KEY=%s\nJWT_SECRET=%s\nBACKEND_AUTH_TOKEN=%s\nSCRAPER_SERVICE_URL=%s\nGOOGLE_AI_API_KEY_SIGNAL_DESK_AI=%s\nGOOGLE_AI_API_KEY=%s\n' \
             "$NEXT_PUBLIC_SUPABASE_URL" \
             "$NEXT_PUBLIC_SUPABASE_ANON_KEY" \
             "$SUPABASE_SERVICE_ROLE_KEY" \
             "$JWT_SECRET" \
             "$BACKEND_AUTH_TOKEN" \
-            "http://localhost:4000" > .env.local
+            "http://localhost:4000" \
+            "$GOOGLE_AI_API_KEY" \
+            "$GOOGLE_AI_API_KEY" > .env.local
           printf 'BACKEND_AUTH_TOKEN=%s\nBACKEND_API_URL=%s\nDISCORD_WEBHOOK_URL=%s\n' \
             "$BACKEND_AUTH_TOKEN" \
             "http://localhost:3000" \
@@ -108,6 +110,7 @@ jobs:
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           BACKEND_AUTH_TOKEN: ${{ secrets.BACKEND_AUTH_TOKEN }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
 
       # Build Next.js standalone (output: "standalone" in next.config.ts)
       - name: Build Next.js
