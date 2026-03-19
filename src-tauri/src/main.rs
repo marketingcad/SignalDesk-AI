@@ -624,18 +624,66 @@ async fn launch_auth_login(
 
     log::info!("[tauri] Launching auth:login from {:?}", scraper_dir);
 
-    // In bundled mode, run via ts-node from the source dir if available,
-    // otherwise use npm run auth:login from the dev source.
-    let npm = find_npm();
+    // Detect bundled vs dev mode:
+    // - Bundled: has dist/crawler/browserAuth.js but NO src/ or ts-node
+    // - Dev: has package.json with auth:login script using ts-node
+    let bundled_auth = scraper_dir.join("dist").join("crawler").join("browserAuth.js");
+    let has_tsnode = scraper_dir.join("node_modules").join(".bin").join(
+        if cfg!(target_os = "windows") { "ts-node.cmd" } else { "ts-node" }
+    ).exists();
 
-    let mut cmd = Command::new(&npm);
-    cmd.arg("run").arg("auth:login");
-
-    if let Some(ref p) = platform {
-        cmd.arg("--").arg(p);
+    let mut cmd;
+    if bundled_auth.exists() && !has_tsnode {
+        // Bundled mode: run compiled JS directly with node
+        let node = find_node();
+        log::info!("[tauri] Using bundled auth: node {:?}", bundled_auth);
+        cmd = Command::new(&node);
+        cmd.arg(bundled_auth.as_os_str());
+        if let Some(ref p) = platform {
+            cmd.arg(p);
+        }
+    } else {
+        // Dev mode: use npm run auth:login (has ts-node + src/)
+        let npm = find_npm();
+        log::info!("[tauri] Using dev auth: npm run auth:login");
+        cmd = Command::new(&npm);
+        cmd.arg("run").arg("auth:login");
+        if let Some(ref p) = platform {
+            cmd.arg("--").arg(p);
+        }
     }
 
     cmd.current_dir(&scraper_dir);
+    cmd.env("PATH", enriched_path());
+
+    // Ensure Playwright browsers are installed (required on first run / new devices)
+    let npx = if cfg!(target_os = "windows") { "npx.cmd" } else {
+        // Use the same directory where we found node
+        let node_path = find_node();
+        let npx_path = std::path::Path::new(&node_path)
+            .parent()
+            .map(|p| p.join("npx"))
+            .unwrap_or_else(|| PathBuf::from("npx"));
+        if npx_path.exists() {
+            // Leak the string so we can return a &str — acceptable for a one-time init
+            Box::leak(npx_path.to_string_lossy().into_owned().into_boxed_str())
+        } else {
+            "npx"
+        }
+    };
+    log::info!("[tauri] Ensuring Playwright chromium is installed...");
+    let pw_install = Command::new(npx)
+        .args(["playwright", "install", "chromium"])
+        .current_dir(&scraper_dir)
+        .env("PATH", enriched_path())
+        .stdout(log_file("playwright-install-stdout"))
+        .stderr(log_file("playwright-install-stderr"))
+        .status();
+    match pw_install {
+        Ok(s) if s.success() => log::info!("[tauri] Playwright chromium ready"),
+        Ok(s) => log::warn!("[tauri] Playwright install exited with {}", s),
+        Err(e) => log::warn!("[tauri] Could not run playwright install: {}", e),
+    }
 
     #[cfg(all(target_os = "windows", not(debug_assertions)))]
     {
