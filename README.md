@@ -599,21 +599,46 @@ Add these GitHub Secrets to your repository:
 
 ### macOS: Fix "Damaged App" Warning
 
-macOS blocks unsigned apps. After downloading the `.dmg`:
+macOS blocks unsigned apps by default. You may see **"VA Hub is damaged and can't be opened"** or **"should be moved to the Trash"** when trying to open the app. Follow these steps to fix it:
+
+**Step 1 — Remove quarantine from the DMG**
+
+Open **Terminal** and run:
 
 ```bash
-# 1. Remove quarantine from the DMG
 sudo xattr -cr ~/Downloads/VA\ Hub*.dmg
-
-# 2. Open the DMG and drag VA Hub to Applications
-
-# 3. Remove quarantine from the installed app
-sudo xattr -cr /Applications/VA\ Hub.app
-
-# 4. Launch VA Hub normally
 ```
 
-This only needs to be done **once per device**. After that, auto-updates work without this step.
+Enter your Mac password when prompted.
+
+**Step 2 — Install the app**
+
+Double-click the `.dmg` file to mount it, then drag **VA Hub** into your **Applications** folder.
+
+**Step 3 — Remove quarantine from the installed app**
+
+Back in Terminal, run:
+
+```bash
+sudo xattr -cr /Applications/VA\ Hub.app
+```
+
+**Step 4 — Launch VA Hub**
+
+Open **VA Hub** from your Applications folder or Launchpad. The first launch takes ~30-60 seconds while the bundled server is extracted and Playwright browsers are downloaded.
+
+**Step 5 — Install Playwright browsers (if scraping fails)**
+
+If you see "Executable doesn't exist" errors when scraping, run this in Terminal:
+
+```bash
+cd ~/Library/Application\ Support/com.signaldesk.vahub/server/scraper
+/usr/local/bin/node node_modules/playwright/cli.js install chromium
+```
+
+> On Apple Silicon Macs using Homebrew, replace `/usr/local/bin/node` with `/opt/homebrew/bin/node`.
+
+This only needs to be done **once per device**. After that, the app and auto-updates work without these steps.
 
 ### Platform-Specific Requirements
 
