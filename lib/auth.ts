@@ -28,9 +28,17 @@ export async function verifySession(
 
 export const SESSION_COOKIE_NAME = "session";
 
+// In the desktop app (Tauri), the server runs on http://localhost:3000
+// even in production. Secure cookies require HTTPS, so we must disable
+// the secure flag when running on localhost to allow cookies to be set.
+const isLocalhost =
+  typeof window === "undefined" &&
+  !process.env.VERCEL &&
+  !process.env.VERCEL_URL;
+
 export const SESSION_COOKIE_OPTIONS = {
   httpOnly: true,
-  secure: process.env.NODE_ENV === "production",
+  secure: process.env.NODE_ENV === "production" && !isLocalhost,
   sameSite: "lax" as const,
   path: "/",
   maxAge: 60 * 60 * 24 * 7,
