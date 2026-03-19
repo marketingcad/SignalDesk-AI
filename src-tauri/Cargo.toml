@@ -1,6 +1,6 @@
 [package]
 name = "va-hub"
-version = "1.0.12"
+version = "1.0.13"
 description = "VA Hub — SignalDesk AI Desktop Application"
 authors = ["SignalDesk AI"]
 edition = "2021"

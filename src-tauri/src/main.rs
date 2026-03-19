@@ -394,6 +394,28 @@ fn spawn_nextjs_dev(root: &Path) -> Option<Child> {
     }
 }
 
+/// Ensure Playwright chromium browser is installed.
+/// Required on first run / new devices — without it, any Playwright
+/// scraping call will fail with "Executable doesn't exist".
+fn ensure_playwright_browsers(scraper_dir: &Path) {
+    let npx = find_binary("npx");
+    log::info!("[tauri] Ensuring Playwright chromium is installed...");
+
+    let result = Command::new(&npx)
+        .args(["playwright", "install", "chromium"])
+        .current_dir(scraper_dir)
+        .env("PATH", enriched_path())
+        .stdout(log_file("playwright-install-stdout"))
+        .stderr(log_file("playwright-install-stderr"))
+        .status();
+
+    match result {
+        Ok(s) if s.success() => log::info!("[tauri] Playwright chromium ready"),
+        Ok(s) => log::warn!("[tauri] Playwright install exited with {}", s),
+        Err(e) => log::warn!("[tauri] Could not run playwright install: {}", e),
+    }
+}
+
 /// Spawn the scraper service from the **bundled** dist.
 fn spawn_scraper_bundled(root: &Path) -> Option<Child> {
     let entry = root.join("scraper").join("dist").join("index.js");
@@ -404,6 +426,10 @@ fn spawn_scraper_bundled(root: &Path) -> Option<Child> {
 
     let node = find_node();
     let scraper_dir = root.join("scraper");
+
+    // Install Playwright browsers if needed (first run on new device)
+    ensure_playwright_browsers(&scraper_dir);
+
     log::info!("[tauri] Starting bundled scraper from {:?}", scraper_dir);
 
     match Command::new(&node)
@@ -656,34 +682,8 @@ async fn launch_auth_login(
     cmd.current_dir(&scraper_dir);
     cmd.env("PATH", enriched_path());
 
-    // Ensure Playwright browsers are installed (required on first run / new devices)
-    let npx = if cfg!(target_os = "windows") { "npx.cmd" } else {
-        // Use the same directory where we found node
-        let node_path = find_node();
-        let npx_path = std::path::Path::new(&node_path)
-            .parent()
-            .map(|p| p.join("npx"))
-            .unwrap_or_else(|| PathBuf::from("npx"));
-        if npx_path.exists() {
-            // Leak the string so we can return a &str — acceptable for a one-time init
-            Box::leak(npx_path.to_string_lossy().into_owned().into_boxed_str())
-        } else {
-            "npx"
-        }
-    };
-    log::info!("[tauri] Ensuring Playwright chromium is installed...");
-    let pw_install = Command::new(npx)
-        .args(["playwright", "install", "chromium"])
-        .current_dir(&scraper_dir)
-        .env("PATH", enriched_path())
-        .stdout(log_file("playwright-install-stdout"))
-        .stderr(log_file("playwright-install-stderr"))
-        .status();
-    match pw_install {
-        Ok(s) if s.success() => log::info!("[tauri] Playwright chromium ready"),
-        Ok(s) => log::warn!("[tauri] Playwright install exited with {}", s),
-        Err(e) => log::warn!("[tauri] Could not run playwright install: {}", e),
-    }
+    // Ensure Playwright browsers are installed (reuses shared helper)
+    ensure_playwright_browsers(&scraper_dir);
 
     #[cfg(all(target_os = "windows", not(debug_assertions)))]
     {
