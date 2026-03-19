@@ -1,7 +1,24 @@
 import dotenv from "dotenv";
 import path from "path";
+import fs from "fs";
 
-dotenv.config({ path: path.resolve(__dirname, "../../.env") });
+// Load .env from multiple possible locations:
+// - Dev: scraper-service/.env (../../.env from src/config/)
+// - Bundled: scraper/.env (../../.env from dist/config/)
+// - CWD fallback: process.cwd()/.env
+const envCandidates = [
+  path.resolve(__dirname, "../../.env"),
+  path.resolve(process.cwd(), ".env"),
+  path.resolve(__dirname, "../../.env.local"),
+  path.resolve(process.cwd(), ".env.local"),
+];
+
+for (const envPath of envCandidates) {
+  if (fs.existsSync(envPath)) {
+    dotenv.config({ path: envPath });
+    break;
+  }
+}
 
 function envOrDefault(key: string, fallback: string): string {
   return process.env[key] || fallback;

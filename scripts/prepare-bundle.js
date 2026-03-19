@@ -97,6 +97,24 @@ if (existsSync(scraperModules)) {
   });
 }
 
+// Copy env files to scraper directory too — the scraper config loads
+// from ../../.env relative to dist/config/, which resolves to scraper/.env
+for (const envFile of [".env.local", ".env"]) {
+  // First try scraper-service's own .env
+  const scraperEnv = path.join(scraperSrc, envFile);
+  if (existsSync(scraperEnv)) {
+    copyFileSync(scraperEnv, path.join(scraperDest, envFile));
+    console.log(`  Copied scraper ${envFile}`);
+  } else {
+    // Fall back to root .env (has BACKEND_AUTH_TOKEN, DISCORD_WEBHOOK_URL, etc.)
+    const rootEnv = path.join(root, envFile);
+    if (existsSync(rootEnv)) {
+      copyFileSync(rootEnv, path.join(scraperDest, envFile));
+      console.log(`  Copied root ${envFile} to scraper/`);
+    }
+  }
+}
+
 // Create empty directories that the scraper expects
 mkdirSync(path.join(scraperDest, "storage"), { recursive: true });
 mkdirSync(path.join(scraperDest, "auth"), { recursive: true });
