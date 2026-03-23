@@ -19,9 +19,9 @@ import {
 /**
  * Desktop Auth Prompt
  *
- * On app startup (desktop only), checks if browser auth cookies exist.
- * If not, shows a modal prompting the user to log in to social platforms.
- * The auth is needed for the scraper to access Facebook/LinkedIn/Twitter.
+ * On every app startup (desktop only), shows a modal prompting the user
+ * to log in to social platforms. This ensures fresh browser sessions for
+ * the scraper to access Facebook/LinkedIn/Twitter.
  */
 export function DesktopAuthPrompt() {
   const [isDesktop, setIsDesktop] = useState(false);
@@ -119,33 +119,36 @@ export function DesktopAuthPrompt() {
     }
   }, []);
 
-  // Don't show if: not desktop, not checked yet, already authenticated, or dismissed
+  // Don't show if: not desktop, not checked yet, or dismissed
+  // Always show on launch — even if already authenticated — so the user
+  // can refresh their browser sessions each time they open the app.
   if (!isDesktop || !checked || dismissed) return null;
-  if (authStatus?.authenticated) return null;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm">
       <div className="w-full max-w-md mx-4 rounded-lg border border-border bg-card p-6 shadow-2xl">
         {/* Header */}
         <div className="flex items-center gap-3 mb-4">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-500/10">
-            <Shield className="h-5 w-5 text-amber-500" />
+          <div className={`flex h-10 w-10 items-center justify-center rounded-full ${authStatus?.authenticated ? "bg-primary/10" : "bg-amber-500/10"}`}>
+            <Shield className={`h-5 w-5 ${authStatus?.authenticated ? "text-primary" : "text-amber-500"}`} />
           </div>
           <div>
             <h2 className="text-lg font-semibold text-foreground">
-              Browser Login Required
+              {authStatus?.authenticated ? "Browser Login" : "Browser Login Required"}
             </h2>
             <p className="text-sm text-muted-foreground">
-              The scraper needs access to social platforms
+              {authStatus?.authenticated
+                ? "Refresh your social platform sessions"
+                : "The scraper needs access to social platforms"}
             </p>
           </div>
         </div>
 
         {/* Description */}
         <p className="text-sm text-muted-foreground mb-4">
-          To scrape leads from Facebook, LinkedIn, and Twitter, you need to log
-          in once. This opens a browser where you can sign in — your session is
-          saved locally for future use.
+          {authStatus?.authenticated
+            ? "You have saved sessions. Log in again to refresh your cookies, or skip to use existing sessions."
+            : "To scrape leads from Facebook, LinkedIn, and Twitter, you need to log in. This opens a browser where you can sign in — your session is saved locally."}
         </p>
 
         {/* Status messages */}
@@ -216,7 +219,11 @@ export function DesktopAuthPrompt() {
           onClick={() => setDismissed(true)}
           className="w-full text-center text-sm text-muted-foreground hover:text-foreground transition-colors py-1 cursor-pointer"
         >
-          {authRunning ? "Hide (login continues in background)" : "Skip for now"}
+          {authRunning
+            ? "Hide (login continues in background)"
+            : authStatus?.authenticated
+              ? "Use existing sessions"
+              : "Skip for now"}
         </button>
       </div>
     </div>
