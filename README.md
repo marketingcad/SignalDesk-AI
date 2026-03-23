@@ -472,23 +472,19 @@ Verify: `node --version` (should show v18+ or v20+)
 
 1. **Install Node.js** — See prerequisites above.
 2. **Launch VA Hub** — Open from Start Menu / Applications / desktop shortcut. The first launch takes ~10-30 seconds to extract the bundled server.
-3. **Browser auth for scrapers** — When the login prompt appears, click "Login to All Platforms" to open a browser and log in to your social accounts. Sessions are saved locally.
+3. **Browser auth for scrapers** — A login prompt appears automatically. Click "Login to All Platforms" to open a browser and log in to your social accounts. Sessions are saved locally.
 
 ### Browser Auth (Auto-Login on Launch)
 
-When the desktop app starts, it automatically checks if you have saved browser cookies for social media scraping. If not, a login prompt appears:
+Every time the desktop app starts, a login prompt appears so you can keep your social media sessions fresh. The app checks whether you have existing saved sessions and adapts accordingly:
 
-1. **Auto-check** — The app detects whether `scraper-service/auth/storage-state.json` or `scraper-service/auth/browser-profile/` exist
-2. **Login prompt** — If no auth is found, a modal appears with:
+1. **Login prompt on every launch** — A modal appears with:
    - **"Login to All Platforms"** — Opens a Playwright browser with tabs for Facebook, LinkedIn, and Twitter
    - **Individual platform buttons** — Log in to just one platform
-3. **Save & close** — Log in to your accounts in the browser that opens, then close it. Your session cookies are saved automatically.
-4. **Skip** — You can dismiss the prompt and log in later via `npm run scraper:auth`
+2. **Save & close** — Log in to your accounts in the browser that opens, then close it. Your session cookies are saved automatically.
+3. **Skip / Use existing sessions** — If you already have saved sessions, you can click "Use existing sessions" to skip re-login. If no sessions exist, you can click "Skip for now" and log in later via `npm run scraper:auth`.
 
-The auth session persists between app restarts. You only need to log in again if:
-- Your session cookies expire (varies by platform, usually weeks/months)
-- You clear the `scraper-service/auth/` directory
-- You reinstall the app
+Your saved sessions persist between app restarts. The prompt appears every launch to give you the option to refresh, but you can always skip if your sessions are still valid.
 
 To re-login at any time:
 ```bash
