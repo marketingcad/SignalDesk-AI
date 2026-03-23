@@ -81,6 +81,7 @@ export async function getAlerts(limit = 20): Promise<Lead[]> {
     .from("leads")
     .select("*")
     .gte("intent_score", 60)
+    .neq("status", "Dismissed")
     .order("created_at", { ascending: false })
     .limit(limit);
 
@@ -224,6 +225,31 @@ export async function getDailyReports(days = 7): Promise<DailyReport[]> {
   }
 
   return reports.reverse();
+}
+
+export async function getArchivedAlerts(limit = 20): Promise<Lead[]> {
+  const { data, error } = await supabase
+    .from("leads")
+    .select("*")
+    .gte("intent_score", 60)
+    .eq("status", "Dismissed")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) throw error;
+  return (data || []).map(mapRow);
+}
+
+export async function deleteArchivedAlerts(): Promise<number> {
+  const { data, error } = await supabase
+    .from("leads")
+    .delete()
+    .eq("status", "Dismissed")
+    .gte("intent_score", 60)
+    .select("id");
+
+  if (error) throw error;
+  return data?.length || 0;
 }
 
 export async function updateLeadStatus(

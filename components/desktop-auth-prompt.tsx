@@ -77,18 +77,38 @@ export function DesktopAuthPrompt() {
           setAuthRunning(false);
           setMessage("");
           if (pollRef.current) clearInterval(pollRef.current);
-          // Re-check auth status after login completes
+          // Re-check auth status after login completes.
+          // Try immediately first (works on macOS where no file locks).
+          // On Windows, Chromium may still hold file locks after exit,
+          // so retry a few times with delays if the immediate check fails.
+          let authenticated = false;
           try {
-            const newStatus = await checkAuthStatus();
-            setAuthStatus(newStatus);
-            if (newStatus.authenticated) {
-              setMessage("Login saved successfully! You can now scrape.");
-              setTimeout(() => setDismissed(true), 3000);
-            } else {
-              setError("Login completed but cookies were not saved. Try again.");
-            }
+            const immediateStatus = await checkAuthStatus();
+            setAuthStatus(immediateStatus);
+            authenticated = immediateStatus.authenticated;
           } catch {
-            // ignore
+            // ignore, will retry below
+          }
+          if (!authenticated) {
+            for (let attempt = 0; attempt < 4; attempt++) {
+              await new Promise((r) => setTimeout(r, 2000));
+              try {
+                const newStatus = await checkAuthStatus();
+                setAuthStatus(newStatus);
+                if (newStatus.authenticated) {
+                  authenticated = true;
+                  break;
+                }
+              } catch {
+                // ignore check errors, retry
+              }
+            }
+          }
+          if (authenticated) {
+            setMessage("Login saved successfully! You can now scrape.");
+            setTimeout(() => setDismissed(true), 3000);
+          } else {
+            setError("Login completed but cookies were not saved. Try again.");
           }
         }
       } catch {

@@ -159,6 +159,11 @@ export async function POST(request: NextRequest) {
       const post = validPosts[i];
       const { scoring, aiResult } = qualifyResults[i];
 
+      // Extract location from AI result (if available and not "Unknown")
+      const aiLocation = aiResult?.location && aiResult.location !== "Unknown"
+        ? aiResult.location
+        : null;
+
       toInsert.push({
         platform: post.platform,
         source: post.source || "Unknown",
@@ -173,6 +178,7 @@ export async function POST(request: NextRequest) {
         matched_keywords: scoring.matchedKeywords,
         detected_at: post.timestamp || new Date().toISOString(),
         user_id: session.userId,
+        ...(aiLocation ? { location: aiLocation } : {}),
         ...(aiResult ? { ai_qualification: aiResult } : {}),
       });
 

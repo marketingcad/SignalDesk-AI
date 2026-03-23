@@ -110,6 +110,7 @@ export interface AIQualificationResult {
   skills: string[];
   tools: string[];
   industry: string;
+  location: string;
   budgetEstimate: AIBudgetEstimate;
   spamRisk: AISpamRisk;
   spamReason: string;

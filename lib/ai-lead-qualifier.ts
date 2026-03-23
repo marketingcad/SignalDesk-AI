@@ -100,7 +100,25 @@ Provide a short reason.
 
 ---
 
-STEP 7 — Lead Scoring
+STEP 7 — Geographic Location
+
+Infer the poster's most likely country based on ALL available clues:
+* Explicit mentions: "US-based", "from the Philippines", "UK company"
+* Location requirements: "PST hours", "EST timezone", "must be in Europe"
+* Currency: "$" = likely US/CA/AU, "£" = UK, "€" = EU
+* Language/spelling: "colour" = UK/AU, "color" = US
+* Platform group name if it includes a country (e.g. "Australian VA Community")
+* Cultural context: holiday names, local platforms, regional slang
+
+Return one of these exact country names (or "Unknown" if no clues):
+United States, United Kingdom, Canada, Australia, Philippines, India, Germany, Singapore, New Zealand, Ireland, Netherlands, South Africa, United Arab Emirates, Japan, France, Spain, Brazil, Mexico
+
+If the country is not in this list, return the closest match or the actual country name.
+If there are truly no geographic clues, return "Unknown".
+
+---
+
+STEP 8 — Lead Scoring
 
 Generate a lead score from 1 to 10.
 
@@ -153,6 +171,7 @@ OUTPUT FORMAT (STRICT JSON)
   "skills": [],
   "tools": [],
   "industry": "",
+  "location": "",
   "budgetEstimate": "",
   "spamRisk": "",
   "spamReason": "",
@@ -208,6 +227,12 @@ function parseAIResponse(raw: string): AIQualificationResult | null {
     const validSpam = ["SAFE", "SUSPICIOUS", "LIKELY_SCAM"];
     const spamRisk = validSpam.includes(parsed.spamRisk) ? parsed.spamRisk : "SAFE";
 
+    // Validate location — normalize "Unknown" variants
+    let location = typeof parsed.location === "string" ? parsed.location.trim() : "Unknown";
+    if (!location || location.toLowerCase() === "unknown" || location.toLowerCase() === "n/a") {
+      location = "Unknown";
+    }
+
     return {
       isHiring,
       intentCategory,
@@ -217,6 +242,7 @@ function parseAIResponse(raw: string): AIQualificationResult | null {
       skills: Array.isArray(parsed.skills) ? parsed.skills : [],
       tools: Array.isArray(parsed.tools) ? parsed.tools : [],
       industry: typeof parsed.industry === "string" ? parsed.industry : "unknown",
+      location,
       budgetEstimate,
       spamRisk,
       spamReason: typeof parsed.spamReason === "string" ? parsed.spamReason : "",
@@ -403,6 +429,7 @@ export async function qualifyLeadWithAI(input: {
         console.log(`  👤 Hiring: ${aiResult.isHiring}`);
         console.log(`  💼 Tasks: [${aiResult.tasks.join(", ")}]`);
         console.log(`  🔧 Tools: [${aiResult.tools.join(", ")}]`);
+        console.log(`  🌍 Location: ${aiResult.location}`);
         console.log(`  🏢 Industry: ${aiResult.industry}`);
         console.log(`  💰 Budget: ${aiResult.budgetEstimate}`);
         console.log(`  📝 Summary: ${aiResult.leadSummary}`);

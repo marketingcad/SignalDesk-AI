@@ -108,6 +108,10 @@ export async function POST(request: NextRequest) {
   );
 
   // --- Insert lead ---
+  const aiLocation = aiResult?.location && aiResult.location !== "Unknown"
+    ? aiResult.location
+    : null;
+
   const { data: lead, error: insertError } = await supabase
     .from("leads")
     .insert({
@@ -124,6 +128,7 @@ export async function POST(request: NextRequest) {
       matched_keywords: scoringResult.matchedKeywords,
       detected_at: timestamp || new Date().toISOString(),
       user_id: session.userId,
+      ...(aiLocation ? { location: aiLocation } : {}),
       ...(aiResult ? { ai_qualification: aiResult } : {}),
     })
     .select("id, intent_score, intent_level")

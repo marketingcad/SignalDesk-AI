@@ -642,12 +642,20 @@ async fn wait_for_server(url: &str, timeout_secs: u64) -> bool {
 #[tauri::command]
 async fn check_auth_status() -> serde_json::Value {
     let scraper_dir = find_scraper_dir();
+    let scraper_dir = scraper_dir
+        .canonicalize()
+        .unwrap_or_else(|_| scraper_dir.clone());
     log::info!("[tauri] Checking auth status in {:?}", scraper_dir);
 
     let storage_state = scraper_dir.join("auth").join("storage-state.json");
     let profile_dir = scraper_dir.join("auth").join("browser-profile");
 
-    let has_storage_state = storage_state.exists();
+    // On Windows, Playwright/Chromium may still hold file locks after the auth
+    // process exits. Check that the file is actually readable, not just present.
+    let has_storage_state = std::fs::metadata(&storage_state)
+        .map(|m| m.len() > 2) // Must have real content, not just "{}"
+        .unwrap_or(false)
+        && std::fs::read_to_string(&storage_state).is_ok();
     let has_profile = profile_dir.exists()
         && std::fs::read_dir(&profile_dir)
             .map(|entries| entries.count() > 0)
