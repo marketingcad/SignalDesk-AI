@@ -6,7 +6,7 @@ import { supabase } from "@/lib/supabase";
 //   id (text, PK) | value (jsonb) | updated_at (timestamptz)
 //
 // Known keys:
-//   "platform_toggles" → { Facebook: true, LinkedIn: true, Reddit: true, X: false }
+//   "platform_toggles" → { Facebook: true, LinkedIn: true, Reddit: true, X: false, Other: true }
 //   "alert_threshold"  → { value: 80 }
 //   "notifications"    → { discord_enabled: true, email_enabled: true, discord_webhook_url: "..." }
 
@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
     console.error("[api/settings] GET error:", error);
     // Return defaults if table doesn't exist yet
     return NextResponse.json({
-      platform_toggles: { Facebook: true, LinkedIn: true, Reddit: true, X: false },
+      platform_toggles: { Facebook: true, LinkedIn: true, Reddit: true, X: false, Other: true },
       alert_threshold: { value: 80 },
       notifications: { discord_enabled: true, email_enabled: true, discord_webhook_url: "" },
     });
@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
 
   // Merge with defaults for any missing keys
   const result = {
-    platform_toggles: settings.platform_toggles ?? { Facebook: true, LinkedIn: true, Reddit: true, X: false },
+    platform_toggles: settings.platform_toggles ?? { Facebook: true, LinkedIn: true, Reddit: true, X: false, Other: true },
     alert_threshold: settings.alert_threshold ?? { value: 80 },
     notifications: settings.notifications ?? { discord_enabled: true, email_enabled: true, discord_webhook_url: "" },
   };

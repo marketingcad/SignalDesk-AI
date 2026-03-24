@@ -60,7 +60,7 @@ export default function SettingsPage() {
         if (settingsRes.ok) {
           const settings = await settingsRes.json();
           if (settings.platform_toggles) {
-            setPlatformToggles(settings.platform_toggles);
+            setPlatformToggles((prev) => ({ ...prev, ...settings.platform_toggles }));
           }
           if (settings.alert_threshold) {
             setThreshold(settings.alert_threshold.value);
