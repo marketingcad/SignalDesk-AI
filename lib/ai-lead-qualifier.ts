@@ -100,21 +100,35 @@ Provide a short reason.
 
 ---
 
-STEP 7 — Geographic Location
+STEP 7 — Geographic Location (Country Classification for Analytics)
 
-Infer the poster's most likely country based on ALL available clues:
-* Explicit mentions: "US-based", "from the Philippines", "UK company"
+You are classifying the country of this social media post for dashboard analytics (bar charts showing posts per country).
+
+Determine the most relevant country using ALL available signals:
+* Explicit mentions: "US-based", "from the Philippines", "UK company", "Indian team"
+* Author location / profile info
+* Group/community name (e.g. "Australian VA Community", "PH Freelancers")
 * Location requirements: "PST hours", "EST timezone", "must be in Europe"
 * Currency: "$" = likely US/CA/AU, "£" = UK, "€" = EU
 * Language/spelling: "colour" = UK/AU, "color" = US
-* Platform group name if it includes a country (e.g. "Australian VA Community")
 * Cultural context: holiday names, local platforms, regional slang
 
-Return one of these exact country names (or "Unknown" if no clues):
-United States, United Kingdom, Canada, Australia, Philippines, India, Germany, Singapore, New Zealand, Ireland, Netherlands, South Africa, United Arab Emirates, Japan, France, Spain, Brazil, Mexico
+TARGET COUNTRIES (use these exact names):
+* "Philippines"
+* "India"
+* "United States"
+* "United Kingdom"
+* "Australia"
 
-If the country is not in this list, return the closest match or the actual country name.
-If there are truly no geographic clues, return "Unknown".
+CLASSIFICATION RULES:
+* If you detect HIGH confidence (explicit mention like "Philippines", "US client") → return that target country
+* If you detect MEDIUM confidence (inferred from timezone, currency, context) → return that target country
+* If you detect LOW confidence (weak signals) → return that target country only if it's one of the 5 above
+* If the country is NOT one of the 5 target countries, or there are no reliable signals → return "Others"
+* If there are truly zero geographic clues → return "Others"
+
+IMPORTANT: Always return exactly one of these 6 values: "Philippines", "India", "United States", "United Kingdom", "Australia", or "Others".
+Do NOT return "Unknown", country codes, or any other country names.
 
 ---
 
@@ -227,10 +241,14 @@ function parseAIResponse(raw: string): AIQualificationResult | null {
     const validSpam = ["SAFE", "SUSPICIOUS", "LIKELY_SCAM"];
     const spamRisk = validSpam.includes(parsed.spamRisk) ? parsed.spamRisk : "SAFE";
 
-    // Validate location — normalize "Unknown" variants
-    let location = typeof parsed.location === "string" ? parsed.location.trim() : "Unknown";
+    // Validate location — must be one of the 6 target buckets
+    const VALID_GEO_BUCKETS = ["Philippines", "India", "United States", "United Kingdom", "Australia", "Others"];
+    let location = typeof parsed.location === "string" ? parsed.location.trim() : "Others";
     if (!location || location.toLowerCase() === "unknown" || location.toLowerCase() === "n/a") {
-      location = "Unknown";
+      location = "Others";
+    }
+    if (!VALID_GEO_BUCKETS.includes(location)) {
+      location = "Others";
     }
 
     return {

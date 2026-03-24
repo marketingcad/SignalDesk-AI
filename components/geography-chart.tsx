@@ -20,30 +20,28 @@ export interface GeoDataPoint {
   fill?: string;
 }
 
-// Color palette using the project's indigo/purple scale + accent colors
-const COUNTRY_COLORS: string[] = [
-  "#6366f1", // indigo
-  "#8b5cf6", // purple
-  "#a78bfa", // violet
-  "#34d399", // emerald
-  "#f59e0b", // amber
-  "#818cf8", // light indigo
-  "#c4b5fd", // lavender
-  "#71717a", // zinc
-];
+// Fixed color per country for consistent chart identity
+const COUNTRY_COLOR_MAP: Record<string, string> = {
+  Philippines: "#6366f1",      // indigo
+  India: "#8b5cf6",            // purple
+  "United States": "#34d399",  // emerald
+  "United Kingdom": "#f59e0b", // amber
+  Australia: "#818cf8",        // light indigo
+  Others: "#71717a",           // zinc
+};
 
-function getCountryColor(_country: string, index: number) {
-  return COUNTRY_COLORS[index % COUNTRY_COLORS.length];
+function getCountryColor(country: string, _index: number) {
+  return COUNTRY_COLOR_MAP[country] || "#71717a";
 }
 
 // Mock geography data (fallback when API returns empty)
 const mockGeoData: GeoDataPoint[] = [
-  { country: "United States", code: "US", leads: 112, highIntent: 34, percentage: 45 },
-  { country: "United Kingdom", code: "GB", leads: 42, highIntent: 12, percentage: 17 },
-  { country: "Canada", code: "CA", leads: 35, highIntent: 9, percentage: 14 },
-  { country: "Australia", code: "AU", leads: 28, highIntent: 7, percentage: 11 },
-  { country: "Philippines", code: "PH", leads: 18, highIntent: 3, percentage: 7 },
-  { country: "India", code: "IN", leads: 12, highIntent: 2, percentage: 5 },
+  { country: "Philippines", code: "PH", leads: 48, highIntent: 12, percentage: 28 },
+  { country: "India", code: "IN", leads: 32, highIntent: 8, percentage: 19 },
+  { country: "United States", code: "US", leads: 42, highIntent: 15, percentage: 25 },
+  { country: "United Kingdom", code: "GB", leads: 18, highIntent: 5, percentage: 11 },
+  { country: "Australia", code: "AU", leads: 14, highIntent: 4, percentage: 8 },
+  { country: "Others", code: "OT", leads: 16, highIntent: 3, percentage: 9 },
 ];
 
 function CustomTooltip({

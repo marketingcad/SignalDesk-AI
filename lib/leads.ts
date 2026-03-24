@@ -292,26 +292,16 @@ export interface GeographyDataPoint {
   percentage: number;
 }
 
-const COUNTRY_CODES: Record<string, string> = {
-  "United States": "US",
-  "United Kingdom": "GB",
-  Canada: "CA",
-  Australia: "AU",
-  Germany: "DE",
-  Philippines: "PH",
-  India: "IN",
-  Singapore: "SG",
-  "New Zealand": "NZ",
-  Ireland: "IE",
-  Netherlands: "NL",
-  "South Africa": "ZA",
-  "United Arab Emirates": "AE",
-  Japan: "JP",
-  France: "FR",
-  Spain: "ES",
-  Brazil: "BR",
-  Mexico: "MX",
-};
+// Fixed 5 target countries + "Others" bucket for geography chart
+const TARGET_COUNTRIES = [
+  { country: "Philippines", code: "PH" },
+  { country: "India", code: "IN" },
+  { country: "United States", code: "US" },
+  { country: "United Kingdom", code: "GB" },
+  { country: "Australia", code: "AU" },
+];
+
+const TARGET_COUNTRY_NAMES = new Set(TARGET_COUNTRIES.map((c) => c.country));
 
 export async function getGeographyData(): Promise<GeographyDataPoint[]> {
   const { data, error } = await supabase
@@ -322,29 +312,37 @@ export async function getGeographyData(): Promise<GeographyDataPoint[]> {
   if (error) throw error;
 
   const rows = data || [];
+
+  // Initialize all 6 buckets
   const counts: Record<string, { leads: number; highIntent: number }> = {};
+  for (const t of TARGET_COUNTRIES) {
+    counts[t.country] = { leads: 0, highIntent: 0 };
+  }
+  counts["Others"] = { leads: 0, highIntent: 0 };
 
   for (const row of rows) {
     const loc = (row.location as string) || "";
     if (!loc) continue;
-    if (!counts[loc]) counts[loc] = { leads: 0, highIntent: 0 };
-    counts[loc].leads++;
-    if (row.intent_level === "High") counts[loc].highIntent++;
+    const bucket = TARGET_COUNTRY_NAMES.has(loc) ? loc : "Others";
+    counts[bucket].leads++;
+    if (row.intent_level === "High") counts[bucket].highIntent++;
   }
 
   const total = Object.values(counts).reduce((s, c) => s + c.leads, 0);
   if (total === 0) return [];
 
-  return Object.entries(counts)
-    .sort((a, b) => b[1].leads - a[1].leads)
-    .slice(0, 8)
-    .map(([country, c]) => ({
-      country,
-      code: COUNTRY_CODES[country] ?? "??",
-      leads: c.leads,
-      highIntent: c.highIntent,
-      percentage: Math.round((c.leads / total) * 100),
-    }));
+  // Return in fixed order: 5 target countries then Others
+  const codeMap: Record<string, string> = {};
+  for (const t of TARGET_COUNTRIES) codeMap[t.country] = t.code;
+  codeMap["Others"] = "OT";
+
+  return [...TARGET_COUNTRIES.map((t) => t.country), "Others"].map((country) => ({
+    country,
+    code: codeMap[country],
+    leads: counts[country].leads,
+    highIntent: counts[country].highIntent,
+    percentage: total > 0 ? Math.round((counts[country].leads / total) * 100) : 0,
+  }));
 }
 
 export async function getPlatformCounts(): Promise<
