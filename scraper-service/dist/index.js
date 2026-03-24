@@ -83,6 +83,8 @@ app.post("/api/run", async (req, res) => {
     }
     console.log("[api] Manual full run triggered");
     res.json({ message: "Scraper run started", startedAt: new Date().toISOString() });
+    // Refresh keywords from /settings before each run
+    (0, backendClient_1.fetchKeywords)(true).catch(() => { });
     (0, crawlerManager_1.runAllPlatforms)().catch((err) => console.error("[api] Full run failed:", err));
 });
 // ---------------------------------------------------------------------------
@@ -106,6 +108,8 @@ app.post("/api/run/:platform", async (req, res) => {
         message: `${platform} scraper run started`,
         startedAt: new Date().toISOString(),
     });
+    // Refresh keywords from /settings before each run
+    (0, backendClient_1.fetchKeywords)(true).catch(() => { });
     (0, crawlerManager_1.runPlatform)(platform).catch((err) => console.error(`[api] ${platform} run failed:`, err));
 });
 // ---------------------------------------------------------------------------
@@ -141,6 +145,8 @@ app.post("/api/scrape-url", async (req, res) => {
         return res.status(400).json({ error: "Invalid URL format", invalid: badUrls });
     }
     console.log(`[api] Scrape URL triggered: ${rawUrls.length} URL(s)`);
+    // Refresh keywords from /settings before scraping
+    await (0, backendClient_1.fetchKeywords)(true).catch(() => { });
     const items = [];
     for (const targetUrl of rawUrls) {
         try {
@@ -479,6 +485,17 @@ app.listen(config_1.config.port, () => {
   Backend:   ${config_1.config.backendApiUrl}
   Headless:  ${config_1.config.headless}
   `);
+    // Fetch user-configured keywords from /settings page before starting scrapers
+    (0, backendClient_1.fetchKeywords)().then((kw) => {
+        if (kw) {
+            console.log(`  Keywords: ${kw.searchQueries.length} search queries loaded from /settings`);
+        }
+        else {
+            console.log("  Keywords: using env var defaults (backend unreachable or empty)");
+        }
+    }).catch(() => {
+        console.log("  Keywords: using env var defaults (fetch failed)");
+    });
     (0, cronJobs_1.startScheduler)();
     (0, urlScheduler_1.initUrlScheduler)();
 });

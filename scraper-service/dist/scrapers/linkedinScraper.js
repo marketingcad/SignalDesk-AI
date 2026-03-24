@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.scrapeLinkedin = scrapeLinkedin;
 const crawlee_1 = require("crawlee");
 const config_1 = require("../config");
+const backendClient_1 = require("../api/backendClient");
 const storage_1 = require("../crawler/storage");
 const browserArgs_1 = require("./browserArgs");
 /**
@@ -17,7 +18,8 @@ async function scrapeLinkedin() {
     const errors = [];
     const seen = new Set();
     (0, storage_1.useStorageDir)("linkedin");
-    const queries = config_1.config.targets.linkedinSearchQueries;
+    const cached = (0, backendClient_1.getCachedKeywords)();
+    const queries = cached?.searchQueries?.length ? cached.searchQueries : config_1.config.targets.linkedinSearchQueries;
     // Google dork: site:linkedin.com/posts "query"
     const urls = queries.map((q) => `https://www.google.com/search?q=site:linkedin.com/posts+"${encodeURIComponent(q)}"&tbs=qdr:w`);
     const crawler = new crawlee_1.PlaywrightCrawler({

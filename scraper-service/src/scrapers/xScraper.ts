@@ -1,5 +1,6 @@
 import { PlaywrightCrawler } from "crawlee";
 import { config } from "../config";
+import { getCachedKeywords } from "../api/backendClient";
 import { useStorageDir, cleanStorage } from "../crawler/storage";
 import type { ScrapedPost, ScrapeResult } from "../types";
 import { BROWSER_ARGS } from "./browserArgs";
@@ -18,7 +19,8 @@ export async function scrapeX(): Promise<ScrapeResult> {
   const seen = new Set<string>();
 
   useStorageDir("x");
-  const queries = config.targets.xSearchQueries;
+  const cached = getCachedKeywords();
+  const queries = cached?.searchQueries?.length ? cached.searchQueries : config.targets.xSearchQueries;
 
   // Google dork: site:x.com "query" — last week
   const urls: string[] = queries.map(

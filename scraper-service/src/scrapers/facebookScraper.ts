@@ -1,5 +1,6 @@
 import { PlaywrightCrawler } from "crawlee";
 import { config } from "../config";
+import { getCachedKeywords } from "../api/backendClient";
 import { useStorageDir, cleanStorage } from "../crawler/storage";
 import { isCurrentWeek, isOlderThanCurrentWeek, resolveTimestamp } from "../utils/dateHelpers";
 import type { ScrapedPost, ScrapeResult } from "../types";
@@ -27,7 +28,9 @@ export async function scrapeFacebook(): Promise<ScrapeResult> {
   const seen = new Set<string>();
 
   useStorageDir("facebook");
-  const searchTerms = config.targets.facebookSearchQueries;
+  // Use dynamic keywords from /settings page, fallback to env var defaults
+  const cached = getCachedKeywords();
+  const searchTerms = cached?.searchQueries?.length ? cached.searchQueries : config.targets.facebookSearchQueries;
 
   // Google dork for Facebook group posts (filtered to last week)
   const googleUrls: string[] = searchTerms.map(

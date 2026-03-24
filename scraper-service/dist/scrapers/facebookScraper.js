@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.scrapeFacebook = scrapeFacebook;
 const crawlee_1 = require("crawlee");
 const config_1 = require("../config");
+const backendClient_1 = require("../api/backendClient");
 const storage_1 = require("../crawler/storage");
 const dateHelpers_1 = require("../utils/dateHelpers");
 const browserArgs_1 = require("./browserArgs");
@@ -27,7 +28,9 @@ async function scrapeFacebook() {
     const errors = [];
     const seen = new Set();
     (0, storage_1.useStorageDir)("facebook");
-    const searchTerms = config_1.config.targets.facebookSearchQueries;
+    // Use dynamic keywords from /settings page, fallback to env var defaults
+    const cached = (0, backendClient_1.getCachedKeywords)();
+    const searchTerms = cached?.searchQueries?.length ? cached.searchQueries : config_1.config.targets.facebookSearchQueries;
     // Google dork for Facebook group posts (filtered to last week)
     const googleUrls = searchTerms.map((q) => `https://www.google.com/search?q=site:facebook.com/groups+"${encodeURIComponent(q)}"&tbs=qdr:w`);
     // Direct group URLs from config (these need permalink extraction)

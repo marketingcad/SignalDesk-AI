@@ -60,6 +60,27 @@ const POSITIVE_SIGNALS: WeightedKeyword[] = [
   { phrase: "need someone to manage emails", weight: 40, category: "Direct Hiring" },
   { phrase: "need someone to book appointments", weight: 40, category: "Direct Hiring" },
   { phrase: "outsourcing admin work", weight: 40, category: "Direct Hiring" },
+  { phrase: "looking for an online assistant", weight: 40, category: "Direct Hiring" },
+  { phrase: "looking for a remote assistant", weight: 40, category: "Direct Hiring" },
+  { phrase: "hiring online assistant", weight: 40, category: "Direct Hiring" },
+  { phrase: "need a remote worker", weight: 40, category: "Direct Hiring" },
+  { phrase: "hiring part time va", weight: 40, category: "Direct Hiring" },
+  { phrase: "hiring full time va", weight: 40, category: "Direct Hiring" },
+  { phrase: "looking for a filipino va", weight: 40, category: "Direct Hiring" },
+  { phrase: "hiring filipino virtual assistant", weight: 40, category: "Direct Hiring" },
+  { phrase: "need a bookkeeping va", weight: 40, category: "Direct Hiring" },
+  { phrase: "hiring ecommerce va", weight: 40, category: "Direct Hiring" },
+  { phrase: "hiring amazon va", weight: 40, category: "Direct Hiring" },
+  { phrase: "hiring shopify va", weight: 40, category: "Direct Hiring" },
+  { phrase: "hiring etsy va", weight: 40, category: "Direct Hiring" },
+  { phrase: "hiring podcast va", weight: 40, category: "Direct Hiring" },
+  { phrase: "hiring video editing va", weight: 40, category: "Direct Hiring" },
+  { phrase: "hiring content writer va", weight: 40, category: "Direct Hiring" },
+  { phrase: "hiring lead generation va", weight: 40, category: "Direct Hiring" },
+  { phrase: "need someone for data entry", weight: 40, category: "Direct Hiring" },
+  { phrase: "need someone for customer service", weight: 40, category: "Direct Hiring" },
+  { phrase: "looking for someone to manage my social media", weight: 40, category: "Direct Hiring" },
+  { phrase: "need someone to run my ads", weight: 40, category: "Direct Hiring" },
 
   // ── Urgency (+20) — doc: ASAP, urgent, immediately ────────────────
   { phrase: "hiring immediately va", weight: 20, category: "Direct Hiring" },
@@ -99,6 +120,10 @@ const POSITIVE_SIGNALS: WeightedKeyword[] = [
   { phrase: "need extra help in my business", weight: 15, category: "Delegation Signal" },
   { phrase: "need support in my business", weight: 15, category: "Delegation Signal" },
   { phrase: "scaling my business and need help", weight: 15, category: "Delegation Signal" },
+  { phrase: "need to delegate tasks", weight: 15, category: "Delegation Signal" },
+  { phrase: "spending too much time on admin", weight: 15, category: "Delegation Signal" },
+  { phrase: "can't keep up with emails", weight: 15, category: "Delegation Signal" },
+  { phrase: "need help managing my calendar", weight: 15, category: "Delegation Signal" },
 
   // ── E. Tool / Skill-Based Triggers (+15) ──────────────────────────
   { phrase: "gohighlevel", weight: 15, category: "Technical VA Request" },
@@ -120,6 +145,15 @@ const POSITIVE_SIGNALS: WeightedKeyword[] = [
   { phrase: "quickbooks", weight: 15, category: "Technical VA Request" },
   { phrase: "data entry", weight: 15, category: "Technical VA Request" },
   { phrase: "customer support", weight: 15, category: "Technical VA Request" },
+  { phrase: "shopify", weight: 15, category: "Technical VA Request" },
+  { phrase: "wordpress", weight: 15, category: "Technical VA Request" },
+  { phrase: "canva", weight: 15, category: "Technical VA Request" },
+  { phrase: "mailchimp", weight: 15, category: "Technical VA Request" },
+  { phrase: "amazon fba", weight: 15, category: "Technical VA Request" },
+  { phrase: "podcast editing", weight: 15, category: "Technical VA Request" },
+  { phrase: "video editing", weight: 15, category: "Technical VA Request" },
+  { phrase: "content writing", weight: 15, category: "Technical VA Request" },
+  { phrase: "lead generation", weight: 15, category: "Technical VA Request" },
 ];
 
 const NEGATIVE_SIGNALS: NegativeSignal[] = [
@@ -129,6 +163,8 @@ const NEGATIVE_SIGNALS: NegativeSignal[] = [
   { phrase: "i am a virtual assistant", weight: -40 },
   { phrase: "looking for va work", weight: -40 },
   { phrase: "i'm looking for a va job", weight: -40 },
+  { phrase: "experienced virtual assistant", weight: -40 },
+  { phrase: "certified virtual assistant", weight: -40 },
   { phrase: "[for hire]", weight: -40 },
 
   // Self-promotion (-30)
@@ -144,6 +180,12 @@ const NEGATIVE_SIGNALS: NegativeSignal[] = [
   { phrase: "i can be your va", weight: -30 },
   { phrase: "my services include", weight: -30 },
   { phrase: "services i offer", weight: -30 },
+  { phrase: "accepting new clients", weight: -30 },
+  { phrase: "i offer virtual assistant", weight: -30 },
+  { phrase: "i specialize in", weight: -25 },
+  { phrase: "book a discovery call", weight: -25 },
+  { phrase: "check out my portfolio", weight: -25 },
+  { phrase: "years of experience as a va", weight: -30 },
   { phrase: "dm me for", weight: -20 },
   { phrase: "dm for rates", weight: -20 },
 ];

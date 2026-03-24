@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.scrapeReddit = scrapeReddit;
 const crawlee_1 = require("crawlee");
 const config_1 = require("../config");
+const backendClient_1 = require("../api/backendClient");
 const storage_1 = require("../crawler/storage");
 const dateHelpers_1 = require("../utils/dateHelpers");
 const browserArgs_1 = require("./browserArgs");
@@ -21,18 +22,21 @@ async function scrapeReddit() {
     const errors = [];
     const seen = new Set();
     const subreddits = config_1.config.targets.redditSubreddits;
-    // Use primary high-intent search terms for Reddit search
-    // These are compact enough to not overwhelm Reddit's search API
-    const searchTerms = [
-        "hiring virtual assistant",
-        "need a VA",
-        "looking for virtual assistant",
-        "hire VA",
-        "hiring remote assistant",
-        "need admin support",
-        "hiring appointment setter",
-        "[hiring]",
-    ];
+    // Use dynamic keywords from /settings page, fallback to hardcoded defaults
+    const cached = (0, backendClient_1.getCachedKeywords)();
+    const highIntent = cached?.scoringConfig?.high_intent;
+    const searchTerms = highIntent?.length
+        ? highIntent.slice(0, 15) // Limit to top 15 to not overwhelm Reddit search API
+        : [
+            "hiring virtual assistant",
+            "need a VA",
+            "looking for virtual assistant",
+            "hire VA",
+            "hiring remote assistant",
+            "need admin support",
+            "hiring appointment setter",
+            "[hiring]",
+        ];
     // Build URLs: search within each subreddit using www.reddit.com
     const urls = [];
     for (const sub of subreddits) {

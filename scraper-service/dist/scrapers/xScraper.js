@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.scrapeX = scrapeX;
 const crawlee_1 = require("crawlee");
 const config_1 = require("../config");
+const backendClient_1 = require("../api/backendClient");
 const storage_1 = require("../crawler/storage");
 const browserArgs_1 = require("./browserArgs");
 /**
@@ -18,7 +19,8 @@ async function scrapeX() {
     const errors = [];
     const seen = new Set();
     (0, storage_1.useStorageDir)("x");
-    const queries = config_1.config.targets.xSearchQueries;
+    const cached = (0, backendClient_1.getCachedKeywords)();
+    const queries = cached?.searchQueries?.length ? cached.searchQueries : config_1.config.targets.xSearchQueries;
     // Google dork: site:x.com "query" — last week
     const urls = queries.map((q) => `https://www.google.com/search?q=site:x.com+"${encodeURIComponent(q)}"&tbs=qdr:w&num=20`);
     const crawler = new crawlee_1.PlaywrightCrawler({

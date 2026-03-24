@@ -22,7 +22,7 @@ import {
   isRunning,
 } from "./crawler/crawlerManager";
 import { scrapeUrl } from "./scrapers";
-import { sendLeadsBatch } from "./api/backendClient";
+import { sendLeadsBatch, fetchKeywords } from "./api/backendClient";
 import { sendErrorAlert, sendNewLeadsAlert } from "./alerts/discord";
 import { loginAndSave, hasSavedCookies } from "./crawler/browserAuth";
 import { filterPosts } from "./utils/postFilter";
@@ -72,6 +72,9 @@ app.post("/api/run", async (req, res) => {
   console.log("[api] Manual full run triggered");
   res.json({ message: "Scraper run started", startedAt: new Date().toISOString() });
 
+  // Refresh keywords from /settings before each run
+  fetchKeywords(true).catch(() => {});
+
   runAllPlatforms().catch((err) =>
     console.error("[api] Full run failed:", err)
   );
@@ -102,6 +105,9 @@ app.post("/api/run/:platform", async (req, res) => {
     message: `${platform} scraper run started`,
     startedAt: new Date().toISOString(),
   });
+
+  // Refresh keywords from /settings before each run
+  fetchKeywords(true).catch(() => {});
 
   runPlatform(platform).catch((err) =>
     console.error(`[api] ${platform} run failed:`, err)
@@ -142,6 +148,9 @@ app.post("/api/scrape-url", async (req, res) => {
   }
 
   console.log(`[api] Scrape URL triggered: ${rawUrls.length} URL(s)`);
+
+  // Refresh keywords from /settings before scraping
+  await fetchKeywords(true).catch(() => {});
 
   const items: UrlScrapeItemResult[] = [];
 
@@ -512,6 +521,17 @@ app.listen(config.port, () => {
   Backend:   ${config.backendApiUrl}
   Headless:  ${config.headless}
   `);
+
+  // Fetch user-configured keywords from /settings page before starting scrapers
+  fetchKeywords().then((kw) => {
+    if (kw) {
+      console.log(`  Keywords: ${kw.searchQueries.length} search queries loaded from /settings`);
+    } else {
+      console.log("  Keywords: using env var defaults (backend unreachable or empty)");
+    }
+  }).catch(() => {
+    console.log("  Keywords: using env var defaults (fetch failed)");
+  });
 
   startScheduler();
   initUrlScheduler();

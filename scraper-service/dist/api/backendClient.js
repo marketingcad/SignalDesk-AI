@@ -3,6 +3,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.fetchKeywords = fetchKeywords;
+exports.getCachedKeywords = getCachedKeywords;
 exports.sendLeadsBatch = sendLeadsBatch;
 const axios_1 = __importDefault(require("axios"));
 const config_1 = require("../config");
@@ -15,6 +17,40 @@ const client = axios_1.default.create({
         "X-Source": "signaldesk-scraper",
     },
 });
+/** Cached keywords — refreshed on each scraper run */
+let cachedKeywords = null;
+/**
+ * Fetch user-configured keywords from the backend.
+ * The scraper uses these for search queries, Google dorks, and post filtering.
+ * Falls back to env var defaults if the backend is unreachable.
+ */
+async function fetchKeywords(forceRefresh = false) {
+    if (cachedKeywords && !forceRefresh)
+        return cachedKeywords;
+    try {
+        console.log("[backend] Fetching keywords from /api/keywords/search-queries...");
+        const { data } = await client.get("/api/keywords/search-queries");
+        if (data?.searchQueries?.length > 0) {
+            cachedKeywords = data;
+            console.log(`[backend] Keywords loaded: ${data.searchQueries.length} search queries, ${data.negativeKeywords.length} negative`);
+            return cachedKeywords;
+        }
+        console.warn("[backend] No keywords returned from API — using env var defaults");
+        return null;
+    }
+    catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(`[backend] Failed to fetch keywords: ${message} — using env var defaults`);
+        return null;
+    }
+}
+/** Get cached keywords (non-async, for use inside scrapers after initial fetch) */
+function getCachedKeywords() {
+    return cachedKeywords;
+}
+// ---------------------------------------------------------------------------
+// Batch lead submission
+// ---------------------------------------------------------------------------
 async function sendLeadsBatch(posts) {
     if (posts.length === 0) {
         console.log("[backend] No posts to send");

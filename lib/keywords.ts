@@ -4,12 +4,16 @@
 // HIRING_KEYWORDS: Someone is looking to HIRE a VA (these are leads)
 // SEEKING_KEYWORDS: A VA is looking for WORK (reject these)
 //
+// These serve as DEFAULT seed data when the Supabase `keywords` table is empty.
+// Users can customize keywords from the /settings page — those DB keywords
+// take priority over these static lists everywhere in the system.
+//
 // IMPORTANT: Check SEEKING first — a post advertising VA services may also
 // contain hiring-related words. Seeking takes priority to avoid false leads.
 // ---------------------------------------------------------------------------
 
 export const HIRING_KEYWORDS: string[] = [
-  // ── A. Direct Hiring Intent (+40) ──────────────────────────────────
+  // ── A. Direct Hiring Intent (high_intent) ─────────────────────────
   "looking for a virtual assistant",
   "looking for a va",
   "hiring a virtual assistant",
@@ -26,6 +30,7 @@ export const HIRING_KEYWORDS: string[] = [
   "virtual assistant needed",
   "va needed",
   "hiring remote assistant",
+  "hiring executive assistant",
   "hiring executive assistant remote",
   "hiring ghl va",
   "hiring gohighlevel va",
@@ -42,8 +47,29 @@ export const HIRING_KEYWORDS: string[] = [
   "hiring immediately va",
   "urgent va hire",
   "outsourcing admin work",
+  "looking for an online assistant",
+  "looking for a remote assistant",
+  "hiring online assistant",
+  "need a remote worker",
+  "hiring part time va",
+  "hiring full time va",
+  "looking for a filipino va",
+  "hiring filipino virtual assistant",
+  "need a bookkeeping va",
+  "hiring ecommerce va",
+  "hiring amazon va",
+  "hiring shopify va",
+  "hiring etsy va",
+  "hiring podcast va",
+  "hiring video editing va",
+  "hiring content writer va",
+  "hiring lead generation va",
+  "need someone for data entry",
+  "need someone for customer service",
+  "looking for someone to manage my social media",
+  "need someone to run my ads",
 
-  // ── B. Recommendation Requests ─────────────────────────────────────
+  // ── B. Recommendation / Research Requests (medium_intent) ─────────
   "any va recommendations",
   "who can recommend a virtual assistant",
   "recommend a good va",
@@ -61,16 +87,38 @@ export const HIRING_KEYWORDS: string[] = [
   "considering hiring a va",
   "should i hire a va",
   "has anyone hired a va",
+  "best place to find a va",
+  "va agency recommendations",
+  "virtual assistant agency",
+  "onlinejobs.ph",
+  "how to find a good va",
+  "tips for hiring a va",
 
-  // ── D. Overwhelm / Delegation Signals ──────────────────────────────
+  // ── C. Overwhelm / Delegation Signals (medium_intent) ─────────────
   "need extra help in my business",
   "overwhelmed with admin",
   "drowning in tasks",
   "too many client messages",
   "need support in my business",
   "scaling my business and need help",
+  "need to delegate tasks",
+  "spending too much time on admin",
+  "can't keep up with emails",
+  "need help managing my calendar",
 
-  // Reddit tag
+  // ── D. Tool/Skill-Based Hiring Triggers (medium_intent) ───────────
+  "need va for gohighlevel",
+  "need va for clickfunnels",
+  "need va for hubspot",
+  "need va for salesforce",
+  "need va for zapier",
+  "need va for quickbooks",
+  "need va for shopify",
+  "need va for wordpress",
+  "need va for canva",
+  "need va for mailchimp",
+
+  // ── E. Platform Tags ──────────────────────────────────────────────
   "[hiring]",
 ];
 
@@ -81,6 +129,8 @@ export const SEEKING_KEYWORDS: string[] = [
   "i'm a va",
   "i am a va",
   "freelance va here",
+  "experienced virtual assistant",
+  "certified virtual assistant",
 
   // Offering services
   "offering va services",
@@ -99,6 +149,12 @@ export const SEEKING_KEYWORDS: string[] = [
   "services i offer",
   "dm me for",
   "dm for rates",
+  "accepting new clients",
+  "i offer virtual assistant",
+  "i specialize in",
+  "book a discovery call",
+  "check out my portfolio",
+  "years of experience as a va",
 
   // Reddit tag
   "[for hire]",

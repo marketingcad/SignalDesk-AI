@@ -6,9 +6,26 @@ exports.matchKeywords = matchKeywords;
 exports.scrapeUrl = scrapeUrl;
 const playwright_1 = require("playwright");
 const config_1 = require("../config");
+const backendClient_1 = require("../api/backendClient");
 const browserAuth_1 = require("../crawler/browserAuth");
 const dateHelpers_1 = require("../utils/dateHelpers");
 const browserArgs_1 = require("./browserArgs");
+/**
+ * Get search keywords for a platform — uses /settings page keywords (via backend API)
+ * with fallback to env var config defaults.
+ */
+function getSearchKeywords(platform) {
+    const cached = (0, backendClient_1.getCachedKeywords)();
+    if (cached && cached.searchQueries.length > 0) {
+        return cached.searchQueries;
+    }
+    // Fallback to env var defaults
+    switch (platform) {
+        case "facebook": return config_1.config.targets.facebookSearchQueries;
+        case "linkedin": return config_1.config.targets.linkedinSearchQueries;
+        case "x": return config_1.config.targets.xSearchQueries;
+    }
+}
 // ---------------------------------------------------------------------------
 // Detect platform from a URL
 // ---------------------------------------------------------------------------
@@ -188,7 +205,7 @@ function parseGraphQLResponseBody(body, baseUrl) {
 // ---------------------------------------------------------------------------
 // Facebook: keyword / NLP matching
 // ---------------------------------------------------------------------------
-const DEFAULT_KEYWORDS = config_1.config.targets.facebookSearchQueries;
+const DEFAULT_KEYWORDS = getSearchKeywords("facebook");
 /**
  * Check if a post's text matches any of the given keywords.
  * Uses case-insensitive substring + word-boundary matching for accuracy.
@@ -943,7 +960,7 @@ async function extractLinkedin(page) {
         const oldCount = withTs.filter((p) => (0, dateHelpers_1.isOlderThanCurrentWeek)(p.resolvedTs)).length;
         console.log(`[url-scraper] LinkedIn API: ${deduped.length} unique posts, ${currentWeek.length} current week, ${oldCount} older (skipped)`);
         // ── Step 4: Keyword/NLP filtering ──
-        const keywords = config_1.config.targets.linkedinSearchQueries;
+        const keywords = getSearchKeywords("linkedin");
         const keywordFiltered = currentWeek.map((p) => ({
             ...p,
             matchedKeywords: matchKeywords(p.text, keywords),
@@ -1219,7 +1236,7 @@ async function extractX(page) {
         const oldCount = withTs.filter((t) => (0, dateHelpers_1.isOlderThanCurrentWeek)(t.resolvedTs)).length;
         console.log(`[url-scraper] X GraphQL: ${deduped.length} unique tweets, ${currentWeek.length} current week, ${oldCount} older (skipped)`);
         // ── Step 4: Keyword/NLP filtering ──
-        const keywords = config_1.config.targets.xSearchQueries;
+        const keywords = getSearchKeywords("x");
         const keywordFiltered = currentWeek.map((t) => ({
             ...t,
             matchedKeywords: matchKeywords(t.text, keywords),

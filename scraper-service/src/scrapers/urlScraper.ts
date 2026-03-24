@@ -1,10 +1,28 @@
 import { chromium } from "playwright";
 import type { Page, Response as PlaywrightResponse } from "playwright";
 import { config } from "../config";
+import { getCachedKeywords } from "../api/backendClient";
 import { hasSavedCookies, getProfileDir, getStorageState, shouldUseStorageState } from "../crawler/browserAuth";
 import { isCurrentWeek, isOlderThanCurrentWeek, resolveTimestamp } from "../utils/dateHelpers";
 import type { Platform, ScrapedPost, ScrapeResult } from "../types";
 import { BROWSER_ARGS } from "./browserArgs";
+
+/**
+ * Get search keywords for a platform — uses /settings page keywords (via backend API)
+ * with fallback to env var config defaults.
+ */
+function getSearchKeywords(platform: "facebook" | "linkedin" | "x"): string[] {
+  const cached = getCachedKeywords();
+  if (cached && cached.searchQueries.length > 0) {
+    return cached.searchQueries;
+  }
+  // Fallback to env var defaults
+  switch (platform) {
+    case "facebook": return config.targets.facebookSearchQueries;
+    case "linkedin": return config.targets.linkedinSearchQueries;
+    case "x": return config.targets.xSearchQueries;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Detect platform from a URL
@@ -207,7 +225,7 @@ function parseGraphQLResponseBody(body: string, baseUrl: string): GraphQLPost[] 
 // Facebook: keyword / NLP matching
 // ---------------------------------------------------------------------------
 
-const DEFAULT_KEYWORDS = config.targets.facebookSearchQueries;
+const DEFAULT_KEYWORDS = getSearchKeywords("facebook");
 
 /**
  * Check if a post's text matches any of the given keywords.
@@ -1062,7 +1080,7 @@ async function extractLinkedin(page: Page): Promise<Omit<ScrapedPost, "platform"
     console.log(`[url-scraper] LinkedIn API: ${deduped.length} unique posts, ${currentWeek.length} current week, ${oldCount} older (skipped)`);
 
     // ── Step 4: Keyword/NLP filtering ──
-    const keywords = config.targets.linkedinSearchQueries;
+    const keywords = getSearchKeywords("linkedin");
     const keywordFiltered = currentWeek.map((p) => ({
       ...p,
       matchedKeywords: matchKeywords(p.text, keywords),
@@ -1386,7 +1404,7 @@ async function extractX(page: Page): Promise<Omit<ScrapedPost, "platform" | "sou
     console.log(`[url-scraper] X GraphQL: ${deduped.length} unique tweets, ${currentWeek.length} current week, ${oldCount} older (skipped)`);
 
     // ── Step 4: Keyword/NLP filtering ──
-    const keywords = config.targets.xSearchQueries;
+    const keywords = getSearchKeywords("x");
     const keywordFiltered = currentWeek.map((t) => ({
       ...t,
       matchedKeywords: matchKeywords(t.text, keywords),

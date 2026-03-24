@@ -40,7 +40,7 @@ Lead intelligence dashboard for **Virtual Assistant hiring detection**. Scrapes 
    - **Scraper Service** — Playwright + Crawlee crawlers run on a cron schedule
    - **Apify Service** — Cloud-hosted Apify actors scrape at scale
 2. **Pre-filter** — Self-promotion and job-seeking posts are rejected using negative keyword matching before they reach the backend
-3. **Score** — Every qualifying post is scored (0-100) by a weighted keyword engine in [`lib/intent-scoring.ts`](lib/intent-scoring.ts), optionally enhanced by Google Gemini AI analysis via [`lib/ai-lead-qualifier.ts`](lib/ai-lead-qualifier.ts)
+3. **Score** — Every qualifying post is scored (0-100) by a weighted keyword engine in [`lib/intent-scoring.ts`](lib/intent-scoring.ts), using **user-customizable keywords from the Settings page** (stored in Supabase), optionally enhanced by Google Gemini AI analysis via [`lib/ai-lead-qualifier.ts`](lib/ai-lead-qualifier.ts)
 4. **Deduplicate** — Posts are deduplicated by URL and content hash to prevent duplicates across sources
 5. **Store** — Leads are saved to Supabase with score, category, matched keywords, and AI qualification data
 6. **Alert** — Leads scoring **>= 65** trigger a Discord notification via the Smart Alert Engine in [`lib/alert-engine.ts`](lib/alert-engine.ts)
@@ -130,9 +130,53 @@ Integrates with Apify's cloud scraping platform for managed, scalable scraping:
 
 ---
 
+## Dynamic Keywords System
+
+All keywords used throughout the system — for scraping, search queries, Google dorks, scoring, and filtering — are **fully customizable from the Settings page**. Keywords are stored in the Supabase `keywords` table and organized into three categories:
+
+| Category | Score Weight | Purpose |
+|----------|-------------|---------|
+| **Primary (high_intent)** | +40 | Direct hiring phrases — strongest lead signals |
+| **Secondary (medium_intent)** | +20 | Recommendation requests, budget inquiries, delegation signals |
+| **Negative** | -40 | Job seekers, self-promotion — reject these posts |
+
+### How Keywords Flow Through the System
+
+```
+  /settings page (UI)
+        │
+        ▼
+  Supabase `keywords` table
+        │
+        ├──► /api/keywords/search-queries ──► Scraper Service
+        │         (search queries,              ├─ Google dorks (Facebook, LinkedIn, X)
+        │          negative keywords,            ├─ Facebook search URLs
+        │          scoring config)               ├─ Reddit search queries
+        │                                        └─ Post keyword filtering
+        │
+        └──► /api/leads/batch ──► DynamicScoringConfig
+                                    ├─ AI lead qualifier (keyword fallback)
+                                    └─ Intent scoring engine
+```
+
+- **Scraper Service** fetches keywords from `/api/keywords/search-queries` on startup and before every run
+- **Batch processing** builds a `DynamicScoringConfig` from DB keywords for scoring
+- **Static defaults** in [`lib/keywords.ts`](lib/keywords.ts) are used as fallback when the DB is empty
+- Users can **add/remove keywords at any time** from the Settings page — changes take effect on the next scraper run
+
+### Adding/Removing Keywords
+
+1. Navigate to **Settings** → **Keywords**
+2. Click **Add** next to any category (Primary, Secondary, Negative)
+3. Type a keyword or phrase and press Enter
+4. Hover over any keyword chip and click **×** to remove it
+5. Changes are saved immediately to Supabase and picked up by the scraper on the next run
+
+---
+
 ## Intent Scoring Engine
 
-Every post is scored 0-100 by a weighted keyword engine. The score determines the **intent level** and whether a Discord alert is sent.
+Every post is scored 0-100 by a weighted keyword engine. The score determines the **intent level** and whether a Discord alert is sent. The scoring engine uses **dynamic keywords from the Settings page** when available, falling back to built-in defaults.
 
 ### Intent Levels
 
@@ -150,19 +194,19 @@ The score is the sum of **positive signals**, **negative signals**, and **bonuse
 
 | Category | Weight | Example Keywords |
 |----------|--------|-----------------|
-| Direct Hiring Intent | **+40** | "hiring a virtual assistant", "hire a va", "need a va", "outsourcing admin work" |
+| Direct Hiring Intent | **+40** | "hiring a virtual assistant", "hire a va", "need a va", "hiring shopify va", "hiring lead generation va" |
 | Urgency Boosters | **+20** | "hiring immediately", "urgent va hire", "asap" |
-| Recommendation Requests | **+20** | "any va recommendations", "where to find a va", "should i hire a va" |
+| Recommendation Requests | **+20** | "any va recommendations", "where to find a va", "should i hire a va", "best place to find a va" |
 | Budget / Pricing Inquiries | **+20** | "how much does a va cost", "virtual assistant rates" |
-| Overwhelm / Delegation Signals | **+15** | "overwhelmed with admin", "drowning in tasks", "scaling my business" |
-| Tool / Skill Triggers | **+15** | "gohighlevel", "hubspot", "zapier", "crm setup", "funnel building" |
+| Overwhelm / Delegation Signals | **+15** | "overwhelmed with admin", "drowning in tasks", "need to delegate tasks", "can't keep up with emails" |
+| Tool / Skill Triggers | **+15** | "gohighlevel", "hubspot", "zapier", "shopify", "wordpress", "canva", "mailchimp", "amazon fba" |
 
 #### Negative Signals
 
 | Category | Weight | Example Keywords |
 |----------|--------|-----------------|
-| Job Seeker | **-40** | "i am looking for a va job", "i'm a virtual assistant" |
-| Self-Promotion | **-30** | "offering va services", "hire me", "available for hire" |
+| Job Seeker | **-40** | "i am looking for a va job", "i'm a virtual assistant", "experienced virtual assistant" |
+| Self-Promotion | **-30** | "offering va services", "hire me", "available for hire", "accepting new clients", "book a discovery call" |
 | DM Solicitation | **-20** | "dm me for", "dm for rates" |
 
 #### Bonuses
@@ -230,6 +274,14 @@ JWT-based session authentication:
 | GET | `/api/dashboard/chart` | Time-series lead counts |
 | GET | `/api/dashboard/platform-counts` | Leads by platform breakdown |
 | GET | `/api/dashboard/geography` | Leads by country |
+
+### Keywords
+| Method | Route | Description |
+|--------|-------|-------------|
+| GET | `/api/keywords` | Get keywords grouped by category (DB → static fallback) |
+| POST | `/api/keywords` | Add a keyword to a category |
+| DELETE | `/api/keywords` | Remove a keyword from a category |
+| GET | `/api/keywords/search-queries` | Get keywords formatted for scraper (search queries + scoring config) |
 
 ### Webhooks
 | Method | Route | Description |
@@ -301,7 +353,7 @@ Discord alerts are managed by the **Smart Alert Engine** in [`lib/alert-engine.t
 | **Alerts** | Real-time high-intent alerts feed |
 | **Reports** | Daily/weekly lead reporting |
 | **Scrape URL** | Manual URL scraping interface |
-| **Settings** | Platform toggles, keywords, Discord webhook config, notification preferences |
+| **Settings** | Platform toggles, **customizable keywords** (primary/secondary/negative), alert threshold, scoring rules |
 | **Users** | User management (admin only) |
 
 ---
@@ -316,6 +368,13 @@ Core table storing all detected leads:
 - `engagement`, `location`, `detected_at`
 - `ai_qualification` (JSONB from Gemini analysis)
 - Unique constraint on `url`; indexes on platform, intent, status, score
+
+### keywords
+User-customizable keywords managed from the Settings page:
+- `id`, `keyword`, `category` (`high_intent`, `medium_intent`, `negative`), `created_at`
+- Used by the scraper service for search queries, Google dorks, and post filtering
+- Used by the scoring engine via `DynamicScoringConfig` for lead qualification
+- Falls back to static defaults in [`lib/keywords.ts`](lib/keywords.ts) when empty
 
 ### facebook_post_logs
 Audit trail for Facebook webhook events: post_id, author, message, classification, notified flag.

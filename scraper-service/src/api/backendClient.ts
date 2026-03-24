@@ -28,6 +28,61 @@ export interface BatchResponse {
   }>;
 }
 
+// ---------------------------------------------------------------------------
+// Keyword config — fetched from /settings page keywords (Supabase)
+// ---------------------------------------------------------------------------
+
+export interface KeywordConfig {
+  searchQueries: string[];
+  negativeKeywords: string[];
+  scoringConfig: {
+    high_intent: string[];
+    medium_intent: string[];
+    negative: string[];
+  };
+}
+
+/** Cached keywords — refreshed on each scraper run */
+let cachedKeywords: KeywordConfig | null = null;
+
+/**
+ * Fetch user-configured keywords from the backend.
+ * The scraper uses these for search queries, Google dorks, and post filtering.
+ * Falls back to env var defaults if the backend is unreachable.
+ */
+export async function fetchKeywords(forceRefresh = false): Promise<KeywordConfig | null> {
+  if (cachedKeywords && !forceRefresh) return cachedKeywords;
+
+  try {
+    console.log("[backend] Fetching keywords from /api/keywords/search-queries...");
+    const { data } = await client.get<KeywordConfig>("/api/keywords/search-queries");
+
+    if (data?.searchQueries?.length > 0) {
+      cachedKeywords = data;
+      console.log(
+        `[backend] Keywords loaded: ${data.searchQueries.length} search queries, ${data.negativeKeywords.length} negative`
+      );
+      return cachedKeywords;
+    }
+
+    console.warn("[backend] No keywords returned from API — using env var defaults");
+    return null;
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[backend] Failed to fetch keywords: ${message} — using env var defaults`);
+    return null;
+  }
+}
+
+/** Get cached keywords (non-async, for use inside scrapers after initial fetch) */
+export function getCachedKeywords(): KeywordConfig | null {
+  return cachedKeywords;
+}
+
+// ---------------------------------------------------------------------------
+// Batch lead submission
+// ---------------------------------------------------------------------------
+
 export async function sendLeadsBatch(
   posts: ScrapedPost[]
 ): Promise<BatchResponse | null> {

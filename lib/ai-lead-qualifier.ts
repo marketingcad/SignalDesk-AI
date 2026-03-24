@@ -5,7 +5,7 @@ import type {
   IntentCategory,
   AIQualificationResult,
 } from "./types";
-import { scoreIntent, type ScoringResult } from "./intent-scoring";
+import { scoreIntent, type ScoringResult, type DynamicScoringConfig } from "./intent-scoring";
 
 // ---------------------------------------------------------------------------
 // Google Gemini AI Lead Qualification Agent
@@ -469,13 +469,16 @@ export interface QualifyResult {
   source: "ai" | "keyword";
 }
 
-export async function qualifyLead(input: {
-  platform: Platform;
-  author: string;
-  text: string;
-  url: string;
-  engagement: number;
-}): Promise<QualifyResult> {
+export async function qualifyLead(
+  input: {
+    platform: Platform;
+    author: string;
+    text: string;
+    url: string;
+    engagement: number;
+  },
+  dynamicConfig?: DynamicScoringConfig
+): Promise<QualifyResult> {
   console.log(`[ai-lead-qualifier] 🔄 Starting qualification for "${input.author}" (${input.platform})`);
 
   const aiQualification = await qualifyLeadWithAI({
@@ -495,13 +498,12 @@ export async function qualifyLead(input: {
     };
   }
 
-  // Fallback to keyword-based scoring
+  // Fallback to keyword-based scoring — uses dynamic config from /settings keywords if available
   console.log("[ai-lead-qualifier] ⚠️ AI unavailable — falling back to keyword scoring");
-  const scoring = scoreIntent({
-    text: input.text,
-    engagement: input.engagement,
-    platform: input.platform,
-  });
+  const scoring = scoreIntent(
+    { text: input.text, engagement: input.engagement, platform: input.platform },
+    dynamicConfig
+  );
   console.log(`[ai-lead-qualifier] 📊 Keyword score: ${scoring.score}/100 (${scoring.level})`);
 
   return { scoring, aiResult: null, source: "keyword" };
@@ -525,7 +527,8 @@ export async function qualifyLeadsBatch(
     text: string;
     url: string;
     engagement: number;
-  }>
+  }>,
+  dynamicConfig?: DynamicScoringConfig
 ): Promise<QualifyResult[]> {
   const results: QualifyResult[] = new Array(inputs.length);
   const totalChunks = Math.ceil(inputs.length / CHUNK_SIZE);
@@ -540,9 +543,9 @@ export async function qualifyLeadsBatch(
 
     console.log(`[ai-lead-qualifier] Chunk ${chunkIndex}/${totalChunks} — ${chunk.length} leads`);
 
-    // Process chunk concurrently
+    // Process chunk concurrently — pass dynamic scoring config from /settings keywords
     const chunkResults = await Promise.all(
-      chunk.map((input) => qualifyLead(input))
+      chunk.map((input) => qualifyLead(input, dynamicConfig))
     );
 
     for (let j = 0; j < chunkResults.length; j++) {

@@ -4,6 +4,7 @@ import { qualifyLeadsBatch } from "@/lib/ai-lead-qualifier";
 import { supabase } from "@/lib/supabase";
 import { alertEngine } from "@/lib/alert-engine";
 import { HIRING_KEYWORDS } from "@/lib/keywords";
+import type { DynamicScoringConfig, WeightedKeyword, NegativeSignal } from "@/lib/intent-scoring";
 import type { Platform, AIQualificationResult } from "@/lib/types";
 
 interface IncomingPost {
@@ -76,20 +77,40 @@ export async function POST(request: NextRequest) {
   const dupCount = existingUrlMap.size + existingTextMap.size;
   console.log(`[leads/batch] ${dupCount} duplicates found (${existingUrlMap.size} by URL, ${existingTextMap.size} by content)`);
 
-  // --- Load user keywords (DB first, fallback to static) ---
+  // --- Load user keywords from DB (Settings page) → build DynamicScoringConfig ---
   let userKeywords: string[] = [];
+  let dynamicScoringConfig: DynamicScoringConfig | undefined;
+
   const { data: dbKeywords } = await supabase
     .from("keywords")
     .select("keyword, category")
     .order("created_at", { ascending: true });
 
   if (dbKeywords && dbKeywords.length > 0) {
-    // Only use positive keywords (high_intent + medium_intent) for matching
-    userKeywords = dbKeywords
-      .filter((k: { category: string }) => k.category === "high_intent" || k.category === "medium_intent")
-      .map((k: { keyword: string }) => k.keyword.toLowerCase());
+    const positiveSignals: WeightedKeyword[] = [];
+    const negativeSignals: NegativeSignal[] = [];
+
+    for (const row of dbKeywords) {
+      const kw = row.keyword.toLowerCase();
+      switch (row.category) {
+        case "high_intent":
+          positiveSignals.push({ phrase: kw, weight: 40, category: "Direct Hiring" });
+          userKeywords.push(kw);
+          break;
+        case "medium_intent":
+          positiveSignals.push({ phrase: kw, weight: 20, category: "Recommendation Request" });
+          userKeywords.push(kw);
+          break;
+        case "negative":
+          negativeSignals.push({ phrase: kw, weight: -40 });
+          break;
+      }
+    }
+
+    dynamicScoringConfig = { positiveSignals, negativeSignals };
+    console.log(`[leads/batch] Built DynamicScoringConfig from DB: ${positiveSignals.length} positive, ${negativeSignals.length} negative signals`);
   } else {
-    // Fallback to static hiring keywords
+    // Fallback to static hiring keywords (no DynamicScoringConfig → uses hardcoded defaults)
     userKeywords = HIRING_KEYWORDS.map((kw) => kw.toLowerCase());
   }
 
@@ -152,7 +173,8 @@ export async function POST(request: NextRequest) {
         text: post.text,
         url: post.url,
         engagement: post.engagement || 0,
-      }))
+      })),
+      dynamicScoringConfig
     );
 
     for (let i = 0; i < validPosts.length; i++) {

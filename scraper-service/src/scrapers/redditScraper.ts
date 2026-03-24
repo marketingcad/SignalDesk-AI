@@ -1,5 +1,6 @@
 import { PlaywrightCrawler } from "crawlee";
 import { config } from "../config";
+import { getCachedKeywords } from "../api/backendClient";
 import { useStorageDir, cleanStorage } from "../crawler/storage";
 import { isOlderThanCurrentWeek, resolveTimestamp } from "../utils/dateHelpers";
 import type { ScrapedPost, ScrapeResult } from "../types";
@@ -22,18 +23,21 @@ export async function scrapeReddit(): Promise<ScrapeResult> {
 
   const subreddits = config.targets.redditSubreddits;
 
-  // Use primary high-intent search terms for Reddit search
-  // These are compact enough to not overwhelm Reddit's search API
-  const searchTerms = [
-    "hiring virtual assistant",
-    "need a VA",
-    "looking for virtual assistant",
-    "hire VA",
-    "hiring remote assistant",
-    "need admin support",
-    "hiring appointment setter",
-    "[hiring]",
-  ];
+  // Use dynamic keywords from /settings page, fallback to hardcoded defaults
+  const cached = getCachedKeywords();
+  const highIntent = cached?.scoringConfig?.high_intent;
+  const searchTerms = highIntent?.length
+    ? highIntent.slice(0, 15) // Limit to top 15 to not overwhelm Reddit search API
+    : [
+        "hiring virtual assistant",
+        "need a VA",
+        "looking for virtual assistant",
+        "hire VA",
+        "hiring remote assistant",
+        "need admin support",
+        "hiring appointment setter",
+        "[hiring]",
+      ];
 
   // Build URLs: search within each subreddit using www.reddit.com
   const urls: string[] = [];
