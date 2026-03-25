@@ -40,14 +40,14 @@ export default function DashboardPage() {
     "/api/leads?intentLevel=High&limit=5",
     { leads: [], count: 0 }
   );
-  const { data: alertLeads } = useApi<Lead[]>(
+  const { data: alertResponse } = useApi<{ leads: Lead[]; total: number }>(
     "/api/alerts?limit=4",
-    []
+    { leads: [], total: 0 }
   );
 
   const dashboardStats = stats;
   const recentLeads = leadsResponse.leads?.slice(0, 5) ?? [];
-  const recentAlerts = (alertLeads ?? []).slice(0, 4).map((lead) => ({
+  const recentAlerts = (alertResponse.leads ?? []).slice(0, 4).map((lead) => ({
     id: lead.id,
     leadId: lead.id,
     platform: lead.platform,

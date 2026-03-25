@@ -76,17 +76,17 @@ export async function getLeads(filters?: {
   };
 }
 
-export async function getAlerts(limit = 20): Promise<Lead[]> {
-  const { data, error } = await supabase
+export async function getAlerts(limit = 20, offset = 0): Promise<{ leads: Lead[]; total: number }> {
+  const { data, error, count } = await supabase
     .from("leads")
-    .select("*")
+    .select("*", { count: "exact" })
     .gte("intent_score", 60)
     .neq("status", "Dismissed")
     .order("created_at", { ascending: false })
-    .limit(limit);
+    .range(offset, offset + limit - 1);
 
   if (error) throw error;
-  return (data || []).map(mapRow);
+  return { leads: (data || []).map(mapRow), total: count ?? 0 };
 }
 
 export async function getDashboardStats(): Promise<DashboardStats> {
@@ -227,17 +227,17 @@ export async function getDailyReports(days = 7): Promise<DailyReport[]> {
   return reports.reverse();
 }
 
-export async function getArchivedAlerts(limit = 20): Promise<Lead[]> {
-  const { data, error } = await supabase
+export async function getArchivedAlerts(limit = 20, offset = 0): Promise<{ leads: Lead[]; total: number }> {
+  const { data, error, count } = await supabase
     .from("leads")
-    .select("*")
+    .select("*", { count: "exact" })
     .gte("intent_score", 60)
     .eq("status", "Dismissed")
     .order("created_at", { ascending: false })
-    .limit(limit);
+    .range(offset, offset + limit - 1);
 
   if (error) throw error;
-  return (data || []).map(mapRow);
+  return { leads: (data || []).map(mapRow), total: count ?? 0 };
 }
 
 export async function deleteArchivedAlerts(): Promise<number> {

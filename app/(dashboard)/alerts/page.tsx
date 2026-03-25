@@ -19,6 +19,10 @@ import {
   Archive,
   Trash2,
   Loader2,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
 } from "lucide-react";
 
 type AlertItem = {
@@ -54,34 +58,46 @@ export default function AlertsPage() {
   const [archived, setArchived] = useState<AlertItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingArchived, setLoadingArchived] = useState(false);
-  const [tab, setTab] = useState<"all" | "unread" | "archived">("all");
+  const [tab, setTab] = useState<"all" | "unread" | "read" | "archived">("all");
   const [deleting, setDeleting] = useState<Record<string, boolean>>({});
   const [deletingAll, setDeletingAll] = useState(false);
 
+  // Pagination
+  const perPage = 20;
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [archivedPage, setArchivedPage] = useState(1);
+  const [archivedTotal, setArchivedTotal] = useState(0);
+
   // Fetch active alerts
   useEffect(() => {
-    fetch("/api/alerts?limit=50")
+    setLoading(true);
+    const offset = (currentPage - 1) * perPage;
+    fetch(`/api/alerts?limit=${perPage}&offset=${offset}`)
       .then((res) => (res.ok ? res.json() : null))
-      .then((leads: Lead[] | null) => {
-        if (leads && leads.length > 0) {
-          setAlerts(leads.map(leadToAlert));
+      .then((data: { leads?: Lead[]; total?: number } | null) => {
+        if (data) {
+          setAlerts((data.leads ?? []).map(leadToAlert));
+          setTotalCount(data.total ?? 0);
         }
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+  }, [currentPage]);
 
   // Fetch archived alerts when switching to archive tab
   const fetchArchived = useCallback(() => {
     setLoadingArchived(true);
-    fetch("/api/alerts?limit=50&archived=true")
+    const offset = (archivedPage - 1) * perPage;
+    fetch(`/api/alerts?limit=${perPage}&offset=${offset}&archived=true`)
       .then((res) => (res.ok ? res.json() : null))
-      .then((leads: Lead[] | null) => {
-        setArchived(leads ? leads.map(leadToAlert) : []);
+      .then((data: { leads?: Lead[]; total?: number } | null) => {
+        setArchived(data ? (data.leads ?? []).map(leadToAlert) : []);
+        setArchivedTotal(data?.total ?? 0);
       })
       .catch(() => {})
       .finally(() => setLoadingArchived(false));
-  }, []);
+  }, [archivedPage]);
 
   useEffect(() => {
     if (tab === "archived") fetchArchived();
@@ -111,6 +127,14 @@ export default function AlertsPage() {
   });
 
   const unreadCount = alerts.filter((a) => !a.read).length;
+  const readCount = alerts.filter((a) => a.read).length;
+  const isArchiveTab = tab === "archived";
+  const activeTotalPages = Math.max(1, Math.ceil(totalCount / perPage));
+  const archiveTotalPages = Math.max(1, Math.ceil(archivedTotal / perPage));
+  const totalPages = isArchiveTab ? archiveTotalPages : activeTotalPages;
+  const page = isArchiveTab ? archivedPage : currentPage;
+  const setPage = isArchiveTab ? setArchivedPage : setCurrentPage;
+  const count = isArchiveTab ? archivedTotal : totalCount;
 
   // --- Actions ---
 
@@ -203,9 +227,9 @@ export default function AlertsPage() {
       ? archived
       : tab === "unread"
         ? alerts.filter((a) => !a.read)
-        : alerts;
-
-  const isArchiveTab = tab === "archived";
+        : tab === "read"
+          ? alerts.filter((a) => a.read)
+          : alerts;
 
   return (
     <>
@@ -218,7 +242,7 @@ export default function AlertsPage() {
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-1 rounded-lg border border-border bg-card p-1">
             <button
-              onClick={() => setTab("all")}
+              onClick={() => { setTab("all"); setCurrentPage(1); }}
               className={cn(
                 "rounded-md px-3 py-1.5 text-xs font-medium transition-all",
                 tab === "all"
@@ -226,10 +250,10 @@ export default function AlertsPage() {
                   : "text-muted-foreground hover:text-foreground"
               )}
             >
-              All ({alerts.length})
+              All ({totalCount})
             </button>
             <button
-              onClick={() => setTab("unread")}
+              onClick={() => { setTab("unread"); setCurrentPage(1); }}
               className={cn(
                 "rounded-md px-3 py-1.5 text-xs font-medium transition-all",
                 tab === "unread"
@@ -240,7 +264,18 @@ export default function AlertsPage() {
               Unread ({unreadCount})
             </button>
             <button
-              onClick={() => setTab("archived")}
+              onClick={() => { setTab("read"); setCurrentPage(1); }}
+              className={cn(
+                "rounded-md px-3 py-1.5 text-xs font-medium transition-all",
+                tab === "read"
+                  ? "bg-accent text-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              Read ({readCount})
+            </button>
+            <button
+              onClick={() => { setTab("archived"); setArchivedPage(1); }}
               className={cn(
                 "rounded-md px-3 py-1.5 text-xs font-medium transition-all",
                 tab === "archived"
@@ -250,7 +285,7 @@ export default function AlertsPage() {
             >
               <span className="flex items-center gap-1">
                 <Archive className="h-3 w-3" />
-                Archived ({archived.length})
+                Archived ({archivedTotal})
               </span>
             </button>
           </div>
@@ -411,6 +446,83 @@ export default function AlertsPage() {
             </Card>
           ))}
         </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && displayed.length > 0 && (
+          <Card className="border-border bg-card px-4 py-3">
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-muted-foreground">
+                Showing {(page - 1) * perPage + 1}–{Math.min(page * perPage, count)} of {count} alerts
+              </p>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 w-8 p-0"
+                  disabled={page === 1}
+                  onClick={() => setPage(1)}
+                >
+                  <ChevronsLeft className="h-3.5 w-3.5" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 w-8 p-0"
+                  disabled={page === 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                </Button>
+
+                {Array.from({ length: totalPages }, (_, i) => i + 1)
+                  .filter((pg) => {
+                    if (totalPages <= 7) return true;
+                    if (pg === 1 || pg === totalPages) return true;
+                    return Math.abs(pg - page) <= 1;
+                  })
+                  .reduce<(number | "ellipsis")[]>((acc, pg, idx, arr) => {
+                    if (idx > 0 && pg - (arr[idx - 1] as number) > 1) acc.push("ellipsis");
+                    acc.push(pg);
+                    return acc;
+                  }, [])
+                  .map((item, idx) =>
+                    item === "ellipsis" ? (
+                      <span key={`e-${idx}`} className="px-1 text-xs text-muted-foreground">...</span>
+                    ) : (
+                      <Button
+                        key={item}
+                        variant={page === item ? "default" : "outline"}
+                        size="sm"
+                        className="h-8 w-8 p-0 text-xs"
+                        onClick={() => setPage(item)}
+                      >
+                        {item}
+                      </Button>
+                    )
+                  )}
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 w-8 p-0"
+                  disabled={page === totalPages}
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                >
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 w-8 p-0"
+                  disabled={page === totalPages}
+                  onClick={() => setPage(totalPages)}
+                >
+                  <ChevronsRight className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            </div>
+          </Card>
+        )}
 
         {/* Loading states */}
         {(loading || (isArchiveTab && loadingArchived)) && (

@@ -41,6 +41,7 @@ import {
   MoreHorizontal,
   ArrowUpRight,
   Globe,
+  Loader2,
 } from "lucide-react";
 
 type FilterPlatform = Platform | "All";
@@ -170,27 +171,52 @@ export default function LeadsPage() {
     });
   };
 
-  const handleExport = () => {
-    const headers = ["Username", "Platform", "Source", "Intent Score", "Intent Level", "Status", "Category", "URL", "Created At"];
-    const rows = filteredLeads.map((l) => [
-      l.username,
-      l.platform,
-      l.source,
-      l.intentScore,
-      l.intentLevel,
-      l.status,
-      l.intentCategory,
-      l.url || "",
-      new Date(l.createdAt).toISOString(),
-    ]);
-    const csv = [headers, ...rows].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `leads-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const [exporting, setExporting] = useState(false);
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      // Build the same filter params but fetch ALL matching leads (no limit/offset)
+      const params = new URLSearchParams();
+      if (platformFilter !== "All") params.set("platform", platformFilter);
+      if (intentFilter !== "All") params.set("intentLevel", intentFilter);
+      if (statusFilter !== "All") params.set("status", statusFilter);
+      if (searchQuery) params.set("search", searchQuery);
+      if (dateFrom) params.set("from", dateFrom);
+      if (dateTo) params.set("to", dateTo);
+      params.set("limit", String(totalCount || 10000));
+      params.set("offset", "0");
+
+      const res = await fetch(`/api/leads?${params}`);
+      if (!res.ok) throw new Error("Failed to fetch");
+      const data = await res.json();
+      const allLeads: Lead[] = data?.leads ?? [];
+
+      const headers = ["Username", "Platform", "Source", "Intent Score", "Intent Level", "Status", "Category", "URL", "Created At"];
+      const rows = allLeads.map((l) => [
+        l.username,
+        l.platform,
+        l.source,
+        l.intentScore,
+        l.intentLevel,
+        l.status,
+        l.intentCategory,
+        l.url || "",
+        new Date(l.createdAt).toISOString(),
+      ]);
+      const csv = [headers, ...rows].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+      const blob = new Blob([csv], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `leads-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      // silent fail
+    } finally {
+      setExporting(false);
+    }
   };
 
   // Reset to page 1 when filters change
@@ -371,9 +397,10 @@ export default function LeadsPage() {
                 size="sm"
                 className="gap-1.5"
                 onClick={handleExport}
+                disabled={exporting}
               >
-                <Download className="h-3.5 w-3.5" />
-                Export
+              {exporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                {exporting ? "Exporting…" : "Export"}
               </Button>
               <div ref={actionRef} className="relative">
                 <Button

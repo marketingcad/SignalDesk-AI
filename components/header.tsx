@@ -36,9 +36,9 @@ export function Header({ title, subtitle, actions }: HeaderProps) {
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
-    fetch("/api/alerts?limit=100")
-      .then((res) => (res.ok ? res.json() : []))
-      .then((data: unknown[]) => setAlertCount(data.length))
+    fetch("/api/alerts?limit=1")
+      .then((res) => (res.ok ? res.json() : { total: 0 }))
+      .then((data: { total?: number }) => setAlertCount(data.total ?? 0))
       .catch(() => {});
   }, []);
 

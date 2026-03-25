@@ -29,6 +29,14 @@ import {
   AlertDialogCancel,
 } from "@/components/ui/alert-dialog";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
   Globe,
   Link2,
   Search,
@@ -57,6 +65,8 @@ import {
   Zap,
   Activity,
   LogIn,
+  Pencil,
+  Save,
 } from "lucide-react";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -195,6 +205,31 @@ function formatMs(ms: number): string {
   if (h > 0) return `${h}h ${m}m`;
   if (m > 0) return `${m}m ${sec}s`;
   return `${sec}s`;
+}
+
+const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+
+function buildCustomCron(
+  mode: "minutes" | "hours" | "daily" | "weekly" | "raw",
+  opts: { minutes?: string; hours?: string; time?: string; days?: number[]; raw?: string }
+): string {
+  const [h, m] = (opts.time ?? "09:00").split(":").map(Number);
+  switch (mode) {
+    case "minutes": {
+      const n = parseInt(opts.minutes || "10", 10) || 10;
+      return n === 1 ? "* * * * *" : `*/${n} * * * *`;
+    }
+    case "hours": {
+      const n = parseInt(opts.hours || "3", 10) || 3;
+      return n === 1 ? "0 * * * *" : `0 */${n} * * *`;
+    }
+    case "daily":   return `${m} ${h} * * *`;
+    case "weekly": {
+      const d = (opts.days ?? [1]).sort().join(",");
+      return `${m} ${h} * * ${d}`;
+    }
+    case "raw":     return opts.raw?.trim() ?? "";
+  }
 }
 
 function formatTs(iso: string): string {
@@ -567,16 +602,40 @@ export default function ScrapeUrlPage() {
     urls: [""] as string[],
     cron: "*/30 * * * *",
     customCron: "",
+    customMode: "minutes" as "minutes" | "hours" | "daily" | "weekly" | "raw",
+    customMinutes: "10",
+    customHours: "3",
+    customTime: "09:00",
+    customDays: [1] as number[], // 0=Sun..6=Sat
     status: "active" as "active" | "paused",
   });
   const [schedCreating, setSchedCreating] = useState(false);
   const [schedError, setSchedError] = useState<string | null>(null);
+
+  // ── Edit schedule modal ─────────────────────────────────
+  const [editSched, setEditSched] = useState<{
+    id: string;
+    name: string;
+    urls: string[];
+    cron: string;
+    customCron: string;
+    customMode: "minutes" | "hours" | "daily" | "weekly" | "raw";
+    customMinutes: string;
+    customHours: string;
+    customTime: string;
+    customDays: number[];
+    status: "active" | "paused";
+    _groupIds: string[];
+  } | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
   const [runHistory, setRunHistory] = useState<ScheduleRun[]>([]);
   const [runHistoryLoading, setRunHistoryLoading] = useState(false);
   const [clearingRuns, setClearingRuns] = useState(false);
   const [selectedRunScheduleId, setSelectedRunScheduleId] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [isDesktop, setIsDesktop] = useState(false);
+  const [expandedRunGroup, setExpandedRunGroup] = useState<string | null>(null);
 
   useEffect(() => { setIsDesktop(isTauri()); }, []);
 
@@ -741,7 +800,16 @@ export default function ScrapeUrlPage() {
 
   // ── Schedule actions ─────────────────────────────────────
   const handleCreateSchedule = async () => {
-    const effectiveCron = newSched.cron === "custom" ? newSched.customCron.trim() : newSched.cron;
+    const effectiveCron = newSched.cron === "custom"
+      ? (newSched.customMode === "raw"
+          ? newSched.customCron.trim()
+          : buildCustomCron(newSched.customMode, {
+              minutes: newSched.customMinutes,
+              hours: newSched.customHours,
+              time: newSched.customTime,
+              days: newSched.customDays,
+            }))
+      : newSched.cron;
     setSchedError(null);
     if (!newSched.name.trim()) { setSchedError("Schedule name is required"); return; }
     const validUrls = newSched.urls.map((u) => u.trim()).filter(Boolean);
@@ -772,7 +840,7 @@ export default function ScrapeUrlPage() {
       if (errors.length > 0) {
         setSchedError(errors.join("; "));
       } else {
-        setNewSched({ name: "", urls: [""], cron: "*/30 * * * *", customCron: "", status: "active" });
+        setNewSched({ name: "", urls: [""], cron: "*/30 * * * *", customCron: "", customMode: "minutes", customMinutes: "10", customHours: "3", customTime: "09:00", customDays: [1], status: "active" });
       }
       loadSchedules();
     } catch {
@@ -791,6 +859,119 @@ export default function ScrapeUrlPage() {
     loadSchedules(true);
   };
   const handleDelete  = async (id: string) => { await fetch(`/api/schedules/${id}`, { method: "DELETE" }); loadSchedules(true); };
+
+
+  const openEditGroupModal = (items: UrlSchedule[]) => {
+    const first = items[0];
+    const baseName = first.name.replace(/\s*\(#\d+\)$/, "").trim();
+    const isPreset = CRON_PRESETS.some((p) => p.value === first.cron);
+
+    // Parse existing cron into visual picker fields
+    let customMode: "minutes" | "hours" | "daily" | "weekly" | "raw" = "raw";
+    let customMinutes = "10", customHours = "3", customTime = "09:00", customDays = [1];
+    if (!isPreset) {
+      const parts = first.cron.trim().split(/\s+/);
+      if (parts.length === 5) {
+        const [min, hour, dom, , dow] = parts;
+        const minStep = min.match(/^\*\/(\d+)$/);
+        const hourStep = hour.match(/^\*\/(\d+)$/);
+        if (minStep && hour === "*" && dom === "*") {
+          customMode = "minutes"; customMinutes = minStep[1];
+        } else if ((min === "0" || min === "00") && hourStep && dom === "*") {
+          customMode = "hours"; customHours = hourStep[1];
+        } else if ((min === "0" || min === "00") && hour === "*" && dom === "*") {
+          customMode = "hours"; customHours = "1";
+        } else if (/^\d+$/.test(min) && /^\d+$/.test(hour) && dom === "*" && dow === "*") {
+          customMode = "daily"; customTime = `${hour.padStart(2, "0")}:${min.padStart(2, "0")}`;
+        } else if (/^\d+$/.test(min) && /^\d+$/.test(hour) && dom === "*" && /^[\d,]+$/.test(dow)) {
+          customMode = "weekly"; customTime = `${hour.padStart(2, "0")}:${min.padStart(2, "0")}`;
+          customDays = dow.split(",").map(Number);
+        }
+      }
+    }
+
+    setEditSched({
+      id: first.id,
+      name: baseName,
+      urls: items.map((s) => s.url),
+      cron: isPreset ? first.cron : "custom",
+      customCron: isPreset ? "" : first.cron,
+      customMode, customMinutes, customHours, customTime, customDays,
+      status: first.status,
+      _groupIds: items.map((s) => s.id),
+    });
+    setEditError(null);
+  };
+
+  const handleUpdateSchedule = async () => {
+    if (!editSched) return;
+    if (!editSched.name.trim()) { setEditError("Schedule name is required"); return; }
+    const validUrls = editSched.urls.filter((u) => u.trim());
+    if (validUrls.length === 0) { setEditError("At least one URL is required"); return; }
+    for (const u of validUrls) {
+      try { new URL(u); } catch { setEditError(`Invalid URL: ${u}`); return; }
+    }
+    const cron = editSched.cron === "custom"
+      ? (editSched.customMode === "raw"
+          ? editSched.customCron.trim()
+          : buildCustomCron(editSched.customMode, {
+              minutes: editSched.customMinutes,
+              hours: editSched.customHours,
+              time: editSched.customTime,
+              days: editSched.customDays,
+            }))
+      : editSched.cron;
+    if (!cron) { setEditError("A cron expression is required"); return; }
+    setEditSaving(true);
+    setEditError(null);
+    try {
+      const errors: string[] = [];
+      const existingIds = editSched._groupIds;
+
+      // Update existing schedules that still have a URL
+      for (let i = 0; i < Math.min(validUrls.length, existingIds.length); i++) {
+        const name = validUrls.length > 1 && i > 0
+          ? `${editSched.name.trim()} (#${i + 1})`
+          : editSched.name.trim();
+        const res = await fetch(`/api/schedules/${existingIds[i]}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, url: validUrls[i], cron, status: editSched.status }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          errors.push(data.error || `Failed to update (${res.status})`);
+        }
+      }
+
+      // Delete schedules for removed URLs
+      for (let i = validUrls.length; i < existingIds.length; i++) {
+        await fetch(`/api/schedules/${existingIds[i]}`, { method: "DELETE" }).catch(() => {});
+      }
+
+      // Create new schedules for added URLs
+      for (let i = existingIds.length; i < validUrls.length; i++) {
+        const name = `${editSched.name.trim()} (#${i + 1})`;
+        const createRes = await fetch("/api/schedules", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, url: validUrls[i], cron, status: editSched.status }),
+        });
+        if (!createRes.ok) {
+          const data = await createRes.json().catch(() => ({}));
+          errors.push(data.error || `Failed to create schedule for ${validUrls[i]}`);
+        }
+      }
+
+      if (errors.length > 0) throw new Error(errors.join("; "));
+      setEditSched(null);
+      loadSchedules(true);
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setEditSaving(false);
+    }
+  };
 
   const validUrlCount = urls.filter((u) => u.trim()).length;
 
@@ -1120,8 +1301,7 @@ export default function ScrapeUrlPage() {
           TAB: SCHEDULES
       ═══════════════════════════════════════════════════ */}
       {activeTab === "schedules" && (
-        <div className="grid grid-cols-5 gap-5">
-
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
           {/* ── Create form (left 2 cols) ─────────────────── */}
           <div className="col-span-2">
             <Card className="border-border bg-card overflow-hidden">
@@ -1222,7 +1402,7 @@ export default function ScrapeUrlPage() {
                   </div>
 
                   {/* Pill row */}
-                  <div className="flex gap-1.5 overflow-x-auto pt-1.5 pb-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                  <div className="flex flex-wrap gap-1.5 overflow-x-auto pt-1.5 pb-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
                     {CRON_PRESETS.map((preset) => {
                       const isSelected = newSched.cron === preset.value;
                       return (
@@ -1243,14 +1423,148 @@ export default function ScrapeUrlPage() {
                   </div>
 
                   {newSched.cron === "custom" && (
-                    <div className="space-y-1.5">
-                      <Input
-                        placeholder="e.g. 0 9 * * 1-5  (weekdays 9 am)"
-                        value={newSched.customCron}
-                        onChange={(e) => setNewSched((s) => ({ ...s, customCron: e.target.value }))}
-                        className="h-9 text-sm font-mono bg-secondary/50 border-border"
-                      />
-                      <p className="text-[11px] text-muted-foreground">Standard 5-field cron expression (min · hour · day · month · weekday)</p>
+                    <div className="space-y-3">
+                      {/* Mode tabs */}
+                      <div className="flex gap-1 rounded-lg bg-muted/50 p-1">
+                        {([
+                          { value: "minutes", label: "Minutes" },
+                          { value: "hours",   label: "Hours" },
+                          { value: "daily",   label: "Daily" },
+                          { value: "weekly",  label: "Weekly" },
+                          { value: "raw",     label: "Advanced" },
+                        ] as const).map((opt) => (
+                          <button
+                            key={opt.value}
+                            onClick={() => setNewSched((s) => ({ ...s, customMode: opt.value }))}
+                            className={cn(
+                              "flex-1 rounded-md px-2 py-1.5 text-[11px] font-medium transition-all",
+                              newSched.customMode === opt.value
+                                ? "bg-background text-foreground shadow-sm"
+                                : "text-muted-foreground hover:text-foreground"
+                            )}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Minutes mode */}
+                      {newSched.customMode === "minutes" && (
+                        <div className="space-y-1.5">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground">Every</span>
+                            <select
+                              value={newSched.customMinutes}
+                              onChange={(e) => setNewSched((s) => ({ ...s, customMinutes: e.target.value }))}
+                              className="h-9 rounded-md border border-border bg-secondary/50 px-2 text-sm text-foreground"
+                            >
+                              {[5, 10, 15, 20, 30, 45].map((v) => (
+                                <option key={v} value={String(v)}>{v}</option>
+                              ))}
+                            </select>
+                            <span className="text-xs text-muted-foreground">minutes</span>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Hours mode */}
+                      {newSched.customMode === "hours" && (
+                        <div className="space-y-1.5">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground">Every</span>
+                            <select
+                              value={newSched.customHours}
+                              onChange={(e) => setNewSched((s) => ({ ...s, customHours: e.target.value }))}
+                              className="h-9 rounded-md border border-border bg-secondary/50 px-2 text-sm text-foreground"
+                            >
+                              {[1, 2, 3, 4, 6, 8, 12].map((v) => (
+                                <option key={v} value={String(v)}>{v}</option>
+                              ))}
+                            </select>
+                            <span className="text-xs text-muted-foreground">hours</span>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Daily mode */}
+                      {newSched.customMode === "daily" && (
+                        <div className="space-y-1.5">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground">Every day at</span>
+                            <Input
+                              type="time"
+                              value={newSched.customTime}
+                              onChange={(e) => setNewSched((s) => ({ ...s, customTime: e.target.value }))}
+                              className="h-9 w-28 text-sm bg-secondary/50 border-border"
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Weekly mode */}
+                      {newSched.customMode === "weekly" && (
+                        <div className="space-y-2.5">
+                          <div className="flex gap-1">
+                            {DAY_LABELS.map((label, i) => {
+                              const active = newSched.customDays.includes(i);
+                              return (
+                                <button
+                                  key={i}
+                                  onClick={() => setNewSched((s) => {
+                                    const days = active ? s.customDays.filter((d) => d !== i) : [...s.customDays, i];
+                                    return { ...s, customDays: days.length > 0 ? days : [i] };
+                                  })}
+                                  className={cn(
+                                    "h-8 w-9 rounded-md text-[11px] font-medium transition-all",
+                                    active
+                                      ? "bg-primary text-primary-foreground shadow-sm"
+                                      : "bg-muted/50 border border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                                  )}
+                                >
+                                  {label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground">at</span>
+                            <Input
+                              type="time"
+                              value={newSched.customTime}
+                              onChange={(e) => setNewSched((s) => ({ ...s, customTime: e.target.value }))}
+                              className="h-9 w-28 text-sm bg-secondary/50 border-border"
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Raw / Advanced mode */}
+                      {newSched.customMode === "raw" && (
+                        <div className="space-y-1.5">
+                          <Input
+                            placeholder="e.g. 0 9 * * 1-5  (weekdays 9 am)"
+                            value={newSched.customCron}
+                            onChange={(e) => setNewSched((s) => ({ ...s, customCron: e.target.value }))}
+                            className="h-9 text-sm font-mono bg-secondary/50 border-border"
+                          />
+                          <p className="text-[11px] text-muted-foreground">Standard 5-field cron expression (min · hour · day · month · weekday)</p>
+                        </div>
+                      )}
+
+                      {/* Generated cron preview */}
+                      {newSched.customMode !== "raw" && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] text-muted-foreground">Cron:</span>
+                          <span className="text-[10px] font-mono text-muted-foreground bg-muted/60 border border-border rounded px-1.5 py-0.5">
+                            {buildCustomCron(newSched.customMode, {
+                              minutes: newSched.customMinutes,
+                              hours: newSched.customHours,
+                              time: newSched.customTime,
+                              days: newSched.customDays,
+                            })}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1294,6 +1608,172 @@ export default function ScrapeUrlPage() {
                 </Button>
                 </div>
               </div>
+            </Card>
+          </div>
+
+          {/* ── Schedule list (right 3 cols) ─────────────── */}
+          <div className="col-span-3">
+            <Card className="border-border bg-card overflow-hidden">
+              {/* List header */}
+              <div className="border-b border-border px-5 py-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 shrink-0">
+                      <Layers className="h-4 w-4 text-primary" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">Schedules</p>
+                      <p className="text-xs text-muted-foreground">
+                        {schedules.length} schedule{schedules.length !== 1 ? "s" : ""}
+                        {schedules.filter((s) => s.status === "active").length > 0 && (
+                          <> &middot; {schedules.filter((s) => s.status === "active").length} active</>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+                    onClick={() => loadSchedules(true)}
+                  >
+                    <RefreshCw className="h-3 w-3" />
+                    Refresh
+                  </Button>
+                </div>
+              </div>
+
+              {/* Table */}
+              {schedulesLoading && schedules.length === 0 ? (
+                <div className="flex items-center justify-center py-16 text-muted-foreground">
+                  <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                  <span className="text-sm">Loading schedules…</span>
+                </div>
+              ) : schedules.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 text-center">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-muted/50 mb-3">
+                    <Calendar className="h-6 w-6 text-muted-foreground/50" />
+                  </div>
+                  <p className="text-sm font-medium text-muted-foreground">No schedules yet</p>
+                  <p className="text-xs text-muted-foreground/60 mt-1">Create one using the form on the left</p>
+                </div>
+              ) : (() => {
+                // Group schedules by base name (strip " (#N)" suffix)
+                const grouped: { baseName: string; items: UrlSchedule[] }[] = [];
+                const map = new Map<string, UrlSchedule[]>();
+                for (const s of schedules) {
+                  const base = s.name.replace(/\s*\(#\d+\)$/, "").trim();
+                  if (!map.has(base)) { map.set(base, []); grouped.push({ baseName: base, items: map.get(base)! }); }
+                  map.get(base)!.push(s);
+                }
+                return (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border text-left">
+                      <th className="px-4 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Schedule Name</th>
+                      <th className="px-4 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                        <span className="inline-flex items-center gap-1.5">
+                          Target URLs
+                        </span>
+                      </th>
+                      <th className="px-4 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Frequency</th>
+                      <th className="px-4 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Created</th>
+                      <th className="px-4 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Auto-scrape</th>
+                      <th className="px-4 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider w-10"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {grouped.map((group) => {
+                      const first = group.items[0];
+                      const allActive = group.items.every((s) => s.status === "active");
+                      const someActive = group.items.some((s) => s.status === "active");
+                      const earliest = group.items.reduce((min, s) => s.createdAt < min ? s.createdAt : min, group.items[0].createdAt);
+                      return (
+                        <tr
+                          key={first.id}
+                          className="border-b border-border last:border-0 hover:bg-muted/20 transition-colors cursor-pointer align-top"
+                          onClick={() => openEditGroupModal(group.items)}
+                        >
+                          {/* Schedule Name */}
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <span className="text-[13px] font-medium text-foreground">{group.baseName}</span>
+                              {group.items.length > 1 && (
+                                <Badge variant="outline" className="text-[10px] px-1.5 rounded-full h-5 border-border bg-muted/30 text-muted-foreground">
+                                  {group.items.length} URLs
+                                </Badge>
+                              )}
+                            </div>
+                          </td>
+                          {/* Target URLs */}
+                          <td className="px-4 py-3 max-w-55">
+                            <div className="flex items-center gap-2 min-w-0">
+                              {(() => { const p = detectPlatform(first.url); return p ? <PlatformBadge platform={p} /> : null; })()}
+                              <span className="text-[11px] font-mono text-muted-foreground truncate" title={first.url}>
+                                {first.url}
+                              </span>
+                              {group.items.length > 1 && (
+                                <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-md border border-border bg-muted/60 px-1.5 text-[10px] font-semibold text-muted-foreground tabular-nums shrink-0">
+                                  +{group.items.length - 1}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          {/* Frequency */}
+                          <td className="px-4 py-3">
+                            <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                              <Timer className="h-3 w-3 shrink-0" />
+                              {cronLabel(first.cron)}
+                            </span>
+                          </td>
+                          {/* Created */}
+                          <td className="px-4 py-3">
+                            <span className="text-[11px] text-muted-foreground whitespace-nowrap">
+                              {new Date(earliest).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                            </span>
+                          </td>
+                          {/* Auto-scrape status */}
+                          <td className="px-4 py-3">
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                "text-[10px] px-2 rounded-full h-5 whitespace-nowrap",
+                                allActive
+                                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+                                  : someActive
+                                    ? "border-amber-500/30 bg-amber-500/10 text-amber-400"
+                                    : "border-border bg-muted/30 text-muted-foreground"
+                              )}
+                            >
+                              <span className={cn(
+                                "mr-1 h-1.5 w-1.5 rounded-full inline-block shrink-0",
+                                allActive ? "bg-emerald-400 animate-pulse" : someActive ? "bg-amber-400" : "bg-muted-foreground"
+                              )} />
+                              {allActive ? "Enabled" : someActive ? "Partial" : "Disabled"}
+                            </Badge>
+                          </td>
+                          {/* Delete */}
+                          <td className="px-4 py-3">
+                            <button
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                await Promise.all(group.items.map((s) =>
+                                  fetch(`/api/schedules/${s.id}`, { method: "DELETE" }).catch(() => {})
+                                ));
+                                loadSchedules(true);
+                              }}
+                              className="h-7 w-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                );
+              })()}
             </Card>
           </div>
         </div>
@@ -1356,32 +1836,262 @@ export default function ScrapeUrlPage() {
                     <p className="text-xs text-muted-foreground mt-1">Create a schedule in the Schedules tab to see it here.</p>
                   </div>
                 </div>
-              ) : (
-                <>
-                  <div className="divide-y divide-border h-130 overflow-y-scroll [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border hover:[&::-webkit-scrollbar-thumb]:bg-muted-foreground/30">
-                    {schedules.map((s) => (
-                      <ScheduleTableRow
-                        key={s.id}
-                        schedule={s}
-                        runningId={runningId}
-                        onViewRuns={(id) => { setSelectedRunScheduleId(id); loadRunHistory(id); }}
-                        onRunNow={handleRunNow}
-                        onPause={handlePause}
-                        onResume={handleResume}
-                        onDelete={handleDelete}
-                      />
-                    ))}
-                  </div>
-                  <div className="border-t border-border px-4 py-3 bg-muted/20 flex items-center justify-between">
-                    <p className="text-[11px] text-muted-foreground flex items-center gap-1">
-                      Click <Activity className="inline h-3 w-3" /> to filter runs by schedule
-                    </p>
-                    <p className="text-[11px] text-muted-foreground">
-                      {schedules.filter((s) => s.status === "active").length} of {schedules.length} active
-                    </p>
-                  </div>
-                </>
-              )}
+              ) : (() => {
+                  const runGroups: { baseName: string; items: UrlSchedule[] }[] = [];
+                  const rMap = new Map<string, UrlSchedule[]>();
+                  for (const s of schedules) {
+                    const base = s.name.replace(/\s*\(#\d+\)$/, "").trim();
+                    if (!rMap.has(base)) { rMap.set(base, []); runGroups.push({ baseName: base, items: rMap.get(base)! }); }
+                    rMap.get(base)!.push(s);
+                  }
+                  return (
+                    <>
+                      <div className="divide-y divide-border h-130 overflow-y-scroll [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border hover:[&::-webkit-scrollbar-thumb]:bg-muted-foreground/30">
+                        {runGroups.map((group) => {
+                          const first = group.items[0];
+                          const isExpanded = expandedRunGroup === group.baseName;
+                          const allActive = group.items.every((s) => s.status === "active");
+                          const someActive = group.items.some((s) => s.status === "active");
+                          const groupRunning = group.items.some((s) => runningId === s.id);
+                          return (
+                            <div key={first.id}>
+                              {/* Group header row */}
+                              <button
+                                onClick={() => setExpandedRunGroup(isExpanded ? null : group.baseName)}
+                                className="w-full px-4 py-3 flex items-center gap-3 hover:bg-muted/20 transition-colors text-left"
+                              >
+                                {/* Expand chevron */}
+                                {group.items.length > 1 && (
+                                  <ChevronRight className={cn(
+                                    "h-3.5 w-3.5 text-muted-foreground shrink-0 transition-transform duration-200",
+                                    isExpanded && "rotate-90"
+                                  )} />
+                                )}
+                                {/* Status icon */}
+                                <div className={cn(
+                                  "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border",
+                                  allActive
+                                    ? "bg-emerald-500/10 border-emerald-500/20"
+                                    : someActive
+                                      ? "bg-amber-500/10 border-amber-500/20"
+                                      : "bg-muted/40 border-border"
+                                )}>
+                                  {groupRunning ? (
+                                    <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                                  ) : allActive ? (
+                                    <Play className="h-4 w-4 text-emerald-400" />
+                                  ) : someActive ? (
+                                    <Play className="h-4 w-4 text-amber-400" />
+                                  ) : (
+                                    <Pause className="h-4 w-4 text-muted-foreground" />
+                                  )}
+                                </div>
+                                {/* Name + meta */}
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[13px] font-semibold text-foreground leading-tight truncate">
+                                      {group.baseName}
+                                    </span>
+                                    {group.items.length > 1 && (
+                                      <Badge variant="outline" className="text-[10px] px-1.5 rounded-full h-5 border-border bg-muted/30 text-muted-foreground shrink-0">
+                                        {group.items.length} URLs
+                                      </Badge>
+                                    )}
+                                    <Badge
+                                      variant="outline"
+                                      className={cn(
+                                        "text-[10px] px-1.5 rounded-full h-5 shrink-0",
+                                        allActive
+                                          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+                                          : someActive
+                                            ? "border-amber-500/30 bg-amber-500/10 text-amber-400"
+                                            : "border-border bg-muted/30 text-muted-foreground"
+                                      )}
+                                    >
+                                      <span className={cn(
+                                        "mr-1 h-1.5 w-1.5 rounded-full inline-block shrink-0",
+                                        allActive ? "bg-emerald-400 animate-pulse" : someActive ? "bg-amber-400" : "bg-muted-foreground"
+                                      )} />
+                                      {allActive ? "Active" : someActive ? "Partial" : "Paused"}
+                                    </Badge>
+                                  </div>
+                                  <div className="flex items-center gap-3 mt-0.5">
+                                    <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                                      <Timer className="h-3 w-3 shrink-0" />
+                                      {cronLabel(first.cron)}
+                                    </span>
+                                    <span className="text-[11px] text-muted-foreground">
+                                      {group.items.reduce((sum, s) => sum + s.totalRuns, 0)} runs
+                                    </span>
+                                    {groupRunning && (
+                                      <span className="text-[11px] text-primary font-medium flex items-center gap-1">
+                                        <Loader2 className="h-3 w-3 animate-spin" /> Running…
+                                      </span>
+                                    )}
+                                    {!groupRunning && allActive && (() => {
+                                      const baseTime = first.lastRunAt ?? first.createdAt;
+                                      const intervalMs = cronIntervalMs(first.cron);
+                                      if (!baseTime || !intervalMs) return null;
+                                      const nextMs = new Date(baseTime).getTime() + intervalMs - Date.now();
+                                      if (nextMs <= 0) return null;
+                                      const progress = Math.min(100, Math.round(((intervalMs - nextMs) / intervalMs) * 100));
+                                      return (
+                                        <>
+                                          <span className="inline-flex items-center gap-1 text-[11px] text-emerald-400 font-medium">
+                                            <Clock className="h-3 w-3 shrink-0" />
+                                            in {formatMs(nextMs)}
+                                          </span>
+                                          <div className="flex-1 min-w-12 h-1 rounded-full bg-muted/80 overflow-hidden">
+                                            <div className="h-full rounded-full bg-emerald-500 transition-all duration-1000" style={{ width: `${progress}%` }} />
+                                          </div>
+                                        </>
+                                      );
+                                    })()}
+                                  </div>
+                                </div>
+                                {/* Actions */}
+                                <div className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button size="sm" variant="ghost" className="h-7 gap-1 px-1.5 text-muted-foreground hover:text-primary"
+                                          onClick={() => { setSelectedRunScheduleId(first.id); loadRunHistory(first.id); }}>
+                                          <Activity className="h-3.5 w-3.5" />
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>View runs</TooltipContent>
+                                    </Tooltip>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-primary"
+                                          onClick={() => { for (const s of group.items) handleRunNow(s.id); }}
+                                          disabled={groupRunning}>
+                                          {groupRunning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>Run all now</TooltipContent>
+                                    </Tooltip>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        {allActive ? (
+                                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-amber-400"
+                                            onClick={() => { for (const s of group.items) handlePause(s.id); }}>
+                                            <Pause className="h-3.5 w-3.5" />
+                                          </Button>
+                                        ) : (
+                                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-emerald-400"
+                                            onClick={() => { for (const s of group.items) handleResume(s.id); }}>
+                                            <Play className="h-3.5 w-3.5" />
+                                          </Button>
+                                        )}
+                                      </TooltipTrigger>
+                                      <TooltipContent>{allActive ? "Pause all" : "Resume all"}</TooltipContent>
+                                    </Tooltip>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-rose-400"
+                                          onClick={async () => {
+                                            await Promise.all(group.items.map((s) =>
+                                              fetch(`/api/schedules/${s.id}`, { method: "DELETE" }).catch(() => {})
+                                            ));
+                                            loadSchedules(true);
+                                          }}>
+                                          <Trash2 className="h-3.5 w-3.5" />
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>Delete</TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                </div>
+                              </button>
+
+                              {/* Accordion: individual URLs */}
+                              {isExpanded && group.items.length > 1 && (
+                                <div className="border-t border-border/50 bg-muted/10">
+                                  {group.items.map((sched) => {
+                                    const platform = detectPlatform(sched.url);
+                                    const isRunning = runningId === sched.id;
+                                    return (
+                                      <div
+                                        key={sched.id}
+                                        className="flex items-center gap-3 px-4 py-2.5 pl-14 border-b border-border/30 last:border-0 hover:bg-muted/20 transition-colors"
+                                      >
+                                        {/* Running indicator */}
+                                        <div className={cn(
+                                          "flex h-6 w-6 shrink-0 items-center justify-center rounded-md",
+                                          isRunning
+                                            ? "bg-primary/10"
+                                            : sched.status === "active"
+                                              ? "bg-emerald-500/10"
+                                              : "bg-muted/40"
+                                        )}>
+                                          {isRunning ? (
+                                            <Loader2 className="h-3 w-3 animate-spin text-primary" />
+                                          ) : sched.status === "active" ? (
+                                            <Play className="h-3 w-3 text-emerald-400" />
+                                          ) : (
+                                            <Pause className="h-3 w-3 text-muted-foreground" />
+                                          )}
+                                        </div>
+                                        {/* URL + platform */}
+                                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                                          {platform && <PlatformBadge platform={platform} />}
+                                          <span className="text-[11px] font-mono text-muted-foreground truncate" title={sched.url}>
+                                            {sched.url}
+                                          </span>
+                                        </div>
+                                        {/* Status + runs */}
+                                        <span className="text-[10px] text-muted-foreground shrink-0">
+                                          {sched.totalRuns} runs
+                                        </span>
+                                        {isRunning && (
+                                          <span className="text-[10px] text-primary font-medium flex items-center gap-1 shrink-0">
+                                            <Loader2 className="h-2.5 w-2.5 animate-spin" /> Running
+                                          </span>
+                                        )}
+                                        {/* Individual actions */}
+                                        <div className="flex items-center gap-0.5 shrink-0">
+                                          <TooltipProvider>
+                                            <Tooltip>
+                                              <TooltipTrigger asChild>
+                                                <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-muted-foreground hover:text-primary"
+                                                  onClick={() => { setSelectedRunScheduleId(sched.id); loadRunHistory(sched.id); }}>
+                                                  <Activity className="h-3 w-3" />
+                                                </Button>
+                                              </TooltipTrigger>
+                                              <TooltipContent>View runs for this URL</TooltipContent>
+                                            </Tooltip>
+                                            <Tooltip>
+                                              <TooltipTrigger asChild>
+                                                <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-muted-foreground hover:text-primary"
+                                                  onClick={() => handleRunNow(sched.id)} disabled={isRunning}>
+                                                  {isRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Zap className="h-3 w-3" />}
+                                                </Button>
+                                              </TooltipTrigger>
+                                              <TooltipContent>Run now</TooltipContent>
+                                            </Tooltip>
+                                          </TooltipProvider>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div className="border-t border-border px-4 py-3 bg-muted/20 flex items-center justify-between">
+                        <p className="text-[11px] text-muted-foreground flex items-center gap-1">
+                          Click <Activity className="inline h-3 w-3" /> to filter runs by schedule
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {schedules.filter((s) => s.status === "active").length} of {schedules.length} active
+                        </p>
+                      </div>
+                    </>
+                  );
+                })()}
             </div>
 
             {/* ── Run history ──────────────────────────────── */}
@@ -1550,6 +2260,314 @@ export default function ScrapeUrlPage() {
           </div>{/* end grid */}
         </div>
       )}
+
+      {/* ═══════════════════════════════════════════════════
+          MODAL: Edit Schedule
+      ═══════════════════════════════════════════════════ */}
+      <Dialog open={!!editSched} onOpenChange={(open) => { if (!open) setEditSched(null); }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="h-4 w-4 text-primary" />
+              Edit Schedule
+            </DialogTitle>
+            <DialogDescription>Update the schedule details below and save.</DialogDescription>
+          </DialogHeader>
+
+          {editSched && (
+            <div className="space-y-5 py-2">
+              {/* Name */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground">
+                  Schedule Name <span className="text-rose-400">*</span>
+                </label>
+                <Input
+                  value={editSched.name}
+                  onChange={(e) => setEditSched((s) => s && ({ ...s, name: e.target.value }))}
+                  className="h-9 text-sm bg-secondary/50 border-border"
+                />
+              </div>
+
+              {/* URLs */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground">
+                  Target URL{editSched.urls.length > 1 ? "s" : ""} <span className="text-rose-400">*</span>
+                </label>
+                <div className="space-y-2">
+                  {editSched.urls.map((urlVal, idx) => {
+                    const platform = detectPlatform(urlVal);
+                    return (
+                      <div key={idx} className="flex items-center gap-2">
+                        <div className="relative flex-1">
+                          <Link2 className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                          <Input
+                            type="url"
+                            placeholder="https://www.facebook.com/groups/…"
+                            value={urlVal}
+                            onChange={(e) => setEditSched((s) => {
+                              if (!s) return s;
+                              const urls = [...s.urls];
+                              urls[idx] = e.target.value;
+                              return { ...s, urls };
+                            })}
+                            className="h-9 pl-9 pr-28 text-sm bg-secondary/50 border-border"
+                          />
+                          {platform && (
+                            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                              <PlatformBadge platform={platform} />
+                            </div>
+                          )}
+                        </div>
+                        {editSched.urls.length > 1 && (
+                          <button
+                            onClick={() => setEditSched((s) => {
+                              if (!s) return s;
+                              const urls = s.urls.filter((_, i) => i !== idx);
+                              return { ...s, urls };
+                            })}
+                            className="h-9 w-9 flex items-center justify-center rounded-md text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10 transition-colors shrink-0"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="flex items-center gap-2 pt-0.5">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setEditSched((s) => s && ({ ...s, urls: [...s.urls, ""] }))}
+                    className="gap-1.5 text-xs h-7"
+                  >
+                    <Plus className="h-3 w-3" />
+                    Add URL
+                  </Button>
+                  {editSched.urls.filter((u) => u.trim()).length > 1 && (
+                    <span className="text-[10px] text-muted-foreground">
+                      {editSched.urls.filter((u) => u.trim()).length} URLs — one schedule per URL
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  {editSched.urls.filter((u) => u.trim()).length > 1
+                    ? "Each URL will create a separate schedule with the same frequency"
+                    : "The page that will be scraped automatically"}
+                </p>
+              </div>
+
+              <Separator />
+
+              {/* Frequency */}
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-foreground">Frequency</label>
+                  {editSched.cron !== "custom" && (
+                    <span className="text-[10px] font-mono text-muted-foreground bg-muted/60 border border-border rounded px-1.5 py-0.5">
+                      {editSched.cron}
+                    </span>
+                  )}
+                </div>
+                <div className="flex gap-1.5 flex-wrap">
+                  {CRON_PRESETS.map((preset) => {
+                    const isSelected = editSched.cron === preset.value;
+                    return (
+                      <button
+                        key={preset.value}
+                        onClick={() => setEditSched((s) => s && ({ ...s, cron: preset.value }))}
+                        className={cn(
+                          "shrink-0 rounded-full border px-3 py-1 text-xs font-medium whitespace-nowrap transition-all",
+                          isSelected
+                            ? "border-primary bg-primary text-primary-foreground shadow-sm"
+                            : "border-border bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground"
+                        )}
+                      >
+                        {preset.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {editSched.cron === "custom" && (
+                  <div className="space-y-3">
+                    {/* Mode tabs */}
+                    <div className="flex gap-1 rounded-lg bg-muted/50 p-1">
+                      {([
+                        { value: "minutes", label: "Minutes" },
+                        { value: "hours",   label: "Hours" },
+                        { value: "daily",   label: "Daily" },
+                        { value: "weekly",  label: "Weekly" },
+                        { value: "raw",     label: "Advanced" },
+                      ] as const).map((opt) => (
+                        <button
+                          key={opt.value}
+                          onClick={() => setEditSched((s) => s && ({ ...s, customMode: opt.value }))}
+                          className={cn(
+                            "flex-1 rounded-md px-2 py-1.5 text-[11px] font-medium transition-all",
+                            editSched.customMode === opt.value
+                              ? "bg-background text-foreground shadow-sm"
+                              : "text-muted-foreground hover:text-foreground"
+                          )}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {editSched.customMode === "minutes" && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground">Every</span>
+                        <select
+                          value={editSched.customMinutes}
+                          onChange={(e) => setEditSched((s) => s && ({ ...s, customMinutes: e.target.value }))}
+                          className="h-9 rounded-md border border-border bg-secondary/50 px-2 text-sm text-foreground"
+                        >
+                          {[5, 10, 15, 20, 30, 45].map((v) => (
+                            <option key={v} value={String(v)}>{v}</option>
+                          ))}
+                        </select>
+                        <span className="text-xs text-muted-foreground">minutes</span>
+                      </div>
+                    )}
+
+                    {editSched.customMode === "hours" && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground">Every</span>
+                        <select
+                          value={editSched.customHours}
+                          onChange={(e) => setEditSched((s) => s && ({ ...s, customHours: e.target.value }))}
+                          className="h-9 rounded-md border border-border bg-secondary/50 px-2 text-sm text-foreground"
+                        >
+                          {[1, 2, 3, 4, 6, 8, 12].map((v) => (
+                            <option key={v} value={String(v)}>{v}</option>
+                          ))}
+                        </select>
+                        <span className="text-xs text-muted-foreground">hours</span>
+                      </div>
+                    )}
+
+                    {editSched.customMode === "daily" && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground">Every day at</span>
+                        <Input
+                          type="time"
+                          value={editSched.customTime}
+                          onChange={(e) => setEditSched((s) => s && ({ ...s, customTime: e.target.value }))}
+                          className="h-9 w-28 text-sm bg-secondary/50 border-border"
+                        />
+                      </div>
+                    )}
+
+                    {editSched.customMode === "weekly" && (
+                      <div className="space-y-2.5">
+                        <div className="flex gap-1">
+                          {DAY_LABELS.map((label, i) => {
+                            const active = editSched.customDays.includes(i);
+                            return (
+                              <button
+                                key={i}
+                                onClick={() => setEditSched((s) => {
+                                  if (!s) return s;
+                                  const days = active ? s.customDays.filter((d) => d !== i) : [...s.customDays, i];
+                                  return { ...s, customDays: days.length > 0 ? days : [i] };
+                                })}
+                                className={cn(
+                                  "h-8 w-9 rounded-md text-[11px] font-medium transition-all",
+                                  active
+                                    ? "bg-primary text-primary-foreground shadow-sm"
+                                    : "bg-muted/50 border border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                                )}
+                              >
+                                {label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground">at</span>
+                          <Input
+                            type="time"
+                            value={editSched.customTime}
+                            onChange={(e) => setEditSched((s) => s && ({ ...s, customTime: e.target.value }))}
+                            className="h-9 w-28 text-sm bg-secondary/50 border-border"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {editSched.customMode === "raw" && (
+                      <div className="space-y-1.5">
+                        <Input
+                          placeholder="e.g. 0 9 * * 1-5  (weekdays 9 am)"
+                          value={editSched.customCron}
+                          onChange={(e) => setEditSched((s) => s && ({ ...s, customCron: e.target.value }))}
+                          className="h-9 text-sm font-mono bg-secondary/50 border-border"
+                        />
+                        <p className="text-[11px] text-muted-foreground">Standard 5-field cron expression (min · hour · day · month · weekday)</p>
+                      </div>
+                    )}
+
+                    {editSched.customMode !== "raw" && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-muted-foreground">Cron:</span>
+                        <span className="text-[10px] font-mono text-muted-foreground bg-muted/60 border border-border rounded px-1.5 py-0.5">
+                          {buildCustomCron(editSched.customMode, {
+                            minutes: editSched.customMinutes,
+                            hours: editSched.customHours,
+                            time: editSched.customTime,
+                            days: editSched.customDays,
+                          })}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <Separator />
+
+              {/* Auto-scrape toggle */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-foreground">Auto-scrape</p>
+                  <p className="text-[11px] text-muted-foreground">Begin auto-scraping as soon as saved</p>
+                </div>
+                <button
+                  onClick={() => setEditSched((s) => s && ({ ...s, status: s.status === "active" ? "paused" : "active" }))}
+                  className={cn(
+                    "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none",
+                    editSched.status === "active" ? "bg-primary" : "bg-muted"
+                  )}
+                >
+                  <span className={cn(
+                    "inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform",
+                    editSched.status === "active" ? "translate-x-4.5" : "translate-x-0.5"
+                  )} />
+                </button>
+              </div>
+
+              {/* Error */}
+              {editError && (
+                <div className="rounded-lg border border-rose-500/20 bg-rose-500/8 px-3 py-2 flex items-center gap-2">
+                  <AlertTriangle className="h-3.5 w-3.5 text-rose-400 shrink-0" />
+                  <p className="text-xs text-rose-400">{editError}</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditSched(null)} className="h-9">
+              Cancel
+            </Button>
+            <Button onClick={handleUpdateSchedule} disabled={editSaving} className="gap-2 h-9">
+              {editSaving
+                ? <><Loader2 className="h-4 w-4 animate-spin" />Saving…</>
+                : <><Save className="h-4 w-4" />Save Changes</>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

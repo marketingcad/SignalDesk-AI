@@ -80,28 +80,28 @@ export default function ReportsPage() {
           <WeekStat
             label="This Week"
             value={dailyReports.reduce((s, r) => s + r.totalLeads, 0)}
-            sub="total leads"
+            sub="Total leads"
             icon={FileBarChart}
             color="#6366f1"
           />
           <WeekStat
             label="High Intent"
             value={dailyReports.reduce((s, r) => s + r.highIntent, 0)}
-            sub="leads"
+            sub="Leads"
             icon={Flame}
             color="#34d399"
           />
           <WeekStat
             label="Medium Intent"
             value={dailyReports.reduce((s, r) => s + r.mediumIntent, 0)}
-            sub="leads"
+            sub="Leads"
             icon={AlertTriangle}
             color="#f59e0b"
           />
           <WeekStat
             label="Low Intent"
             value={dailyReports.reduce((s, r) => s + r.lowIntent, 0)}
-            sub="leads"
+            sub="Leads"
             icon={MinusCircle}
             color="#71717a"
           />
