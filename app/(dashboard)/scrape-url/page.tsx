@@ -391,6 +391,67 @@ function UrlResultRow({ item, index }: { item: UrlItemResult; index: number }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ScheduleCountdown — live countdown + progress bar (ticks every second)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function ScheduleCountdown({ cron, lastRunAt, createdAt, status, isRunning }: {
+  cron: string;
+  lastRunAt: string | null;
+  createdAt: string;
+  status: "active" | "paused";
+  isRunning: boolean;
+}) {
+  const [msLeft, setMsLeft] = useState<number | null>(null);
+  const intervalMs = cronIntervalMs(cron);
+
+  useEffect(() => {
+    const baseTime = lastRunAt ?? createdAt;
+    if (status !== "active" || isRunning || !baseTime || !intervalMs) {
+      setMsLeft(null);
+      return;
+    }
+    const compute = () => {
+      const next = new Date(baseTime).getTime() + intervalMs;
+      setMsLeft(Math.max(0, next - Date.now()));
+    };
+    compute();
+    const t = setInterval(compute, 1000);
+    return () => clearInterval(t);
+  }, [lastRunAt, createdAt, status, isRunning, intervalMs]);
+
+  if (isRunning) {
+    return (
+      <span className="text-[11px] text-primary font-medium flex items-center gap-1">
+        <Loader2 className="h-3 w-3 animate-spin" /> Running…
+      </span>
+    );
+  }
+
+  if (status === "paused") {
+    return <span className="text-[11px] text-muted-foreground/50 italic">Paused</span>;
+  }
+
+  if (msLeft === null || !intervalMs) return null;
+
+  const progress = Math.min(100, Math.round(((intervalMs - msLeft) / intervalMs) * 100));
+
+  return (
+    <>
+      <span className="inline-flex items-center gap-1 text-[11px] text-emerald-400 font-medium">
+        <Clock className="h-3 w-3 shrink-0" />
+        in {formatMs(msLeft)}
+      </span>
+      <div className="flex-1 min-w-12 h-1 rounded-full bg-muted/80 overflow-hidden">
+        <div
+          className="h-full rounded-full bg-emerald-500 transition-all duration-1000"
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+    </>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ScheduleTableRow  (Schedules tab — table row design)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1923,30 +1984,13 @@ export default function ScrapeUrlPage() {
                                     <span className="text-[11px] text-muted-foreground">
                                       {group.items.reduce((sum, s) => sum + s.totalRuns, 0)} runs
                                     </span>
-                                    {groupRunning && (
-                                      <span className="text-[11px] text-primary font-medium flex items-center gap-1">
-                                        <Loader2 className="h-3 w-3 animate-spin" /> Running…
-                                      </span>
-                                    )}
-                                    {!groupRunning && allActive && (() => {
-                                      const baseTime = first.lastRunAt ?? first.createdAt;
-                                      const intervalMs = cronIntervalMs(first.cron);
-                                      if (!baseTime || !intervalMs) return null;
-                                      const nextMs = new Date(baseTime).getTime() + intervalMs - Date.now();
-                                      if (nextMs <= 0) return null;
-                                      const progress = Math.min(100, Math.round(((intervalMs - nextMs) / intervalMs) * 100));
-                                      return (
-                                        <>
-                                          <span className="inline-flex items-center gap-1 text-[11px] text-emerald-400 font-medium">
-                                            <Clock className="h-3 w-3 shrink-0" />
-                                            in {formatMs(nextMs)}
-                                          </span>
-                                          <div className="flex-1 min-w-12 h-1 rounded-full bg-muted/80 overflow-hidden">
-                                            <div className="h-full rounded-full bg-emerald-500 transition-all duration-1000" style={{ width: `${progress}%` }} />
-                                          </div>
-                                        </>
-                                      );
-                                    })()}
+                                    <ScheduleCountdown
+                                      cron={first.cron}
+                                      lastRunAt={first.lastRunAt}
+                                      createdAt={first.createdAt}
+                                      status={allActive ? "active" : "paused"}
+                                      isRunning={groupRunning}
+                                    />
                                   </div>
                                 </div>
                                 {/* Actions */}
