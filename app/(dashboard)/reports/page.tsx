@@ -21,10 +21,26 @@ import {
   MinusCircle,
   ExternalLink,
   Globe,
+  Trophy,
+  Link2,
+  Hash,
 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import type { Lead } from "@/lib/types";
+
+type SourceRank = {
+  source: string;
+  platform: string | null;
+  totalLeads: number;
+  highIntent: number;
+  mediumIntent: number;
+  lowIntent: number;
+  avgScore: number;
+};
 
 export default function ReportsPage() {
   const [dailyReports, setDailyReports] = useState<DailyReport[]>([]);
+  const [sourceRanks, setSourceRanks] = useState<SourceRank[]>([]);
   const [expandedDate, setExpandedDate] = useState<string | null>(
     dailyReports[0]?.date ?? null
   );
@@ -34,9 +50,11 @@ export default function ReportsPage() {
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (!data?.leads?.length) return;
+        const leads: Lead[] = data.leads;
+
         // Group leads by day into DailyReport format
         const byDay: Record<string, DailyReport> = {};
-        for (const lead of data.leads) {
+        for (const lead of leads) {
           const day = new Date(lead.createdAt).toISOString().slice(0, 10);
           if (!byDay[day]) {
             byDay[day] = {
@@ -64,6 +82,35 @@ export default function ReportsPage() {
           setDailyReports(reports);
           setExpandedDate(reports[0].date);
         }
+
+        // Group leads by source URL for ranking
+        const bySource: Record<string, { leads: Lead[]; scores: number[] }> = {};
+        for (const lead of leads) {
+          const src = lead.source || lead.url || "Unknown";
+          if (!bySource[src]) bySource[src] = { leads: [], scores: [] };
+          bySource[src].leads.push(lead);
+          bySource[src].scores.push(lead.intentScore);
+        }
+        const ranks: SourceRank[] = Object.entries(bySource).map(([source, { leads: srcLeads, scores }]) => {
+          const detectPlatform = (url: string): string | null => {
+            if (/facebook\.com|fb\.com/i.test(url)) return "Facebook";
+            if (/linkedin\.com/i.test(url)) return "LinkedIn";
+            if (/reddit\.com/i.test(url)) return "Reddit";
+            if (/x\.com|twitter\.com/i.test(url)) return "X";
+            return "Other";
+          };
+          return {
+            source,
+            platform: detectPlatform(source),
+            totalLeads: srcLeads.length,
+            highIntent: srcLeads.filter((l) => l.intentLevel === "High").length,
+            mediumIntent: srcLeads.filter((l) => l.intentLevel === "Medium").length,
+            lowIntent: srcLeads.filter((l) => l.intentLevel === "Low").length,
+            avgScore: Math.round(scores.reduce((a, b) => a + b, 0) / scores.length),
+          };
+        });
+        ranks.sort((a, b) => b.totalLeads - a.totalLeads || b.highIntent - a.highIntent);
+        setSourceRanks(ranks);
       })
       .catch(() => {});
   }, []);
@@ -118,6 +165,127 @@ export default function ReportsPage() {
           </div>
           <GeographyChart variant="breakdown" />
         </Card>
+
+        {/* Group / Source Ranking */}
+        {sourceRanks.length > 0 && (
+          <Card className="border-border bg-card overflow-hidden">
+            <div className="px-5 py-4 border-b border-border flex items-center gap-2">
+              <Trophy className="h-4 w-4 text-primary" />
+              <div>
+                <h2 className="text-sm font-semibold text-foreground">Group Ranking</h2>
+                <p className="text-xs text-muted-foreground">Top sources by leads and high-intent signals</p>
+              </div>
+            </div>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left">
+                  <th className="px-5 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider w-8">
+                    <Hash className="h-3 w-3" />
+                  </th>
+                  <th className="px-4 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Platform</th>
+                  <th className="px-4 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Source URL</th>
+                  <th className="px-4 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-center">Leads</th>
+                  <th className="px-4 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-center">High</th>
+                  <th className="px-4 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-center">Medium</th>
+                  <th className="px-4 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-center">Low</th>
+                  <th className="px-4 py-2.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider text-center">Avg Score</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sourceRanks.slice(0, 15).map((rank, i) => {
+                  const maxLeads = sourceRanks[0].totalLeads;
+                  return (
+                    <tr key={rank.source} className="border-b border-border last:border-0 hover:bg-muted/20 transition-colors">
+                      {/* Rank */}
+                      <td className="px-5 py-3">
+                        <span className={cn(
+                          "inline-flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-bold",
+                          i === 0 ? "bg-amber-500/15 text-amber-400" :
+                          i === 1 ? "bg-zinc-400/15 text-zinc-400" :
+                          i === 2 ? "bg-orange-500/15 text-orange-400" :
+                          "bg-muted/50 text-muted-foreground"
+                        )}>
+                          {i + 1}
+                        </span>
+                      </td>
+                      {/* Platform */}
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1.5">
+                          {rank.platform && <PlatformBadge platform={rank.platform as Platform} size="sm" />}
+                          <span className="text-xs text-muted-foreground">
+                            {rank.platform === "Other" ? "Web" : rank.platform}
+                          </span>
+                        </div>
+                      </td>
+                      {/* Source URL */}
+                      <td className="px-4 py-3 max-w-xs">
+                        <div className="min-w-0">
+                          <button
+                            onClick={() => rank.source !== "Unknown" && openUrl(rank.source)}
+                            className="group/link text-[12px] font-mono text-primary/80 hover:text-primary truncate flex items-center gap-1.5 transition-colors cursor-pointer"
+                          >
+                            <ExternalLink className="h-3 w-3 shrink-0 opacity-60 group-hover/link:opacity-100 transition-opacity" />
+                            <span className="truncate underline decoration-primary/30 underline-offset-2 group-hover/link:decoration-primary/60">{rank.source}</span>
+                          </button>
+                          {/* Mini progress bar */}
+                          <div className="h-1 mt-1.5 rounded-full bg-muted/60 overflow-hidden">
+                            <div
+                              className="h-full rounded-full bg-primary/60 transition-all"
+                              style={{ width: `${(rank.totalLeads / maxLeads) * 100}%` }}
+                            />
+                          </div>
+                        </div>
+                      </td>
+                      {/* Leads */}
+                      <td className="px-4 py-3 text-center">
+                        <span className="text-sm font-bold text-foreground">{rank.totalLeads}</span>
+                      </td>
+                      {/* High */}
+                      <td className="px-4 py-3 text-center">
+                        {rank.highIntent > 0 ? (
+                          <Badge variant="outline" className="text-[10px] px-1.5 rounded-full h-5 border-emerald-500/30 bg-emerald-500/10 text-emerald-400">
+                            {rank.highIntent}
+                          </Badge>
+                        ) : (
+                          <span className="text-xs text-muted-foreground/40">0</span>
+                        )}
+                      </td>
+                      {/* Medium */}
+                      <td className="px-4 py-3 text-center">
+                        {rank.mediumIntent > 0 ? (
+                          <Badge variant="outline" className="text-[10px] px-1.5 rounded-full h-5 border-amber-500/30 bg-amber-500/10 text-amber-400">
+                            {rank.mediumIntent}
+                          </Badge>
+                        ) : (
+                          <span className="text-xs text-muted-foreground/40">0</span>
+                        )}
+                      </td>
+                      {/* Low */}
+                      <td className="px-4 py-3 text-center">
+                        {rank.lowIntent > 0 ? (
+                          <span className="text-xs text-muted-foreground">{rank.lowIntent}</span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground/40">0</span>
+                        )}
+                      </td>
+                      {/* Avg Score */}
+                      <td className="px-4 py-3 text-center">
+                        <span className={cn(
+                          "text-xs font-semibold",
+                          rank.avgScore >= 70 ? "text-emerald-400" :
+                          rank.avgScore >= 40 ? "text-amber-400" :
+                          "text-muted-foreground"
+                        )}>
+                          {rank.avgScore}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </Card>
+        )}
 
         {/* Daily Reports */}
         <div className="space-y-3">

@@ -67,6 +67,8 @@ import {
   LogIn,
   Pencil,
   Save,
+  Bookmark,
+  Star,
 } from "lucide-react";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -690,6 +692,56 @@ export default function ScrapeUrlPage() {
   } | null>(null);
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
+
+  // ── Bookmark modal ──────────────────────────────────────
+  const [bookmarkedUrls, setBookmarkedUrls] = useState<Set<string>>(new Set());
+  const [bookmarkModal, setBookmarkModal] = useState<{ url: string; platform: string | null } | null>(null);
+  const [bmName, setBmName] = useState("");
+  const [bmNotes, setBmNotes] = useState("");
+  const [bmSaving, setBmSaving] = useState(false);
+  const [bmAlreadyExists, setBmAlreadyExists] = useState(false);
+
+  // Load bookmarked URLs
+  const loadBookmarkedUrls = useCallback(() => {
+    fetch("/api/bookmarks")
+      .then((res) => (res.ok ? res.json() : { bookmarks: [] }))
+      .then((data: { bookmarks?: { url: string }[] }) => {
+        setBookmarkedUrls(new Set((data.bookmarks ?? []).map((b) => b.url)));
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => { loadBookmarkedUrls(); }, [loadBookmarkedUrls]);
+
+  const openBookmarkModal = (url: string) => {
+    if (bookmarkedUrls.has(url)) {
+      setBmAlreadyExists(true);
+      return;
+    }
+    setBookmarkModal({ url, platform: detectPlatform(url) });
+    setBmName(url);
+    setBmNotes("");
+  };
+
+  const handleSaveBookmark = async () => {
+    if (!bookmarkModal) return;
+    setBmSaving(true);
+    try {
+      await fetch("/api/bookmarks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: bookmarkModal.url,
+          name: bmName.trim() || bookmarkModal.url,
+          platform: bookmarkModal.platform,
+          notes: bmNotes,
+        }),
+      });
+      setBookmarkedUrls((prev) => new Set(prev).add(bookmarkModal.url));
+      setBookmarkModal(null);
+    } catch {} finally { setBmSaving(false); }
+  };
+
   const [runHistory, setRunHistory] = useState<ScheduleRun[]>([]);
   const [runHistoryLoading, setRunHistoryLoading] = useState(false);
   const [clearingRuns, setClearingRuns] = useState(false);
@@ -1323,9 +1375,22 @@ export default function ScrapeUrlPage() {
                           {entry.url}
                         </button>
                         <div className="flex items-center gap-1 shrink-0 mt-0.5">
+                          {bookmarkedUrls.has(entry.url) && (
+                            <Badge variant="outline" className="text-[9px] px-1.5 h-4 rounded-full border-amber-500/30 bg-amber-500/10 text-amber-400 gap-0.5">
+                              <Bookmark className="h-2.5 w-2.5 fill-amber-400" />
+                              Saved
+                            </Badge>
+                          )}
                           {entry.error
                             ? <AlertTriangle className="h-3.5 w-3.5 text-rose-400" />
                             : <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />}
+                          <button
+                            onClick={() => openBookmarkModal(entry.url)}
+                            className="p-0.5 rounded hover:bg-amber-500/10 text-muted-foreground/40 hover:text-amber-400 transition-colors"
+                            title="Save to bookmarks"
+                          >
+                            <Bookmark className="h-3 w-3" />
+                          </button>
                           <button
                             onClick={() => entry.id && deleteSession(entry.id)}
                             disabled={deletingSessionId === entry.id}
@@ -2612,6 +2677,97 @@ export default function ScrapeUrlPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ═══════════════════════════════════════════════════
+          MODAL: Save to Bookmarks
+      ═══════════════════════════════════════════════════ */}
+      <Dialog open={!!bookmarkModal} onOpenChange={(open) => { if (!open) setBookmarkModal(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Star className="h-4 w-4 text-amber-400" />
+              Save to Bookmarks
+            </DialogTitle>
+            <DialogDescription>Bookmark this URL for quick access later.</DialogDescription>
+          </DialogHeader>
+
+          {bookmarkModal && (
+            <div className="space-y-4 py-2">
+              {/* URL (read-only) */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground">URL</label>
+                <div className="relative">
+                  <Link2 className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={bookmarkModal.url}
+                    readOnly
+                    className="h-9 pl-9 text-sm bg-secondary/50 border-border text-muted-foreground"
+                  />
+                </div>
+                {bookmarkModal.platform && (
+                  <PlatformBadge platform={bookmarkModal.platform} />
+                )}
+              </div>
+
+              {/* Name */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground">Name</label>
+                <Input
+                  placeholder="e.g. VA Facebook Group"
+                  value={bmName}
+                  onChange={(e) => setBmName(e.target.value)}
+                  className="h-9 text-sm bg-secondary/50 border-border"
+                />
+              </div>
+
+              {/* Notes */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground">Notes (optional)</label>
+                <Input
+                  placeholder="e.g. High-quality leads group"
+                  value={bmNotes}
+                  onChange={(e) => setBmNotes(e.target.value)}
+                  className="h-9 text-sm bg-secondary/50 border-border"
+                />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBookmarkModal(null)} className="h-9">
+              Cancel
+            </Button>
+            <Button onClick={handleSaveBookmark} disabled={bmSaving} className="gap-2 h-9">
+              {bmSaving
+                ? <><Loader2 className="h-4 w-4 animate-spin" />Saving…</>
+                : <><Bookmark className="h-4 w-4" />Save Bookmark</>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ═══════════════════════════════════════════════════
+          MODAL: Already Bookmarked Alert
+      ═══════════════════════════════════════════════════ */}
+      <AlertDialog open={bmAlreadyExists} onOpenChange={setBmAlreadyExists}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Bookmark className="h-4 w-4 text-amber-400 fill-amber-400" />
+              Already Bookmarked
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This URL is already saved in your bookmarks. You can view and manage it from the Bookmarks page.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Close</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { setBmAlreadyExists(false); window.location.href = "/bookmarks"; }}>
+              Go to Bookmarks
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

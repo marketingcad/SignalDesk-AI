@@ -18,6 +18,7 @@ import {
   Menu,
   X,
   Globe,
+  Bookmark,
 } from "lucide-react";
 import { cn, timeAgo } from "@/lib/utils";
 import type { Platform } from "@/lib/types";
@@ -34,6 +35,7 @@ const baseNavItems = [
   { href: "/leads", icon: Users, label: "Leads" },
   { href: "/scrape-url", icon: Globe, label: "Scrape URL" },
   { href: "/alerts", icon: Bell, label: "Alerts" },
+  { href: "/bookmarks", icon: Bookmark, label: "Bookmarks" },
   { href: "/reports", icon: FileBarChart, label: "Reports" },
   { href: "/users", icon: UserCog, label: "Users" },
   { href: "/settings", icon: Settings, label: "Settings" },

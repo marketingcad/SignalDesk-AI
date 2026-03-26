@@ -1,0 +1,20 @@
+[
+  {
+    "id": "54b9692f-8be4-495d-ba5f-d759c299ff88",
+    "url": "https://www.facebook.com/groups/phvirtualassistantjobhiring",
+    "name": "VAs",
+    "platform": "Facebook",
+    "notes": "Test 2",
+    "favorite": true,
+    "createdAt": "2026-03-26T16:39:20.599Z"
+  },
+  {
+    "id": "42018ca4-5121-486c-bc5e-c75aab1c1700",
+    "url": "https://www.facebook.com/groups/308417108993719",
+    "name": "Facebook VAs Group",
+    "platform": "Facebook",
+    "notes": "test",
+    "createdAt": "2026-03-26T16:21:18.265Z",
+    "favorite": false
+  }
+]
