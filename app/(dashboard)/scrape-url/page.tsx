@@ -2424,8 +2424,8 @@ export default function ScrapeUrlPage() {
           MODAL: Edit Schedule
       ═══════════════════════════════════════════════════ */}
       <Dialog open={!!editSched} onOpenChange={(open) => { if (!open) setEditSched(null); }}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
+        <DialogContent className="w-[calc(100vw-2rem)] max-w-lg max-h-[calc(100vh-4rem)] flex flex-col overflow-hidden">
+          <DialogHeader className="shrink-0">
             <DialogTitle className="flex items-center gap-2">
               <Pencil className="h-4 w-4 text-primary" />
               Edit Schedule
@@ -2434,7 +2434,7 @@ export default function ScrapeUrlPage() {
           </DialogHeader>
 
           {editSched && (
-            <div className="space-y-5 py-2">
+            <div className="space-y-5 py-2 flex-1 min-h-0 overflow-y-auto pr-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border hover:[&::-webkit-scrollbar-thumb]:bg-muted-foreground/30">
               {/* Name */}
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-foreground">
@@ -2726,7 +2726,7 @@ export default function ScrapeUrlPage() {
             </div>
           )}
 
-          <DialogFooter>
+          <DialogFooter className="shrink-0">
             <Button variant="outline" onClick={() => setEditSched(null)} className="h-9">
               Cancel
             </Button>
@@ -2743,7 +2743,7 @@ export default function ScrapeUrlPage() {
           MODAL: Save to Bookmarks
       ═══════════════════════════════════════════════════ */}
       <Dialog open={!!bookmarkModal} onOpenChange={(open) => { if (!open) setBookmarkModal(null); }}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="w-[calc(100vw-2rem)] max-w-md max-h-[calc(100vh-4rem)] flex flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Star className="h-4 w-4 text-amber-400" />
@@ -2834,8 +2834,8 @@ export default function ScrapeUrlPage() {
           MODAL: Bookmark Picker (import URLs from bookmarks)
       ═══════════════════════════════════════════════════ */}
       <Dialog open={!!bmPickerOpen} onOpenChange={(open) => { if (!open) setBmPickerOpen(null); }}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
+        <DialogContent className="w-[calc(100vw-2rem)] max-w-md max-h-[calc(100vh-4rem)] flex flex-col overflow-hidden">
+          <DialogHeader className="shrink-0">
             <DialogTitle className="flex items-center gap-2">
               <Bookmark className="h-4 w-4 text-primary" />
               Import from Bookmarks
@@ -2843,11 +2843,11 @@ export default function ScrapeUrlPage() {
             <DialogDescription>Select bookmarked URLs to add to the schedule.</DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-3 py-2">
+          <div className="flex flex-col gap-3 min-h-0 flex-1 overflow-hidden py-1">
             {/* Select all toggle */}
             <button
               onClick={toggleBmPickerAll}
-              className="flex items-center gap-2 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+              className="flex items-center gap-2 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors shrink-0"
             >
               <div className={cn(
                 "h-4 w-4 rounded border flex items-center justify-center transition-colors",
@@ -2862,10 +2862,10 @@ export default function ScrapeUrlPage() {
               Select all ({savedBookmarks.length})
             </button>
 
-            <Separator />
+            <Separator className="shrink-0" />
 
-            {/* Bookmark list */}
-            <div className="space-y-1 max-h-64 overflow-y-auto pr-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border">
+            {/* Bookmark list — scrollable */}
+            <div className="flex-1 min-h-0 overflow-y-auto space-y-1 pr-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border hover:[&::-webkit-scrollbar-thumb]:bg-muted-foreground/30">
               {savedBookmarks.length === 0 ? (
                 <p className="text-xs text-muted-foreground text-center py-6">No bookmarks saved yet</p>
               ) : (
@@ -2905,7 +2905,7 @@ export default function ScrapeUrlPage() {
             </div>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="shrink-0">
             <Button variant="outline" onClick={() => setBmPickerOpen(null)} className="h-9">
               Cancel
             </Button>
