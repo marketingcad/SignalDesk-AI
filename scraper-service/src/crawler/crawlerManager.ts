@@ -54,7 +54,7 @@ export async function runPlatform(platform: Platform): Promise<ScrapeResult> {
 
   if (result.errors.length > 0) {
     console.warn(`[crawler] ${platform}: ${result.errors.length} errors`);
-    const discordErrors = result.errors.filter((e) => !e.includes("requires login") && !e.includes("page.goto: Timeout"));
+    const discordErrors = result.errors.filter((e) => !e.includes("requires login") && !e.includes("page.goto: Timeout") && !e.includes("ERR_ABORTED"));
     if (discordErrors.length > 0) {
       await sendErrorAlert(platform, discordErrors.join("\n"));
     }
