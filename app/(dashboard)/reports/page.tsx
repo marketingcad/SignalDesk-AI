@@ -30,6 +30,7 @@ import type { Lead } from "@/lib/types";
 
 type SourceRank = {
   source: string;
+  url: string | null;
   platform: string | null;
   totalLeads: number;
   highIntent: number;
@@ -92,16 +93,12 @@ export default function ReportsPage() {
           bySource[src].scores.push(lead.intentScore);
         }
         const ranks: SourceRank[] = Object.entries(bySource).map(([source, { leads: srcLeads, scores }]) => {
-          const detectPlatform = (url: string): string | null => {
-            if (/facebook\.com|fb\.com/i.test(url)) return "Facebook";
-            if (/linkedin\.com/i.test(url)) return "LinkedIn";
-            if (/reddit\.com/i.test(url)) return "Reddit";
-            if (/x\.com|twitter\.com/i.test(url)) return "X";
-            return "Other";
-          };
+          const firstUrl = srcLeads.find((l) => l.url)?.url || null;
+          const firstPlatform = srcLeads[0]?.platform || null;
           return {
             source,
-            platform: detectPlatform(source),
+            url: firstUrl,
+            platform: firstPlatform,
             totalLeads: srcLeads.length,
             highIntent: srcLeads.filter((l) => l.intentLevel === "High").length,
             mediumIntent: srcLeads.filter((l) => l.intentLevel === "Medium").length,
@@ -221,8 +218,11 @@ export default function ReportsPage() {
                       <td className="px-4 py-3 max-w-xs">
                         <div className="min-w-0">
                           <button
-                            onClick={() => rank.source !== "Unknown" && openUrl(rank.source)}
-                            className="group/link text-[12px] font-mono text-primary/80 hover:text-primary truncate flex items-center gap-1.5 transition-colors cursor-pointer"
+                            onClick={() => rank.url && openUrl(rank.url)}
+                            className={cn(
+                              "group/link text-[12px] font-mono truncate flex items-center gap-1.5 transition-colors",
+                              rank.url ? "text-primary/80 hover:text-primary cursor-pointer" : "text-muted-foreground cursor-default"
+                            )}
                           >
                             <ExternalLink className="h-3 w-3 shrink-0 opacity-60 group-hover/link:opacity-100 transition-opacity" />
                             <span className="truncate underline decoration-primary/30 underline-offset-2 group-hover/link:decoration-primary/60">{rank.source}</span>
