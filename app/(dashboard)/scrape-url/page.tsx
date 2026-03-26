@@ -694,24 +694,63 @@ export default function ScrapeUrlPage() {
   const [editError, setEditError] = useState<string | null>(null);
 
   // ── Bookmark modal ──────────────────────────────────────
-  const [bookmarkedUrls, setBookmarkedUrls] = useState<Set<string>>(new Set());
+  type BookmarkEntry = { id: string; url: string; name: string; platform: string | null };
+  const [savedBookmarks, setSavedBookmarks] = useState<BookmarkEntry[]>([]);
+  const bookmarkedUrls = new Set(savedBookmarks.map((b) => b.url));
   const [bookmarkModal, setBookmarkModal] = useState<{ url: string; platform: string | null } | null>(null);
   const [bmName, setBmName] = useState("");
   const [bmNotes, setBmNotes] = useState("");
   const [bmSaving, setBmSaving] = useState(false);
   const [bmAlreadyExists, setBmAlreadyExists] = useState(false);
 
-  // Load bookmarked URLs
+  // Bookmark picker state (shared by create + edit modals)
+  const [bmPickerOpen, setBmPickerOpen] = useState<"create" | "edit" | null>(null);
+  const [bmPickerSelected, setBmPickerSelected] = useState<Set<string>>(new Set());
+
+  // Load bookmarks
   const loadBookmarkedUrls = useCallback(() => {
     fetch("/api/bookmarks")
       .then((res) => (res.ok ? res.json() : { bookmarks: [] }))
-      .then((data: { bookmarks?: { url: string }[] }) => {
-        setBookmarkedUrls(new Set((data.bookmarks ?? []).map((b) => b.url)));
+      .then((data: { bookmarks?: BookmarkEntry[] }) => {
+        setSavedBookmarks(data.bookmarks ?? []);
       })
       .catch(() => {});
   }, []);
 
   useEffect(() => { loadBookmarkedUrls(); }, [loadBookmarkedUrls]);
+
+  const openBmPicker = (target: "create" | "edit") => {
+    setBmPickerSelected(new Set());
+    setBmPickerOpen(target);
+  };
+
+  const toggleBmPickerAll = () => {
+    if (bmPickerSelected.size === savedBookmarks.length) {
+      setBmPickerSelected(new Set());
+    } else {
+      setBmPickerSelected(new Set(savedBookmarks.map((b) => b.url)));
+    }
+  };
+
+  const confirmBmPicker = () => {
+    const urls = Array.from(bmPickerSelected);
+    if (urls.length === 0) { setBmPickerOpen(null); return; }
+    if (bmPickerOpen === "create") {
+      setNewSched((s) => {
+        const existing = s.urls.filter((u) => u.trim());
+        const newUrls = urls.filter((u) => !existing.includes(u));
+        return { ...s, urls: [...existing, ...newUrls].length > 0 ? [...existing, ...newUrls] : [""] };
+      });
+    } else if (bmPickerOpen === "edit") {
+      setEditSched((s) => {
+        if (!s) return s;
+        const existing = s.urls.filter((u) => u.trim());
+        const newUrls = urls.filter((u) => !existing.includes(u));
+        return { ...s, urls: [...existing, ...newUrls] };
+      });
+    }
+    setBmPickerOpen(null);
+  };
 
   const openBookmarkModal = (url: string) => {
     if (bookmarkedUrls.has(url)) {
@@ -737,7 +776,7 @@ export default function ScrapeUrlPage() {
           notes: bmNotes,
         }),
       });
-      setBookmarkedUrls((prev) => new Set(prev).add(bookmarkModal.url));
+      setSavedBookmarks((prev) => [{ id: "", url: bookmarkModal.url, name: bmName, platform: bookmarkModal.platform }, ...prev]);
       setBookmarkModal(null);
     } catch {} finally { setBmSaving(false); }
   };
@@ -1353,7 +1392,7 @@ export default function ScrapeUrlPage() {
               )}
               </div>
               {historyLoading ? (
-                <div className="flex items-center justify-center py-12 gap-2">
+                <div className="flex items-center justify-center py-12 gap-2">c;eacc
                   <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                   <span className="text-xs text-muted-foreground">Loading…</span>
                 </div>
@@ -1501,6 +1540,17 @@ export default function ScrapeUrlPage() {
                       <Plus className="h-3 w-3" />
                       Add URL
                     </Button>
+                    {savedBookmarks.length > 0 && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openBmPicker("create")}
+                        className="gap-1.5 text-xs h-7"
+                      >
+                        <Bookmark className="h-3 w-3" />
+                        From Bookmarks
+                      </Button>
+                    )}
                     {newSched.urls.filter((u) => u.trim()).length > 1 && (
                       <span className="text-[10px] text-muted-foreground">
                         {newSched.urls.filter((u) => u.trim()).length} URLs — one schedule per URL
@@ -2402,7 +2452,7 @@ export default function ScrapeUrlPage() {
                 <label className="text-xs font-semibold text-foreground">
                   Target URL{editSched.urls.length > 1 ? "s" : ""} <span className="text-rose-400">*</span>
                 </label>
-                <div className="space-y-2">
+                <div className={cn("space-y-2", editSched.urls.length > 5 && "max-h-52 overflow-y-auto pr-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border")}>
                   {editSched.urls.map((urlVal, idx) => {
                     const platform = detectPlatform(urlVal);
                     return (
@@ -2453,6 +2503,17 @@ export default function ScrapeUrlPage() {
                     <Plus className="h-3 w-3" />
                     Add URL
                   </Button>
+                  {savedBookmarks.length > 0 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => openBmPicker("edit")}
+                      className="gap-1.5 text-xs h-7"
+                    >
+                      <Bookmark className="h-3 w-3" />
+                      From Bookmarks
+                    </Button>
+                  )}
                   {editSched.urls.filter((u) => u.trim()).length > 1 && (
                     <span className="text-[10px] text-muted-foreground">
                       {editSched.urls.filter((u) => u.trim()).length} URLs — one schedule per URL
@@ -2768,6 +2829,93 @@ export default function ScrapeUrlPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* ═══════════════════════════════════════════════════
+          MODAL: Bookmark Picker (import URLs from bookmarks)
+      ═══════════════════════════════════════════════════ */}
+      <Dialog open={!!bmPickerOpen} onOpenChange={(open) => { if (!open) setBmPickerOpen(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Bookmark className="h-4 w-4 text-primary" />
+              Import from Bookmarks
+            </DialogTitle>
+            <DialogDescription>Select bookmarked URLs to add to the schedule.</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2">
+            {/* Select all toggle */}
+            <button
+              onClick={toggleBmPickerAll}
+              className="flex items-center gap-2 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <div className={cn(
+                "h-4 w-4 rounded border flex items-center justify-center transition-colors",
+                bmPickerSelected.size === savedBookmarks.length && savedBookmarks.length > 0
+                  ? "bg-primary border-primary"
+                  : "border-border"
+              )}>
+                {bmPickerSelected.size === savedBookmarks.length && savedBookmarks.length > 0 && (
+                  <CheckCircle2 className="h-3 w-3 text-primary-foreground" />
+                )}
+              </div>
+              Select all ({savedBookmarks.length})
+            </button>
+
+            <Separator />
+
+            {/* Bookmark list */}
+            <div className="space-y-1 max-h-64 overflow-y-auto pr-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border">
+              {savedBookmarks.length === 0 ? (
+                <p className="text-xs text-muted-foreground text-center py-6">No bookmarks saved yet</p>
+              ) : (
+                savedBookmarks.map((bm) => {
+                  const selected = bmPickerSelected.has(bm.url);
+                  const platform = bm.platform || detectPlatform(bm.url);
+                  return (
+                    <button
+                      key={bm.id}
+                      onClick={() => setBmPickerSelected((prev) => {
+                        const next = new Set(prev);
+                        if (selected) next.delete(bm.url); else next.add(bm.url);
+                        return next;
+                      })}
+                      className={cn(
+                        "flex items-center gap-3 w-full rounded-md px-3 py-2.5 text-left transition-colors",
+                        selected ? "bg-primary/10 border border-primary/20" : "hover:bg-muted/40 border border-transparent"
+                      )}
+                    >
+                      <div className={cn(
+                        "h-4 w-4 rounded border flex items-center justify-center shrink-0 transition-colors",
+                        selected ? "bg-primary border-primary" : "border-border"
+                      )}>
+                        {selected && <CheckCircle2 className="h-3 w-3 text-primary-foreground" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs font-medium text-foreground truncate">{bm.name}</span>
+                          {platform && <PlatformBadge platform={platform} />}
+                        </div>
+                        <p className="text-[10px] font-mono text-muted-foreground truncate">{bm.url}</p>
+                      </div>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBmPickerOpen(null)} className="h-9">
+              Cancel
+            </Button>
+            <Button onClick={confirmBmPicker} disabled={bmPickerSelected.size === 0} className="gap-2 h-9">
+              <Plus className="h-4 w-4" />
+              Add {bmPickerSelected.size > 0 ? `${bmPickerSelected.size} URL${bmPickerSelected.size !== 1 ? "s" : ""}` : "Selected"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
