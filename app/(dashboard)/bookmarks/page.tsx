@@ -291,7 +291,7 @@ export default function BookmarksPage() {
                           className="text-[11px] font-mono text-muted-foreground hover:text-primary truncate flex items-center gap-1 transition-colors"
                         >
                           <ExternalLink className="h-3 w-3 shrink-0" />
-                          {b.url}
+                          <span className="truncate max-w-37.5 sm:max-w-62.5 md:max-w-100 lg:max-w-150">{b.url}</span>
                         </button>
                         {b.notes && (
                           <p className="text-xs text-muted-foreground/70 mt-1 truncate">{b.notes}</p>
