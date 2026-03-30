@@ -33,6 +33,16 @@ const SELECTORS = {
     'time[datetime]',
     'a[href*="/status/"] time',
   ],
+  // Author location — X shows location in user bio / hover card
+  authorLocation: [
+    '[data-testid="UserLocation"] span',
+    '[data-testid="UserProfileHeader_Items"] span',
+  ],
+  // Community name — X Communities have a header with the community name
+  communityHeader: [
+    '[data-testid="communityName"]',
+    '[data-testid="primaryColumn"] h2[role="heading"]',
+  ],
 };
 
 const adapter: PlatformAdapter = {
@@ -98,9 +108,19 @@ const adapter: PlatformAdapter = {
     const timestamp =
       timeEl?.getAttribute("datetime") || new Date().toISOString();
 
-    const source = "X Feed";
+    // Detected language — X sets lang attribute on tweet text (e.g. "en", "tl", "hi")
+    const tweetTextEl = article.querySelector('[data-testid="tweetText"]');
+    const detectedLanguage = tweetTextEl?.getAttribute("lang") || undefined;
 
-    return { platform: PLATFORM, text, username, url, timestamp, engagement, source };
+    // Author location — try hover card / profile header location
+    const locEl = querySelectorFallback(article, SELECTORS.authorLocation, PLATFORM, "authorLocation");
+    const authorLocation = locEl ? getCleanText(locEl) : undefined;
+
+    // Community name — check if viewing an X Community
+    const communityEl = querySelectorFallback(document, SELECTORS.communityHeader, PLATFORM, "communityHeader");
+    const source = communityEl ? getCleanText(communityEl) : "X Feed";
+
+    return { platform: PLATFORM, text, username, url, timestamp, engagement, source, authorLocation, detectedLanguage };
   },
 };
 

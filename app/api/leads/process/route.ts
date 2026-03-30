@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifySession } from "@/lib/auth";
 import { qualifyLead } from "@/lib/ai-lead-qualifier";
+import { inferLocationFromText } from "@/lib/geo-fallback";
 import { supabase } from "@/lib/supabase";
 import { alertEngine } from "@/lib/alert-engine";
 import type { Platform } from "@/lib/types";
@@ -13,6 +14,8 @@ interface IncomingPayload {
   timestamp: string;
   engagement: number;
   source: string;
+  authorLocation?: string;
+  detectedLanguage?: string;
 }
 
 export async function POST(request: NextRequest) {
@@ -45,7 +48,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { platform, text, username, url, timestamp, engagement, source } = payload;
+  const { platform, text, username, url, timestamp, engagement, source, authorLocation, detectedLanguage } = payload;
   console.log(
     `[leads/process] Payload:`,
     `\n  Platform: ${platform}`,
@@ -53,7 +56,9 @@ export async function POST(request: NextRequest) {
     `\n  Text: ${text?.slice(0, 120)}...`,
     `\n  URL: ${url}`,
     `\n  Source: ${source}`,
-    `\n  Engagement: ${engagement}`
+    `\n  Engagement: ${engagement}`,
+    authorLocation ? `\n  Author Location: ${authorLocation}` : "",
+    detectedLanguage ? `\n  Detected Language: ${detectedLanguage}` : ""
   );
 
   if (!platform || !text || !username || !url) {
@@ -97,6 +102,9 @@ export async function POST(request: NextRequest) {
     text,
     url,
     engagement: engagement || 0,
+    authorLocation,
+    detectedLanguage,
+    source,
   });
   console.log(
     `[leads/process] Scoring result (${scoringSource}):`,
@@ -107,10 +115,19 @@ export async function POST(request: NextRequest) {
     aiResult ? `\n  AI Summary: ${aiResult.leadSummary}` : ""
   );
 
-  // --- Insert lead ---
-  const aiLocation = aiResult?.location && aiResult.location !== "Unknown"
+  // --- Resolve geographic location (AI → keyword fallback) ---
+  let aiLocation = aiResult?.location && aiResult.location !== "Others"
     ? aiResult.location
     : null;
+
+  // If AI returned null or "Others", try keyword-based geo fallback
+  if (!aiLocation || aiLocation === "Others") {
+    const fallbackLocation = inferLocationFromText(text, source || "", authorLocation, detectedLanguage);
+    if (fallbackLocation) {
+      aiLocation = fallbackLocation;
+      console.log(`[leads/process] Geo fallback resolved: ${fallbackLocation}`);
+    }
+  }
 
   const { data: lead, error: insertError } = await supabase
     .from("leads")

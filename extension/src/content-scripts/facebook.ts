@@ -27,6 +27,12 @@ const SELECTORS = {
     'a[href*="?__cft__"]',                    // FB uses timestamp links with tooltip
     'span[id^="jsc_"]',                       // Facebook generated timestamp spans
   ],
+  // Author location — FB shows location in profile intro cards and hover tooltips
+  authorLocation: [
+    '[data-testid="profile_intro_card"] span',
+    '[role="tooltip"] span',
+    '.profileLink + span',
+  ],
 };
 
 /**
@@ -160,7 +166,11 @@ const adapter: PlatformAdapter = {
       timeEl?.getAttribute("datetime") ||
       new Date().toISOString();
 
-    return { platform: PLATFORM, text, username, url, timestamp, engagement, source };
+    // Author location — try profile intro card, hover tooltip, or subtitle spans
+    const locationEl = querySelectorFallback(article, SELECTORS.authorLocation, PLATFORM, "authorLocation");
+    const authorLocation = locationEl ? getCleanText(locationEl) : undefined;
+
+    return { platform: PLATFORM, text, username, url, timestamp, engagement, source, authorLocation };
   },
 };
 

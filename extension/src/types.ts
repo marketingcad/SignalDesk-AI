@@ -8,6 +8,8 @@ export interface ExtractedPost {
   timestamp: string;
   engagement: number;
   source: string;
+  authorLocation?: string;
+  detectedLanguage?: string;
 }
 
 export interface DetectedMessage {

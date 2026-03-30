@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifySession } from "@/lib/auth";
 import { qualifyLeadsBatch } from "@/lib/ai-lead-qualifier";
+import { inferLocationFromText } from "@/lib/geo-fallback";
 import { supabase } from "@/lib/supabase";
 import { alertEngine } from "@/lib/alert-engine";
 import { HIRING_KEYWORDS } from "@/lib/keywords";
@@ -15,6 +16,8 @@ interface IncomingPost {
   timestamp: string;
   engagement: number;
   source: string;
+  authorLocation?: string;
+  detectedLanguage?: string;
 }
 
 interface BatchResult {
@@ -173,6 +176,9 @@ export async function POST(request: NextRequest) {
         text: post.text,
         url: post.url,
         engagement: post.engagement || 0,
+        authorLocation: post.authorLocation,
+        detectedLanguage: post.detectedLanguage,
+        source: post.source,
       })),
       dynamicScoringConfig
     );
@@ -181,10 +187,18 @@ export async function POST(request: NextRequest) {
       const post = validPosts[i];
       const { scoring, aiResult } = qualifyResults[i];
 
-      // Extract location from AI result (if available and not "Unknown")
-      const aiLocation = aiResult?.location && aiResult.location !== "Unknown"
+      // Resolve geographic location (AI → keyword fallback)
+      let aiLocation = aiResult?.location && aiResult.location !== "Others"
         ? aiResult.location
         : null;
+
+      // If AI returned null or "Others", try keyword-based geo fallback
+      if (!aiLocation || aiLocation === "Others") {
+        const fallbackLocation = inferLocationFromText(
+          post.text, post.source || "", post.authorLocation, post.detectedLanguage
+        );
+        if (fallbackLocation) aiLocation = fallbackLocation;
+      }
 
       toInsert.push({
         platform: post.platform,

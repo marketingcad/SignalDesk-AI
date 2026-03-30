@@ -31,6 +31,18 @@ const SELECTORS = {
     "time[datetime]",
     '.feed-shared-actor__sub-description span[aria-hidden="true"]',
   ],
+  // Author location — LinkedIn shows "City, Country" below the author name
+  authorLocation: [
+    ".feed-shared-actor__sub-description span[aria-hidden='true']",
+    ".update-components-actor__sub-description span[aria-hidden='true']",
+    ".feed-shared-actor__description",
+  ],
+  // Group name — LinkedIn group pages show group title in header
+  groupHeader: [
+    ".groups-entity-shared-header__title",
+    ".groups-feed-module__header h2",
+    'a[data-tracking-control-name*="group"]',
+  ],
 };
 
 const adapter: PlatformAdapter = {
@@ -95,9 +107,26 @@ const adapter: PlatformAdapter = {
     const timestamp =
       timeEl?.getAttribute("datetime") || new Date().toISOString();
 
-    const source = "LinkedIn Feed";
+    // Author location — LinkedIn subtitle shows "City, Country • Connection"
+    // Extract the first segment before bullet separators
+    const locEl = querySelectorFallback(post, SELECTORS.authorLocation, PLATFORM, "authorLocation");
+    let authorLocation: string | undefined;
+    if (locEl) {
+      const raw = getCleanText(locEl);
+      // Subtitle format: "Location • 1st • 2h" — take first segment
+      // Split on bullet (U+2022) first, then middle dot (U+00B7) as fallback
+      const segment = raw.split("•")[0]?.split("·")[0]?.trim();
+      // Skip if it looks like a time-only or connection-degree segment
+      if (segment && !/^\d+(h|d|w|m|mo|yr|st\+?|nd\+?|rd\+?|th\+?)$/i.test(segment)) {
+        authorLocation = segment;
+      }
+    }
 
-    return { platform: PLATFORM, text, username, url, timestamp, engagement, source };
+    // Group name — check if viewing a LinkedIn group
+    const groupEl = querySelectorFallback(document, SELECTORS.groupHeader, PLATFORM, "groupHeader");
+    const source = groupEl ? getCleanText(groupEl) : "LinkedIn Feed";
+
+    return { platform: PLATFORM, text, username, url, timestamp, engagement, source, authorLocation };
   },
 };
 

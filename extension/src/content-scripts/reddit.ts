@@ -13,6 +13,8 @@ const SELECTORS = {
   body: ['[data-testid="post-content"]', '[slot="text-body"]', ".md"],
   username: ['a[href*="/user/"]'],
   engagement: ['[data-testid="score"]', "[score]", ".score"],
+  // Author flair — Reddit users sometimes set location-based flair on their profile
+  authorFlair: ['[data-testid="post-author-flair"]', '.author-flair'],
 };
 
 const adapter: PlatformAdapter = {
@@ -85,7 +87,18 @@ const adapter: PlatformAdapter = {
         ? `r/${pathParts[subredditIdx + 1]}`
         : "Reddit";
 
-    return { platform: PLATFORM, text, username, url, timestamp, engagement, source };
+    // Author flair — may contain location hints (e.g. "Manila, PH", "UK-based")
+    // Prefer the attribute directly from <shreddit-post>, fallback to DOM selector
+    const flairAttr = postEl.getAttribute("author-flair-text");
+    let authorLocation: string | undefined;
+    if (flairAttr) {
+      authorLocation = flairAttr;
+    } else {
+      const flairEl = querySelectorFallback(postEl, SELECTORS.authorFlair, PLATFORM, "authorFlair");
+      authorLocation = flairEl ? getCleanText(flairEl) : undefined;
+    }
+
+    return { platform: PLATFORM, text, username, url, timestamp, engagement, source, authorLocation };
   },
 };
 

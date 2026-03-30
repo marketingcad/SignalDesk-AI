@@ -104,14 +104,16 @@ STEP 7 — Geographic Location (Country Classification for Analytics)
 
 You are classifying the country of this social media post for dashboard analytics (bar charts showing posts per country).
 
-Determine the most relevant country using ALL available signals:
-* Explicit mentions: "US-based", "from the Philippines", "UK company", "Indian team"
-* Author location / profile info
-* Group/community name (e.g. "Australian VA Community", "PH Freelancers")
-* Location requirements: "PST hours", "EST timezone", "must be in Europe"
-* Currency: "$" = likely US/CA/AU, "£" = UK, "€" = EU
-* Language/spelling: "colour" = UK/AU, "color" = US
-* Cultural context: holiday names, local platforms, regional slang
+PRIORITY ORDER for determining location (use the highest-priority signal available):
+
+1. **Author Location** (if provided in INPUT DATA) — This is the most reliable signal. It comes from the author's profile (self-declared). If it clearly maps to a target country, use it.
+2. **Explicit text mentions**: "US-based", "from the Philippines", "UK company", "Indian team"
+3. **Community/Group name** (if provided): e.g. "Australian VA Community", "PH Freelancers"
+4. **Post Language** (if provided): e.g. "tl" = Tagalog → Philippines, "hi" = Hindi → India
+5. **Location requirements**: "PST hours", "EST timezone", "must be in Europe"
+6. **Currency**: "$" = likely US/CA/AU, "£" = UK, "€" = EU
+7. **Language/spelling**: "colour" = UK/AU, "color" = US
+8. **Cultural context**: holiday names, local platforms, regional slang
 
 TARGET COUNTRIES (use these exact names):
 * "Philippines"
@@ -121,8 +123,9 @@ TARGET COUNTRIES (use these exact names):
 * "Australia"
 
 CLASSIFICATION RULES:
+* If Author Location clearly matches a target country → return that country immediately
 * If you detect HIGH confidence (explicit mention like "Philippines", "US client") → return that target country
-* If you detect MEDIUM confidence (inferred from timezone, currency, context) → return that target country
+* If you detect MEDIUM confidence (inferred from timezone, currency, context, language) → return that target country
 * If you detect LOW confidence (weak signals) → return that target country only if it's one of the 5 above
 * If the country is NOT one of the 5 target countries, or there are no reliable signals → return "Others"
 * If there are truly zero geographic clues → return "Others"
@@ -157,7 +160,17 @@ function buildUserPrompt(input: {
   author: string;
   postContent: string;
   postUrl: string;
+  authorLocation?: string;
+  detectedLanguage?: string;
+  communityName?: string;
 }): string {
+  // Build optional metadata lines
+  const metaLines: string[] = [];
+  if (input.authorLocation) metaLines.push(`Author Location: ${input.authorLocation}`);
+  if (input.detectedLanguage) metaLines.push(`Post Language: ${input.detectedLanguage}`);
+  if (input.communityName) metaLines.push(`Community/Group: ${input.communityName}`);
+  const metaBlock = metaLines.length > 0 ? "\n" + metaLines.join("\n") + "\n" : "";
+
   return `INPUT DATA
 
 Platform:
@@ -165,7 +178,7 @@ ${input.platform}
 
 Author:
 ${input.author}
-
+${metaBlock}
 Post Content:
 ${input.postContent}
 
@@ -372,6 +385,9 @@ export async function qualifyLeadWithAI(input: {
   postContent: string;
   postUrl: string;
   engagement?: number;
+  authorLocation?: string;
+  detectedLanguage?: string;
+  communityName?: string;
 }): Promise<{
   aiResult: AIQualificationResult;
   scoring: ScoringResult;
@@ -398,6 +414,9 @@ export async function qualifyLeadWithAI(input: {
     author: input.author,
     postContent: input.postContent,
     postUrl: input.postUrl,
+    authorLocation: input.authorLocation,
+    detectedLanguage: input.detectedLanguage,
+    communityName: input.communityName,
   });
 
   const prompt = SYSTEM_PROMPT + "\n\n" + userPrompt;
@@ -494,6 +513,9 @@ export async function qualifyLead(
     text: string;
     url: string;
     engagement: number;
+    authorLocation?: string;
+    detectedLanguage?: string;
+    source?: string;
   },
   dynamicConfig?: DynamicScoringConfig
 ): Promise<QualifyResult> {
@@ -505,6 +527,9 @@ export async function qualifyLead(
     postContent: input.text,
     postUrl: input.url,
     engagement: input.engagement,
+    authorLocation: input.authorLocation,
+    detectedLanguage: input.detectedLanguage,
+    communityName: input.source,
   });
 
   if (aiQualification) {
@@ -545,6 +570,9 @@ export async function qualifyLeadsBatch(
     text: string;
     url: string;
     engagement: number;
+    authorLocation?: string;
+    detectedLanguage?: string;
+    source?: string;
   }>,
   dynamicConfig?: DynamicScoringConfig
 ): Promise<QualifyResult[]> {
