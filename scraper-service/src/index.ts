@@ -72,12 +72,11 @@ app.post("/api/run", async (req, res) => {
   console.log("[api] Manual full run triggered");
   res.json({ message: "Scraper run started", startedAt: new Date().toISOString() });
 
-  // Refresh keywords from /settings before each run
-  fetchKeywords(true).catch(() => {});
-
-  runAllPlatforms().catch((err) =>
-    console.error("[api] Full run failed:", err)
-  );
+  // Refresh keywords from /settings, then start run
+  fetchKeywords(true)
+    .catch(() => console.warn("[api] Keyword refresh failed, using cached"))
+    .then(() => runAllPlatforms())
+    .catch((err) => console.error("[api] Full run failed:", err));
 });
 
 // ---------------------------------------------------------------------------
@@ -106,12 +105,11 @@ app.post("/api/run/:platform", async (req, res) => {
     startedAt: new Date().toISOString(),
   });
 
-  // Refresh keywords from /settings before each run
-  fetchKeywords(true).catch(() => {});
-
-  runPlatform(platform).catch((err) =>
-    console.error(`[api] ${platform} run failed:`, err)
-  );
+  // Refresh keywords from /settings, then start run
+  fetchKeywords(true)
+    .catch(() => console.warn(`[api] Keyword refresh failed for ${platform}, using cached`))
+    .then(() => runPlatform(platform))
+    .catch((err) => console.error(`[api] ${platform} run failed:`, err));
 });
 
 // ---------------------------------------------------------------------------

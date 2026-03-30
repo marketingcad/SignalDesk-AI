@@ -18,6 +18,9 @@ import {
   X,
   AlertTriangle,
   Loader2,
+  Sparkles,
+  Check,
+  Lightbulb,
 } from "lucide-react";
 
 type KeywordCategory = "high_intent" | "medium_intent" | "negative";
@@ -46,6 +49,12 @@ export default function SettingsPage() {
   const [savedSection, setSavedSection] = useState<string | null>(null);
   const [savingSection, setSavingSection] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // --- Keyword Discovery state ---
+  const [discovering, setDiscovering] = useState(false);
+  const [suggestions, setSuggestions] = useState<Array<{ keyword: string; category: string; reason: string }>>([]);
+  const [discoveryMeta, setDiscoveryMeta] = useState<{ leadsAnalyzed: number; message?: string } | null>(null);
+  const [addedSuggestions, setAddedSuggestions] = useState<Set<string>>(new Set());
 
   // --- Load all settings on mount ---
   useEffect(() => {
@@ -122,6 +131,46 @@ export default function SettingsPage() {
     } catch {
       // optimistic update already applied
     }
+  };
+
+  // --- Keyword Discovery ---
+  const discoverKeywords = async () => {
+    setDiscovering(true);
+    setSuggestions([]);
+    setDiscoveryMeta(null);
+    setAddedSuggestions(new Set());
+    try {
+      const res = await fetch("/api/keywords/discover", { method: "POST" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setDiscoveryMeta({ leadsAnalyzed: 0, message: err.error || "Discovery failed" });
+        return;
+      }
+      const data = await res.json();
+      // Filter against local keyword state (more current than DB snapshot used by API)
+      const allLocal = [...keywords.high_intent, ...keywords.medium_intent, ...keywords.negative];
+      const localSet = new Set(allLocal.map((k) => k.toLowerCase()));
+      const filtered = (data.suggestions || []).filter(
+        (s: { keyword: string }) => !localSet.has(s.keyword.toLowerCase())
+      );
+      setSuggestions(filtered);
+      setDiscoveryMeta({
+        leadsAnalyzed: data.leadsAnalyzed || 0,
+        message: filtered.length === 0
+          ? data.message || "No new keywords discovered. Your keyword list already covers your leads well."
+          : undefined,
+      });
+    } catch {
+      setDiscoveryMeta({ leadsAnalyzed: 0, message: "Failed to connect to AI service" });
+    } finally {
+      setDiscovering(false);
+    }
+  };
+
+  const acceptSuggestion = async (keyword: string, category: string) => {
+    // Mark added immediately to prevent double-click race condition
+    setAddedSuggestions((prev) => new Set(prev).add(keyword));
+    await addKeyword(keyword, category as KeywordCategory);
   };
 
   // --- Toggle platform locally ---
@@ -312,6 +361,103 @@ export default function SettingsPage() {
               onAdd={(kw) => addKeyword(kw, "negative")}
               onRemove={(kw) => removeKeyword(kw, "negative")}
             />
+          </div>
+        </SettingsSection>
+
+        {/* Keyword Discovery */}
+        <SettingsSection
+          icon={Sparkles}
+          title="Keyword Discovery"
+          description="AI analyzes your high-intent leads to suggest new keywords you're missing"
+        >
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <Button
+                size="sm"
+                className="gap-1.5 shadow-sm shadow-primary/25"
+                onClick={discoverKeywords}
+                disabled={discovering}
+              >
+                {discovering ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Lightbulb className="h-3.5 w-3.5" />
+                )}
+                {discovering ? "Analyzing leads..." : "Discover New Keywords"}
+              </Button>
+              {discoveryMeta && discoveryMeta.leadsAnalyzed > 0 && !discoveryMeta.message && (
+                <span className="text-xs text-muted-foreground">
+                  Analyzed {discoveryMeta.leadsAnalyzed} high-intent leads
+                </span>
+              )}
+            </div>
+
+            {discoveryMeta?.message && (
+              <div className="rounded-lg border border-border bg-secondary px-4 py-3">
+                <p className="text-xs text-muted-foreground">{discoveryMeta.message}</p>
+              </div>
+            )}
+
+            {suggestions.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  {suggestions.length} Suggestions
+                </p>
+                <div className="space-y-1.5">
+                  {suggestions.map((s) => {
+                    const added = addedSuggestions.has(s.keyword);
+                    return (
+                      <div
+                        key={s.keyword}
+                        className={cn(
+                          "flex items-center gap-3 rounded-lg border px-3 py-2.5 transition-all",
+                          added
+                            ? "border-emerald-500/20 bg-emerald-500/5 opacity-60"
+                            : "border-border bg-secondary hover:bg-accent/30"
+                        )}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium text-foreground">{s.keyword}</span>
+                            <span className={cn(
+                              "text-[10px] font-medium px-1.5 py-0.5 rounded-full",
+                              s.category === "high_intent"
+                                ? "bg-emerald-500/10 text-emerald-400"
+                                : "bg-amber-500/10 text-amber-400"
+                            )}>
+                              {s.category === "high_intent" ? "High" : "Medium"}
+                            </span>
+                          </div>
+                          <p className="text-xs text-muted-foreground truncate mt-0.5">{s.reason}</p>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className={cn(
+                            "h-7 gap-1 shrink-0",
+                            added && "border-emerald-500/30 text-emerald-400"
+                          )}
+                          onClick={() => acceptSuggestion(s.keyword, s.category)}
+                          disabled={added}
+                        >
+                          {added ? (
+                            <>
+                              <Check className="h-3 w-3" />
+                              Added
+                            </>
+                          ) : (
+                            <>
+                              <Plus className="h-3 w-3" />
+                              Add
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         </SettingsSection>
 

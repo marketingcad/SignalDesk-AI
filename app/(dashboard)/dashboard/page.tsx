@@ -133,16 +133,14 @@ export default function DashboardPage() {
 
         {/* Geography Row */}
         <Card className="border-border bg-card p-5">
-          <div className="mb-4 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Globe className="h-4 w-4 text-primary" />
-              <div>
-                <h2 className="text-sm font-semibold text-foreground">Lead Geography</h2>
-                <p className="text-xs text-muted-foreground">Distribution by country</p>
-              </div>
+          <div className="mb-4 flex items-center gap-2">
+            <Globe className="h-4 w-4 text-primary" />
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">Lead Geography</h2>
+              <p className="text-xs text-muted-foreground">Leads by country</p>
             </div>
           </div>
-          <GeographyChart variant="bar" />
+          <GeographyChart variant="breakdown" />
         </Card>
 
         {/* Bottom Row */}

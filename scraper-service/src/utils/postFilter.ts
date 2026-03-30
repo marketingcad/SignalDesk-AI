@@ -1,3 +1,4 @@
+import { getCachedKeywords } from "../api/backendClient";
 import type { ScrapedPost } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -27,7 +28,17 @@ const REJECT_PATTERNS = [
 ];
 
 export function isJobSeeker(text: string): boolean {
-  return REJECT_PATTERNS.some((pattern) => pattern.test(text));
+  // Check hardcoded patterns first
+  if (REJECT_PATTERNS.some((pattern) => pattern.test(text))) return true;
+
+  // Check dynamic negative keywords from /settings
+  const cached = getCachedKeywords();
+  if (cached?.negativeKeywords?.length) {
+    const lower = text.toLowerCase();
+    if (cached.negativeKeywords.some((kw) => lower.includes(kw.toLowerCase()))) return true;
+  }
+
+  return false;
 }
 
 /**
