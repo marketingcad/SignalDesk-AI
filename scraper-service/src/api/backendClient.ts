@@ -91,11 +91,11 @@ export async function sendLeadsBatch(
     return null;
   }
 
-  // Filter out posts with opaque/broken author IDs (e.g. LinkedIn URNs produce unusable URLs).
-  // "unknown" authors are allowed — Facebook Google dork results have valid post URLs without author names.
+  // Filter out posts with unknown or invalid authors — these are login-gated
+  // pages where we couldn't extract real content (e.g. Facebook without cookies).
   const validPosts = posts.filter((p) => {
-    if (p.author?.startsWith("urn:li:")) {
-      console.log(`[backend] Skipping post with opaque LinkedIn author: "${p.author}" — ${p.url}`);
+    if (!p.author || p.author.toLowerCase() === "unknown" || p.author.startsWith("urn:li:")) {
+      console.log(`[backend] Skipping post with unknown/invalid author: "${p.author}" — ${p.url}`);
       return false;
     }
     return true;

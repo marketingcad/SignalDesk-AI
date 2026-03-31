@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicholasgeraldscott/tauri/main/crates/tauri-config-schema/schema.json",
   "productName": "VA Hub",
-  "version": "1.0.40",
+  "version": "1.0.41",
   "identifier": "com.signaldesk.vahub",
   "build": {
     "beforeDevCommand": "",

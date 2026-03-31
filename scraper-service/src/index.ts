@@ -161,8 +161,15 @@ app.post("/api/scrape-url", async (req, res) => {
         await sendErrorAlert(result.platform, discordErrors.join("\n"));
       }
 
-      // Pre-filter: reject job seekers and too-short posts (same as crawlerManager)
-      const filtered = filterPosts(result.posts, "[url-scraper]");
+      // Pre-filter: reject job seekers, too-short posts, and unknown authors
+      const preFiltered = filterPosts(result.posts, "[url-scraper]");
+      const filtered = preFiltered.filter((p) => {
+        if (!p.author || p.author.toLowerCase() === "unknown" || p.author.startsWith("urn:li:")) {
+          console.log(`[url-scraper] Filtered unknown/invalid author: "${p.author}" — ${p.url}`);
+          return false;
+        }
+        return true;
+      });
       console.log(
         `[url-scraper] ${filtered.length} posts after filtering (${result.posts.length - filtered.length} rejected)`
       );
