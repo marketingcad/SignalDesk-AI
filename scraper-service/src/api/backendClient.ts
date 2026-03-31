@@ -91,22 +91,23 @@ export async function sendLeadsBatch(
     return null;
   }
 
-  // Filter out posts with unknown authors — their URLs are broken/unusable
+  // Filter out posts with opaque/broken author IDs (e.g. LinkedIn URNs produce unusable URLs).
+  // "unknown" authors are allowed — Facebook Google dork results have valid post URLs without author names.
   const validPosts = posts.filter((p) => {
-    if (!p.author || p.author.toLowerCase() === "unknown" || p.author.startsWith("urn:li:")) {
-      console.log(`[backend] Skipping post with unknown/invalid author: "${p.author}" — ${p.url}`);
+    if (p.author?.startsWith("urn:li:")) {
+      console.log(`[backend] Skipping post with opaque LinkedIn author: "${p.author}" — ${p.url}`);
       return false;
     }
     return true;
   });
 
   if (validPosts.length === 0) {
-    console.log(`[backend] All ${posts.length} posts had unknown authors — nothing to send`);
+    console.log(`[backend] All ${posts.length} posts filtered out — nothing to send`);
     return null;
   }
 
   if (validPosts.length < posts.length) {
-    console.log(`[backend] Filtered out ${posts.length - validPosts.length} posts with unknown authors`);
+    console.log(`[backend] Filtered out ${posts.length - validPosts.length} posts with invalid authors`);
   }
 
   console.log(`[backend] Sending ${validPosts.length} posts to ${config.backendApiUrl}/api/leads/batch`);

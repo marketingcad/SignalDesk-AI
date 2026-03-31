@@ -97,10 +97,11 @@ async function logScrapedPosts(
     userKeywords = HIRING_KEYWORDS.map((kw) => kw.toLowerCase());
   }
 
-  // Filter out posts with unknown authors — their URLs are broken/unusable
+  // Filter out posts with opaque/broken author IDs (e.g. LinkedIn URNs).
+  // "unknown" authors are allowed — Facebook Google dork results have valid post URLs without author names.
   const validPosts = posts.filter((p) => {
-    if (!p.author || p.author.toLowerCase() === "unknown" || p.author.startsWith("urn:li:")) {
-      console.log(`[scrape-url] Skipping post with unknown/invalid author: "${p.author}" — ${p.url}`);
+    if (p.author?.startsWith("urn:li:")) {
+      console.log(`[scrape-url] Skipping post with opaque LinkedIn author: "${p.author}" — ${p.url}`);
       return false;
     }
     // Keyword gate: only keep posts that match at least one user keyword
