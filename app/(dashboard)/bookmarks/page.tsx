@@ -20,6 +20,10 @@ import {
   Pencil,
   Save,
   X,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
 } from "lucide-react";
 
 type BookmarkItem = {
@@ -47,6 +51,8 @@ export default function BookmarksPage() {
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"all" | "favorites">("all");
+  const [currentPage, setCurrentPage] = useState(1);
+  const perPage = 20;
 
   // New bookmark form
   const [newUrl, setNewUrl] = useState("");
@@ -131,6 +137,13 @@ export default function BookmarksPage() {
     return b.name.toLowerCase().includes(q) || b.url.toLowerCase().includes(q) || b.notes.toLowerCase().includes(q);
   });
 
+  const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const paginatedBookmarks = filtered.slice(
+    (safeCurrentPage - 1) * perPage,
+    safeCurrentPage * perPage
+  );
+
   return (
     <>
       <Header
@@ -188,7 +201,7 @@ export default function BookmarksPage() {
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1 rounded-lg border border-border bg-card p-1">
               <button
-                onClick={() => setViewMode("all")}
+                onClick={() => { setViewMode("all"); setCurrentPage(1); }}
                 className={`rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
                   viewMode === "all"
                     ? "bg-accent text-foreground"
@@ -198,7 +211,7 @@ export default function BookmarksPage() {
                 All ({bookmarks.length})
               </button>
               <button
-                onClick={() => setViewMode("favorites")}
+                onClick={() => { setViewMode("favorites"); setCurrentPage(1); }}
                 className={`rounded-md px-3 py-1.5 text-xs font-medium transition-all flex items-center gap-1.5 ${
                   viewMode === "favorites"
                     ? "bg-accent text-foreground"
@@ -214,7 +227,7 @@ export default function BookmarksPage() {
               <Input
                 placeholder="Search bookmarks…"
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => { setSearch(e.target.value); setCurrentPage(1); }}
                 className="h-9 pl-9 text-sm bg-card border-border"
               />
             </div>
@@ -238,7 +251,7 @@ export default function BookmarksPage() {
           </Card>
         ) : (
           <div className="space-y-2">
-            {filtered.map((b) => {
+            {paginatedBookmarks.map((b) => {
               const isEditing = editingId === b.id;
               const platform = b.platform || detectPlatform(b.url);
               return (
@@ -316,6 +329,83 @@ export default function BookmarksPage() {
               );
             })}
           </div>
+        )}
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <Card className="border-border bg-card px-4 py-3">
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-muted-foreground">
+                Showing {(safeCurrentPage - 1) * perPage + 1}–{Math.min(safeCurrentPage * perPage, filtered.length)} of {filtered.length} bookmarks
+              </p>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 w-8 p-0"
+                  disabled={safeCurrentPage === 1}
+                  onClick={() => setCurrentPage(1)}
+                >
+                  <ChevronsLeft className="h-3.5 w-3.5" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 w-8 p-0"
+                  disabled={safeCurrentPage === 1}
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                </Button>
+
+                {Array.from({ length: totalPages }, (_, i) => i + 1)
+                  .filter((page) => {
+                    if (totalPages <= 7) return true;
+                    if (page === 1 || page === totalPages) return true;
+                    return Math.abs(page - safeCurrentPage) <= 1;
+                  })
+                  .reduce<(number | "ellipsis")[]>((acc, page, idx, arr) => {
+                    if (idx > 0 && page - (arr[idx - 1] as number) > 1) acc.push("ellipsis");
+                    acc.push(page);
+                    return acc;
+                  }, [])
+                  .map((item, idx) =>
+                    item === "ellipsis" ? (
+                      <span key={`e-${idx}`} className="px-1 text-xs text-muted-foreground">...</span>
+                    ) : (
+                      <Button
+                        key={item}
+                        variant={safeCurrentPage === item ? "default" : "outline"}
+                        size="sm"
+                        className="h-8 w-8 p-0 text-xs"
+                        onClick={() => setCurrentPage(item)}
+                      >
+                        {item}
+                      </Button>
+                    )
+                  )}
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 w-8 p-0"
+                  disabled={safeCurrentPage === totalPages}
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                >
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 w-8 p-0"
+                  disabled={safeCurrentPage === totalPages}
+                  onClick={() => setCurrentPage(totalPages)}
+                >
+                  <ChevronsRight className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            </div>
+          </Card>
         )}
       </div>
     </>
