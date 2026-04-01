@@ -277,6 +277,25 @@ export default function ScrapeUrlPage() {
       if (errors.length > 0) {
         setSchedError(errors.join("; "));
       } else {
+        // If auto-scrape is on, trigger an immediate group run after creation
+        if (newSched.status === "active") {
+          // Reload schedules to get the newly created IDs
+          const schedRes = await fetch("/api/schedules").then((r) => r.json()).catch(() => null);
+          if (schedRes?.schedules?.length) {
+            // Find the first schedule matching the name we just created
+            const baseName = newSched.name.trim();
+            const created = schedRes.schedules.find((s: { name: string }) =>
+              s.name === baseName || s.name === `${baseName} (#1)`
+            );
+            if (created) {
+              // run-group triggers all URLs in the group sequentially
+              setRunningId(created.id);
+              fetch(`/api/schedules/${created.id}/run-group`, { method: "POST" })
+                .catch(() => {})
+                .finally(() => { setRunningId(null); loadSchedules(true); });
+            }
+          }
+        }
         setNewSched(DEFAULT_NEW_SCHED);
       }
       loadSchedules();

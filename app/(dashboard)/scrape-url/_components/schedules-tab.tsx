@@ -187,8 +187,8 @@ export function SchedulesTab({
             {/* Status toggle */}
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs font-semibold text-foreground">Start immediately</p>
-                <p className="text-[11px] text-muted-foreground">Begin auto-scraping as soon as saved</p>
+                <p className="text-xs font-semibold text-foreground">Auto-scrape on create</p>
+                <p className="text-[11px] text-muted-foreground">Run all URLs sequentially right after saving</p>
               </div>
               <button
                 onClick={() => setNewSched((s) => ({ ...s, status: s.status === "active" ? "paused" : "active" }))}
