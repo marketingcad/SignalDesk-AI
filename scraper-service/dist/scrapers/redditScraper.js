@@ -22,11 +22,11 @@ async function scrapeReddit() {
     const errors = [];
     const seen = new Set();
     const subreddits = config_1.config.targets.redditSubreddits;
-    // Use dynamic keywords from /settings page, fallback to hardcoded defaults
+    // Use ALL keywords from /settings page (high + medium intent), fallback to hardcoded defaults
     const cached = (0, backendClient_1.getCachedKeywords)();
-    const highIntent = cached?.scoringConfig?.high_intent;
-    const searchTerms = highIntent?.length
-        ? highIntent.slice(0, 15) // Limit to top 15 to not overwhelm Reddit search API
+    const allQueries = cached?.searchQueries;
+    const searchTerms = allQueries?.length
+        ? allQueries.slice(0, 20) // Limit to top 20 to stay within Reddit search rate limits
         : [
             "hiring virtual assistant",
             "need a VA",

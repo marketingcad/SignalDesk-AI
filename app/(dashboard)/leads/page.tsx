@@ -459,47 +459,13 @@ export default function LeadsPage() {
                   : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
               )}>
                 {filteredLeads.map((lead, i) => (
-                  <Card
+                  <LeadCard
                     key={lead.id}
-                    className={cn(
-                      "border-border bg-card p-4 cursor-pointer transition-all duration-200 hover:shadow-md hover:border-primary/30 hover:-translate-y-0.5 animate-view-card-in",
-                      selectedLead?.id === lead.id && "ring-1 ring-primary border-primary/40"
-                    )}
-                    style={{ animationDelay: `${Math.min(i * 30, 300)}ms` }}
+                    lead={lead}
+                    index={i}
+                    isSelected={selectedLead?.id === lead.id}
                     onClick={() => setSelectedLead(selectedLead?.id === lead.id ? null : lead)}
-                  >
-                    <div className="flex items-center gap-3 mb-3">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
-                        {lead.username.split(" ").map((n) => n[0]).join("").slice(0, 2)}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-semibold text-foreground truncate">{lead.username}</p>
-                        <p className="text-xs text-muted-foreground truncate">{lead.source}</p>
-                      </div>
-                    </div>
-
-                    <p className="text-xs text-foreground/70 leading-relaxed line-clamp-2 mb-3">
-                      {lead.text}
-                    </p>
-
-                    <div className="flex items-center gap-1.5 flex-wrap mb-3">
-                      <PlatformBadge platform={lead.platform} size="sm" />
-                      <IntentBadge score={lead.intentScore} size="sm" />
-                      <StatusBadge status={lead.status} />
-                    </div>
-
-                    <div className="flex items-center justify-between pt-2 border-t border-border/60">
-                      <span className="text-[11px] text-muted-foreground" title={formatDate(new Date(lead.createdAt))}>
-                      Posted on: {formatDate(new Date(lead.createdAt))} · {timeAgo(lead.createdAt)}
-                      </span>
-                      {lead.location && (
-                        <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                          <MapPin className="h-3 w-3" />
-                          {lead.location}
-                        </span>
-                      )}
-                    </div>
-                  </Card>
+                  />
                 ))}
               </div>
 
@@ -798,6 +764,61 @@ export default function LeadsPage() {
         </div>
       )}
     </>
+  );
+}
+
+function LeadCard({
+  lead,
+  index,
+  isSelected,
+  onClick,
+}: {
+  lead: Lead;
+  index: number;
+  isSelected: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <Card
+      className={cn(
+        "border-border bg-card p-4 cursor-pointer transition-all duration-200 hover:shadow-md hover:border-primary/30 hover:-translate-y-0.5 animate-view-card-in",
+        isSelected && "ring-1 ring-primary border-primary/40"
+      )}
+      style={{ animationDelay: `${Math.min(index * 30, 300)}ms` }}
+      onClick={onClick}
+    >
+      <div className="flex items-center gap-3 mb-3">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+          {lead.username.split(" ").map((n) => n[0]).join("").slice(0, 2)}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-foreground truncate">{lead.username}</p>
+          <p className="text-xs text-muted-foreground truncate">{lead.source}</p>
+        </div>
+      </div>
+
+      <p className="text-xs text-foreground/70 leading-relaxed line-clamp-2 mb-3">
+        {lead.text}
+      </p>
+
+      <div className="flex items-center gap-1.5 flex-wrap mb-3">
+        <PlatformBadge platform={lead.platform} size="sm" />
+        <IntentBadge score={lead.intentScore} size="sm" />
+        <StatusBadge status={lead.status} />
+      </div>
+
+      <div className="flex items-center justify-between pt-2 border-t border-border/60">
+        <span className="text-[11px] text-muted-foreground" title={formatDate(new Date(lead.createdAt))}>
+          Posted on: {formatDate(new Date(lead.createdAt))} · {timeAgo(lead.createdAt)}
+        </span>
+        {lead.location && (
+          <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+            <MapPin className="h-3 w-3" />
+            {lead.location}
+          </span>
+        )}
+      </div>
+    </Card>
   );
 }
 

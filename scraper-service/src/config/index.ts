@@ -37,6 +37,10 @@ export const config = {
   backendApiUrl: envOrDefault("BACKEND_API_URL", "http://localhost:3000"),
   backendAuthToken: envOrDefault("BACKEND_AUTH_TOKEN", ""),
 
+  // Supabase (optional — enables durable schedule persistence instead of JSON files)
+  supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL || "",
+  supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || "",
+
   // Discord
   discordWebhookUrl: envOrDefault("DISCORD_WEBHOOK_URL", ""),
 
@@ -79,4 +83,32 @@ export const config = {
 
   // Browser
   headless: envOrDefault("HEADLESS", "true") === "true",
+
+  // Retry logic for failed scrapes
+  scrapeRetryAttempts: parseInt(envOrDefault("SCRAPE_RETRY_ATTEMPTS", "1"), 10),
+  scrapeRetryDelayMs: parseInt(envOrDefault("SCRAPE_RETRY_DELAY_MS", "30000"), 10),
+
+  // Keyword cache TTL (milliseconds) — avoids repeated API calls during burst scraping
+  keywordCacheTtlMs: parseInt(envOrDefault("KEYWORD_CACHE_TTL_MS", "300000"), 10), // 5 minutes
+
+  // Per-platform rate limiting — minimum gap (ms) between scrapes for the same platform
+  platformRateLimitMs: {
+    Facebook: parseInt(envOrDefault("RATE_LIMIT_FACEBOOK_MS", "300000"), 10),  // 5 min
+    LinkedIn: parseInt(envOrDefault("RATE_LIMIT_LINKEDIN_MS", "300000"), 10),  // 5 min
+    Reddit: parseInt(envOrDefault("RATE_LIMIT_REDDIT_MS", "60000"), 10),       // 1 min
+    X: parseInt(envOrDefault("RATE_LIMIT_X_MS", "60000"), 10),                 // 1 min
+    Other: parseInt(envOrDefault("RATE_LIMIT_OTHER_MS", "10000"), 10),         // 10 sec
+  } as Record<string, number>,
+
+  // Minimum post character length per platform (posts shorter than this are filtered)
+  minPostLength: {
+    Facebook: parseInt(envOrDefault("MIN_POST_LENGTH_FACEBOOK", "20"), 10),
+    LinkedIn: parseInt(envOrDefault("MIN_POST_LENGTH_LINKEDIN", "20"), 10),
+    Reddit: parseInt(envOrDefault("MIN_POST_LENGTH_REDDIT", "20"), 10),
+    X: parseInt(envOrDefault("MIN_POST_LENGTH_X", "10"), 10),
+    Other: parseInt(envOrDefault("MIN_POST_LENGTH_OTHER", "20"), 10),
+  } as Record<string, number>,
+
+  // Session health — alert after N consecutive runs with 0 posts
+  sessionHealthThreshold: parseInt(envOrDefault("SESSION_HEALTH_THRESHOLD", "3"), 10),
 };

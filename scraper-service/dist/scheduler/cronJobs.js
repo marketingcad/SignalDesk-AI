@@ -38,6 +38,7 @@ exports.stopScheduler = stopScheduler;
 const cron = __importStar(require("node-cron"));
 const config_1 = require("../config");
 const crawlerManager_1 = require("../crawler/crawlerManager");
+const backendClient_1 = require("../api/backendClient");
 const activeTasks = [];
 function scheduleJob(platform, expression, label) {
     if (!cron.validate(expression)) {
@@ -51,6 +52,8 @@ function scheduleJob(platform, expression, label) {
         }
         console.log(`[scheduler] ${platform} — triggered by cron (${expression})`);
         try {
+            // Refresh keywords from /settings before each cron run
+            await (0, backendClient_1.fetchKeywords)(true).catch(() => console.warn(`[scheduler] ${platform} — keyword refresh failed, using cached`));
             await (0, crawlerManager_1.runPlatform)(platform);
         }
         catch (err) {
@@ -75,7 +78,14 @@ function startScheduler() {
             return;
         }
         console.log("[scheduler] Full scraper run — triggered by cron");
-        await (0, crawlerManager_1.runAllPlatforms)();
+        try {
+            // Refresh keywords from /settings before full run
+            await (0, backendClient_1.fetchKeywords)(true).catch(() => console.warn("[scheduler] Full run — keyword refresh failed, using cached"));
+            await (0, crawlerManager_1.runAllPlatforms)();
+        }
+        catch (err) {
+            console.error("[scheduler] Full run cron job failed:", err);
+        }
     });
     activeTasks.push(fullRunTask);
     console.log("[scheduler] ✅ Full run scheduled: every 6 hours\n");

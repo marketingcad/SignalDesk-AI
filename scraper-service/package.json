@@ -14,11 +14,18 @@
     "scrape:facebook": "ts-node -e \"require('./src/crawler/crawlerManager').runPlatform('Facebook')\"",
     "auth:login": "ts-node src/crawler/browserAuth.ts"
   },
-  "keywords": ["scraper", "playwright", "crawlee", "virtual-assistant", "lead-detection"],
+  "keywords": [
+    "scraper",
+    "playwright",
+    "crawlee",
+    "virtual-assistant",
+    "lead-detection"
+  ],
   "author": "SignalDesk AI",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@supabase/supabase-js": "^2.101.1",
     "axios": "^1.13.6",
     "crawlee": "^3.16.0",
     "dotenv": "^17.3.1",

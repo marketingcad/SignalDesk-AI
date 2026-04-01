@@ -17,21 +17,26 @@ const client = axios_1.default.create({
         "X-Source": "signaldesk-scraper",
     },
 });
-/** Cached keywords — refreshed on each scraper run */
+/** Cached keywords with TTL — avoids repeated API calls during burst scraping */
 let cachedKeywords = null;
+let cachedKeywordsAt = 0;
 /**
  * Fetch user-configured keywords from the backend.
  * The scraper uses these for search queries, Google dorks, and post filtering.
  * Falls back to env var defaults if the backend is unreachable.
+ * Uses a TTL-based cache (default 5 min) so burst scrapes don't hammer the API.
  */
 async function fetchKeywords(forceRefresh = false) {
-    if (cachedKeywords && !forceRefresh)
+    const ttl = config_1.config.keywordCacheTtlMs;
+    const cacheValid = cachedKeywords && (Date.now() - cachedKeywordsAt) < ttl;
+    if (cacheValid && !forceRefresh)
         return cachedKeywords;
     try {
         console.log("[backend] Fetching keywords from /api/keywords/search-queries...");
         const { data } = await client.get("/api/keywords/search-queries");
         if (data?.searchQueries?.length > 0) {
             cachedKeywords = data;
+            cachedKeywordsAt = Date.now();
             console.log(`[backend] Keywords loaded: ${data.searchQueries.length} search queries, ${data.negativeKeywords.length} negative`);
             return cachedKeywords;
         }
@@ -56,7 +61,8 @@ async function sendLeadsBatch(posts) {
         console.log("[backend] No posts to send");
         return null;
     }
-    // Filter out posts with unknown authors — their URLs are broken/unusable
+    // Filter out posts with unknown or invalid authors — these are login-gated
+    // pages where we couldn't extract real content (e.g. Facebook without cookies).
     const validPosts = posts.filter((p) => {
         if (!p.author || p.author.toLowerCase() === "unknown" || p.author.startsWith("urn:li:")) {
             console.log(`[backend] Skipping post with unknown/invalid author: "${p.author}" — ${p.url}`);
@@ -65,11 +71,11 @@ async function sendLeadsBatch(posts) {
         return true;
     });
     if (validPosts.length === 0) {
-        console.log(`[backend] All ${posts.length} posts had unknown authors — nothing to send`);
+        console.log(`[backend] All ${posts.length} posts filtered out — nothing to send`);
         return null;
     }
     if (validPosts.length < posts.length) {
-        console.log(`[backend] Filtered out ${posts.length - validPosts.length} posts with unknown authors`);
+        console.log(`[backend] Filtered out ${posts.length - validPosts.length} posts with invalid authors`);
     }
     console.log(`[backend] Sending ${validPosts.length} posts to ${config_1.config.backendApiUrl}/api/leads/batch`);
     try {

@@ -13,7 +13,9 @@
 // ---------------------------------------------------------------------------
 
 export const HIRING_KEYWORDS: string[] = [
-  // ── A. Direct Hiring Intent (high_intent) ─────────────────────────
+  // ═══════════════════════════════════════════════════════════════════
+  // PRIMARY KEYWORDS — Direct hiring intent (high confidence leads)
+  // ═══════════════════════════════════════════════════════════════════
   "looking for a virtual assistant",
   "looking for a va",
   "hiring a virtual assistant",
@@ -68,8 +70,14 @@ export const HIRING_KEYWORDS: string[] = [
   "need someone for customer service",
   "looking for someone to manage my social media",
   "need someone to run my ads",
+  "[hiring]",
 
-  // ── B. Recommendation / Research Requests (medium_intent) ─────────
+  // ═══════════════════════════════════════════════════════════════════
+  // SECONDARY KEYWORDS — Research, recommendations, overwhelm signals
+  // (medium confidence — person may be considering hiring)
+  // ═══════════════════════════════════════════════════════════════════
+
+  // Recommendation / Research Requests
   "any va recommendations",
   "who can recommend a virtual assistant",
   "recommend a good va",
@@ -94,7 +102,7 @@ export const HIRING_KEYWORDS: string[] = [
   "how to find a good va",
   "tips for hiring a va",
 
-  // ── C. Overwhelm / Delegation Signals (medium_intent) ─────────────
+  // Overwhelm / Delegation Signals
   "need extra help in my business",
   "overwhelmed with admin",
   "drowning in tasks",
@@ -106,7 +114,7 @@ export const HIRING_KEYWORDS: string[] = [
   "can't keep up with emails",
   "need help managing my calendar",
 
-  // ── D. Tool/Skill-Based Hiring Triggers (medium_intent) ───────────
+  // Tool/Skill-Based Hiring Triggers
   "need va for gohighlevel",
   "need va for clickfunnels",
   "need va for hubspot",
@@ -117,11 +125,11 @@ export const HIRING_KEYWORDS: string[] = [
   "need va for wordpress",
   "need va for canva",
   "need va for mailchimp",
-
-  // ── E. Platform Tags ──────────────────────────────────────────────
-  "[hiring]",
 ];
 
+// ═══════════════════════════════════════════════════════════════════════
+// NEGATIVE KEYWORDS — VA seeking work (reject these — not leads)
+// ═══════════════════════════════════════════════════════════════════════
 export const SEEKING_KEYWORDS: string[] = [
   // Self-identification
   "i'm a virtual assistant",

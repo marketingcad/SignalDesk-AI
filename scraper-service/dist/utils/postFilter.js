@@ -3,6 +3,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.isJobSeeker = isJobSeeker;
 exports.filterPosts = filterPosts;
 exports.deduplicatePosts = deduplicatePosts;
+const backendClient_1 = require("../api/backendClient");
+const config_1 = require("../config");
 // ---------------------------------------------------------------------------
 // Shared post pre-filter — reject job seekers and self-promotion
 // Used by both crawlerManager (scheduled runs) and urlScraper (manual URL scrapes)
@@ -28,7 +30,17 @@ const REJECT_PATTERNS = [
     /\bdm for rates\b/i,
 ];
 function isJobSeeker(text) {
-    return REJECT_PATTERNS.some((pattern) => pattern.test(text));
+    // Check hardcoded patterns first
+    if (REJECT_PATTERNS.some((pattern) => pattern.test(text)))
+        return true;
+    // Check dynamic negative keywords from /settings
+    const cached = (0, backendClient_1.getCachedKeywords)();
+    if (cached?.negativeKeywords?.length) {
+        const lower = text.toLowerCase();
+        if (cached.negativeKeywords.some((kw) => lower.includes(kw.toLowerCase())))
+            return true;
+    }
+    return false;
 }
 /**
  * Filter scraped posts: remove too-short posts, job seekers, and duplicates.
@@ -37,7 +49,8 @@ function isJobSeeker(text) {
 function filterPosts(posts, tag = "[filter]") {
     const seenUrls = new Set();
     return posts.filter((post) => {
-        if (!post.text || post.text.trim().length < 20)
+        const minLen = config_1.config.minPostLength[post.platform] ?? 20;
+        if (!post.text || post.text.trim().length < minLen)
             return false;
         if (isJobSeeker(post.text)) {
             console.log(`${tag} Filtered job seeker: "${post.text.slice(0, 80)}..."`);

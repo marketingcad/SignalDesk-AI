@@ -1,6 +1,8 @@
 export declare const config: {
     backendApiUrl: string;
     backendAuthToken: string;
+    supabaseUrl: string;
+    supabaseServiceRoleKey: string;
     discordWebhookUrl: string;
     port: number;
     cron: {
@@ -20,4 +22,10 @@ export declare const config: {
     scrollDelayMs: number;
     requestTimeoutMs: number;
     headless: boolean;
+    scrapeRetryAttempts: number;
+    scrapeRetryDelayMs: number;
+    keywordCacheTtlMs: number;
+    platformRateLimitMs: Record<string, number>;
+    minPostLength: Record<string, number>;
+    sessionHealthThreshold: number;
 };

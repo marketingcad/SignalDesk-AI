@@ -42,16 +42,20 @@ export interface KeywordConfig {
   };
 }
 
-/** Cached keywords — refreshed on each scraper run */
+/** Cached keywords with TTL — avoids repeated API calls during burst scraping */
 let cachedKeywords: KeywordConfig | null = null;
+let cachedKeywordsAt = 0;
 
 /**
  * Fetch user-configured keywords from the backend.
  * The scraper uses these for search queries, Google dorks, and post filtering.
  * Falls back to env var defaults if the backend is unreachable.
+ * Uses a TTL-based cache (default 5 min) so burst scrapes don't hammer the API.
  */
 export async function fetchKeywords(forceRefresh = false): Promise<KeywordConfig | null> {
-  if (cachedKeywords && !forceRefresh) return cachedKeywords;
+  const ttl = config.keywordCacheTtlMs;
+  const cacheValid = cachedKeywords && (Date.now() - cachedKeywordsAt) < ttl;
+  if (cacheValid && !forceRefresh) return cachedKeywords;
 
   try {
     console.log("[backend] Fetching keywords from /api/keywords/search-queries...");
@@ -59,6 +63,7 @@ export async function fetchKeywords(forceRefresh = false): Promise<KeywordConfig
 
     if (data?.searchQueries?.length > 0) {
       cachedKeywords = data;
+      cachedKeywordsAt = Date.now();
       console.log(
         `[backend] Keywords loaded: ${data.searchQueries.length} search queries, ${data.negativeKeywords.length} negative`
       );

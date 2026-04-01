@@ -1477,19 +1477,21 @@ async function scrapeUrl(targetUrl) {
                 console.log(`[url-scraper] Reddit: using /new/ feed for newest posts first`);
             }
         }
-        // Navigate (with retry for LinkedIn which can be slow)
+        // Navigate (with retry for transient errors: timeouts and ERR_ABORTED)
         console.log(`[url-scraper] Navigating to: ${navigateUrl}`);
         const NAV_TIMEOUT = 90000;
-        let navAttempts = platform === "LinkedIn" ? 2 : 1;
-        for (let attempt = 1; attempt <= navAttempts; attempt++) {
+        const MAX_NAV_ATTEMPTS = 2;
+        for (let attempt = 1; attempt <= MAX_NAV_ATTEMPTS; attempt++) {
             try {
                 await page.goto(navigateUrl, { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT });
                 break;
             }
             catch (navErr) {
-                const isTimeout = navErr instanceof Error && navErr.message.includes("Timeout");
-                if (isTimeout && attempt < navAttempts) {
-                    console.warn(`[url-scraper] Navigation timeout on attempt ${attempt}/${navAttempts}, retrying...`);
+                const errMsg = navErr instanceof Error ? navErr.message : String(navErr);
+                const isRetryable = errMsg.includes("Timeout") || errMsg.includes("ERR_ABORTED");
+                if (isRetryable && attempt < MAX_NAV_ATTEMPTS) {
+                    console.warn(`[url-scraper] Navigation failed on attempt ${attempt}/${MAX_NAV_ATTEMPTS} (${errMsg.slice(0, 80)}), retrying in 5s...`);
+                    await page.waitForTimeout(5000);
                     continue;
                 }
                 throw navErr;

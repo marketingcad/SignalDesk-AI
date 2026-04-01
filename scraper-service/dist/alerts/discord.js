@@ -5,6 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.sendRunSummary = sendRunSummary;
 exports.sendNewLeadsAlert = sendNewLeadsAlert;
+exports.sendSessionHealthAlert = sendSessionHealthAlert;
 exports.sendErrorAlert = sendErrorAlert;
 const axios_1 = __importDefault(require("axios"));
 const config_1 = require("../config");
@@ -181,6 +182,40 @@ async function sendNewLeadsAlert(sourceUrl, platform, posts, batch) {
     }
     catch (err) {
         console.error("[discord] Failed to send new leads alert:", err);
+    }
+}
+// ---------------------------------------------------------------------------
+// sendSessionHealthAlert — fired when consecutive runs return 0 posts
+// ---------------------------------------------------------------------------
+async function sendSessionHealthAlert(scheduleName, scheduleUrl, platform, consecutiveZeroRuns) {
+    if (!config_1.config.discordWebhookUrl)
+        return;
+    try {
+        await axios_1.default.post(config_1.config.discordWebhookUrl, {
+            username: "SignalDesk Scraper",
+            embeds: [
+                {
+                    author: platformAuthor(platform),
+                    title: "⚠️ Session Health Warning",
+                    description: [
+                        `Schedule **"${scheduleName}"** has returned **0 posts** for **${consecutiveZeroRuns} consecutive runs**.`,
+                        "",
+                        `This usually means the ${PLATFORM_LABEL[platform]} session cookies have expired or the page requires re-authentication.`,
+                        "",
+                        `**URL:** ${scheduleUrl}`,
+                        "",
+                        "➡️ Try re-authenticating via **Settings → Browser Login** or check if the URL is still valid.",
+                    ].join("\n"),
+                    color: 0xf59e0b,
+                    footer: { text: "SignalDesk AI · Session Health Monitor" },
+                    timestamp: new Date().toISOString(),
+                },
+            ],
+        });
+        console.log(`[discord] Session health alert sent for "${scheduleName}"`);
+    }
+    catch {
+        // Swallow — don't let Discord errors crash the scraper
     }
 }
 // ---------------------------------------------------------------------------

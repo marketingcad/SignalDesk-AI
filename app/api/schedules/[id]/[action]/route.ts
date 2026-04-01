@@ -4,7 +4,7 @@ import { verifySession, SESSION_COOKIE_NAME } from "@/lib/auth";
 const SCRAPER_URL = process.env.SCRAPER_SERVICE_URL || "http://localhost:4000";
 const SCRAPER_TOKEN = process.env.BACKEND_AUTH_TOKEN || "";
 
-const ALLOWED_ACTIONS = ["pause", "resume", "run"];
+const ALLOWED_ACTIONS = ["pause", "resume", "run", "run-group"];
 
 export async function POST(
   request: NextRequest,

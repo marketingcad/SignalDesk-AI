@@ -203,6 +203,46 @@ export async function sendNewLeadsAlert(
 }
 
 // ---------------------------------------------------------------------------
+// sendSessionHealthAlert — fired when consecutive runs return 0 posts
+// ---------------------------------------------------------------------------
+
+export async function sendSessionHealthAlert(
+  scheduleName: string,
+  scheduleUrl: string,
+  platform: Platform,
+  consecutiveZeroRuns: number
+): Promise<void> {
+  if (!config.discordWebhookUrl) return;
+
+  try {
+    await axios.post(config.discordWebhookUrl, {
+      username: "SignalDesk Scraper",
+      embeds: [
+        {
+          author: platformAuthor(platform),
+          title: "⚠️ Session Health Warning",
+          description: [
+            `Schedule **"${scheduleName}"** has returned **0 posts** for **${consecutiveZeroRuns} consecutive runs**.`,
+            "",
+            `This usually means the ${PLATFORM_LABEL[platform]} session cookies have expired or the page requires re-authentication.`,
+            "",
+            `**URL:** ${scheduleUrl}`,
+            "",
+            "➡️ Try re-authenticating via **Settings → Browser Login** or check if the URL is still valid.",
+          ].join("\n"),
+          color: 0xf59e0b,
+          footer: { text: "SignalDesk AI · Session Health Monitor" },
+          timestamp: new Date().toISOString(),
+        },
+      ],
+    });
+    console.log(`[discord] Session health alert sent for "${scheduleName}"`);
+  } catch {
+    // Swallow — don't let Discord errors crash the scraper
+  }
+}
+
+// ---------------------------------------------------------------------------
 // sendErrorAlert — consistent structure, same author/footer pattern
 // ---------------------------------------------------------------------------
 

@@ -7,6 +7,7 @@ import { PlatformBadge } from "@/components/platform-badge";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { cn, getPlatformColor } from "@/lib/utils";
 import type { Platform } from "@/lib/types";
 import {
   Bookmark,
@@ -51,6 +52,7 @@ export default function BookmarksPage() {
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"all" | "favorites">("all");
+  const [platformFilter, setPlatformFilter] = useState<Platform | "All">("All");
   const [currentPage, setCurrentPage] = useState(1);
   const perPage = 20;
 
@@ -132,10 +134,30 @@ export default function BookmarksPage() {
 
   const filtered = bookmarks.filter((b) => {
     if (viewMode === "favorites" && !b.favorite) return false;
+    if (platformFilter !== "All") {
+      const p = b.platform || detectPlatform(b.url);
+      if (p !== platformFilter) return false;
+    }
     if (!search.trim()) return true;
     const q = search.toLowerCase();
     return b.name.toLowerCase().includes(q) || b.url.toLowerCase().includes(q) || b.notes.toLowerCase().includes(q);
   });
+
+  // Platform counts from current view (respects All/Favorites toggle + search)
+  const platformCounts = (() => {
+    const base = bookmarks.filter((b) => {
+      if (viewMode === "favorites" && !b.favorite) return false;
+      if (!search.trim()) return true;
+      const q = search.toLowerCase();
+      return b.name.toLowerCase().includes(q) || b.url.toLowerCase().includes(q) || b.notes.toLowerCase().includes(q);
+    });
+    const map = new Map<string, number>();
+    for (const b of base) {
+      const p = b.platform || detectPlatform(b.url) || "Other";
+      map.set(p, (map.get(p) ?? 0) + 1);
+    }
+    return map;
+  })();
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
   const safeCurrentPage = Math.min(currentPage, totalPages);
@@ -231,6 +253,47 @@ export default function BookmarksPage() {
                 className="h-9 pl-9 text-sm bg-card border-border"
               />
             </div>
+          </div>
+        )}
+
+        {/* Platform Filter */}
+        {bookmarks.length > 0 && (
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {(["All", "Facebook", "LinkedIn", "Reddit", "X", "Other"] as (Platform | "All")[]).map((p) => {
+              const isActive = platformFilter === p;
+              const count = p === "All"
+                ? Array.from(platformCounts.values()).reduce((s, c) => s + c, 0)
+                : (platformCounts.get(p) ?? 0);
+              const color = p === "All" ? "#8b5cf6" : getPlatformColor(p);
+              return (
+                <button
+                  key={p}
+                  onClick={() => { setPlatformFilter(p); setCurrentPage(1); }}
+                  className={cn(
+                    "flex items-center gap-1.5 shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition-all",
+                    isActive
+                      ? "shadow-sm"
+                      : "border-border text-muted-foreground hover:text-foreground hover:border-border/80"
+                  )}
+                  style={{
+                    borderColor: isActive ? `${color}40` : undefined,
+                    background: isActive ? `${color}12` : undefined,
+                    color: isActive ? color : undefined,
+                  }}
+                >
+                  {p !== "All" && (
+                    <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ background: color }} />
+                  )}
+                  {p === "All" ? "All Platforms" : p}
+                  <span className={cn(
+                    "text-[10px] font-bold tabular-nums",
+                    isActive ? "opacity-80" : "opacity-50"
+                  )}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         )}
 

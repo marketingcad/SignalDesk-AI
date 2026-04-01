@@ -27,6 +27,7 @@ export interface KeywordConfig {
  * Fetch user-configured keywords from the backend.
  * The scraper uses these for search queries, Google dorks, and post filtering.
  * Falls back to env var defaults if the backend is unreachable.
+ * Uses a TTL-based cache (default 5 min) so burst scrapes don't hammer the API.
  */
 export declare function fetchKeywords(forceRefresh?: boolean): Promise<KeywordConfig | null>;
 /** Get cached keywords (non-async, for use inside scrapers after initial fetch) */

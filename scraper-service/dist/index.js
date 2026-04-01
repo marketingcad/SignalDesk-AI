@@ -47,6 +47,7 @@ const backendClient_1 = require("./api/backendClient");
 const discord_1 = require("./alerts/discord");
 const browserAuth_1 = require("./crawler/browserAuth");
 const postFilter_1 = require("./utils/postFilter");
+const rateLimiter_1 = require("./utils/rateLimiter");
 const app = (0, express_1.default)();
 app.use(express_1.default.json());
 // ---------------------------------------------------------------------------
@@ -83,14 +84,51 @@ app.post("/api/run", async (req, res) => {
     }
     console.log("[api] Manual full run triggered");
     res.json({ message: "Scraper run started", startedAt: new Date().toISOString() });
-    // Refresh keywords from /settings before each run
-    (0, backendClient_1.fetchKeywords)(true).catch(() => { });
-    (0, crawlerManager_1.runAllPlatforms)().catch((err) => console.error("[api] Full run failed:", err));
+    // Refresh keywords from /settings, then start run
+    (0, backendClient_1.fetchKeywords)(true)
+        .catch(() => console.warn("[api] Keyword refresh failed, using cached"))
+        .then(() => (0, crawlerManager_1.runAllPlatforms)())
+        .catch((err) => console.error("[api] Full run failed:", err));
 });
 // ---------------------------------------------------------------------------
 // Manual trigger: run single platform
 // ---------------------------------------------------------------------------
 const VALID_PLATFORMS = ["Reddit", "X", "LinkedIn", "Facebook", "Other"];
+// ---------------------------------------------------------------------------
+// Helpers — platform detection & retry with backoff
+// ---------------------------------------------------------------------------
+function detectPlatformFromUrl(url) {
+    if (/facebook\.com|fb\.com/i.test(url))
+        return "Facebook";
+    if (/linkedin\.com/i.test(url))
+        return "LinkedIn";
+    if (/reddit\.com/i.test(url))
+        return "Reddit";
+    if (/twitter\.com|x\.com/i.test(url))
+        return "X";
+    return "Other";
+}
+async function scrapeUrlWithRetry(url, tag) {
+    const maxAttempts = config_1.config.scrapeRetryAttempts + 1;
+    const baseDelay = config_1.config.scrapeRetryDelayMs;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+            return await (0, scrapers_1.scrapeUrl)(url);
+        }
+        catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            if (attempt < maxAttempts) {
+                const delay = baseDelay * attempt;
+                console.log(`${tag} Attempt ${attempt}/${maxAttempts} failed: ${msg} — retrying in ${(delay / 1000).toFixed(0)}s...`);
+                await new Promise((resolve) => setTimeout(resolve, delay));
+            }
+            else {
+                throw err;
+            }
+        }
+    }
+    throw new Error("Unexpected: exhausted retries without throwing");
+}
 app.post("/api/run/:platform", async (req, res) => {
     if (!checkAuth(req, res))
         return;
@@ -108,9 +146,11 @@ app.post("/api/run/:platform", async (req, res) => {
         message: `${platform} scraper run started`,
         startedAt: new Date().toISOString(),
     });
-    // Refresh keywords from /settings before each run
-    (0, backendClient_1.fetchKeywords)(true).catch(() => { });
-    (0, crawlerManager_1.runPlatform)(platform).catch((err) => console.error(`[api] ${platform} run failed:`, err));
+    // Refresh keywords from /settings, then start run
+    (0, backendClient_1.fetchKeywords)(true)
+        .catch(() => console.warn(`[api] Keyword refresh failed for ${platform}, using cached`))
+        .then(() => (0, crawlerManager_1.runPlatform)(platform))
+        .catch((err) => console.error(`[api] ${platform} run failed:`, err));
 });
 // ---------------------------------------------------------------------------
 // Scrape one or more URLs (manual paste from dashboard)
@@ -150,13 +190,39 @@ app.post("/api/scrape-url", async (req, res) => {
     const items = [];
     for (const targetUrl of rawUrls) {
         try {
-            const result = await (0, scrapers_1.scrapeUrl)(targetUrl);
-            const discordErrors = result.errors.filter((e) => !e.includes("requires login") && !e.includes("page.goto: Timeout"));
+            // Rate limit check per platform
+            const urlPlatform = detectPlatformFromUrl(targetUrl);
+            const rateCheck = (0, rateLimiter_1.checkRateLimit)(urlPlatform);
+            if (!rateCheck.allowed) {
+                const waitSec = Math.ceil(rateCheck.retryAfterMs / 1000);
+                console.log(`[api] Rate limited (${urlPlatform}) for ${targetUrl} — retry in ${waitSec}s`);
+                items.push({
+                    url: targetUrl,
+                    success: false,
+                    platform: urlPlatform,
+                    postsFound: 0,
+                    duration: 0,
+                    errors: [`Rate limited: ${urlPlatform} scrapes must be at least ${Math.ceil((config_1.config.platformRateLimitMs[urlPlatform] ?? 0) / 1000)}s apart. Retry in ${waitSec}s.`],
+                    batch: null,
+                    scrapedPosts: [],
+                });
+                continue;
+            }
+            (0, rateLimiter_1.recordScrapeStart)(urlPlatform);
+            const result = await scrapeUrlWithRetry(targetUrl, `[url-scraper]`);
+            const discordErrors = result.errors.filter((e) => !e.includes("requires login") && !e.includes("page.goto: Timeout") && !e.includes("ERR_ABORTED"));
             if (discordErrors.length > 0) {
                 await (0, discord_1.sendErrorAlert)(result.platform, discordErrors.join("\n"));
             }
-            // Pre-filter: reject job seekers and too-short posts (same as crawlerManager)
-            const filtered = (0, postFilter_1.filterPosts)(result.posts, "[url-scraper]");
+            // Pre-filter: reject job seekers, too-short posts, and unknown authors
+            const preFiltered = (0, postFilter_1.filterPosts)(result.posts, "[url-scraper]");
+            const filtered = preFiltered.filter((p) => {
+                if (!p.author || p.author.toLowerCase() === "unknown" || p.author.startsWith("urn:li:")) {
+                    console.log(`[url-scraper] Filtered unknown/invalid author: "${p.author}" — ${p.url}`);
+                    return false;
+                }
+                return true;
+            });
             console.log(`[url-scraper] ${filtered.length} posts after filtering (${result.posts.length - filtered.length} rejected)`);
             let batchResult = null;
             if (filtered.length > 0) {
@@ -222,37 +288,37 @@ app.post("/api/scrape-url", async (req, res) => {
 // URL Schedules — APify-style custom per-URL scheduler
 // ---------------------------------------------------------------------------
 /** GET /api/schedules — list all */
-app.get("/api/schedules", (req, res) => {
+app.get("/api/schedules", async (req, res) => {
     if (!checkAuth(req, res))
         return;
-    const schedules = (0, urlScheduler_1.listSchedules)();
+    const schedules = await (0, urlScheduler_1.listSchedules)();
     res.json({ success: true, count: schedules.length, schedules });
 });
 /** GET /api/schedules/runs — all run history (must be before :id) */
-app.get("/api/schedules/runs", (req, res) => {
+app.get("/api/schedules/runs", async (req, res) => {
     if (!checkAuth(req, res))
         return;
-    const runs = (0, urlScheduler_1.listRuns)();
+    const runs = await (0, urlScheduler_1.listRuns)();
     res.json({ success: true, runs });
 });
 /** DELETE /api/schedules/runs — clear all run history */
-app.delete("/api/schedules/runs", (req, res) => {
+app.delete("/api/schedules/runs", async (req, res) => {
     if (!checkAuth(req, res))
         return;
-    (0, urlScheduler_1.clearRuns)();
+    await (0, urlScheduler_1.clearRuns)();
     res.json({ success: true });
 });
 /** GET /api/schedules/:id — get one */
-app.get("/api/schedules/:id", (req, res) => {
+app.get("/api/schedules/:id", async (req, res) => {
     if (!checkAuth(req, res))
         return;
-    const schedule = (0, urlScheduler_1.getSchedule)(req.params.id);
+    const schedule = await (0, urlScheduler_1.getSchedule)(req.params.id);
     if (!schedule)
         return res.status(404).json({ error: "Schedule not found" });
     res.json({ success: true, schedule });
 });
 /** POST /api/schedules — create */
-app.post("/api/schedules", (req, res) => {
+app.post("/api/schedules", async (req, res) => {
     if (!checkAuth(req, res))
         return;
     const { name, url, cron, status } = req.body;
@@ -270,7 +336,7 @@ app.post("/api/schedules", (req, res) => {
         return res.status(400).json({ error: "'cron' is required and must be a valid cron expression" });
     if (status && status !== "active" && status !== "paused")
         return res.status(400).json({ error: "'status' must be 'active' or 'paused'" });
-    const schedule = (0, urlScheduler_1.createSchedule)({
+    const schedule = await (0, urlScheduler_1.createSchedule)({
         name: name.trim(),
         url: url.trim(),
         cron: cron.trim(),
@@ -280,7 +346,7 @@ app.post("/api/schedules", (req, res) => {
     res.status(201).json({ success: true, schedule });
 });
 /** PATCH /api/schedules/:id — partial update */
-app.patch("/api/schedules/:id", (req, res) => {
+app.patch("/api/schedules/:id", async (req, res) => {
     if (!checkAuth(req, res))
         return;
     const { name, url, cron, status } = req.body;
@@ -296,7 +362,7 @@ app.patch("/api/schedules/:id", (req, res) => {
         return res.status(400).json({ error: "Invalid cron expression" });
     if (status !== undefined && status !== "active" && status !== "paused")
         return res.status(400).json({ error: "'status' must be 'active' or 'paused'" });
-    const updated = (0, urlScheduler_1.updateSchedule)(req.params.id, {
+    const updated = await (0, urlScheduler_1.updateSchedule)(req.params.id, {
         ...(name !== undefined && { name: name.trim() }),
         ...(url !== undefined && { url: url.trim() }),
         ...(cron !== undefined && { cron: cron.trim() }),
@@ -307,53 +373,70 @@ app.patch("/api/schedules/:id", (req, res) => {
     res.json({ success: true, schedule: updated });
 });
 /** DELETE /api/schedules/:id */
-app.delete("/api/schedules/:id", (req, res) => {
+app.delete("/api/schedules/:id", async (req, res) => {
     if (!checkAuth(req, res))
         return;
-    const deleted = (0, urlScheduler_1.deleteSchedule)(req.params.id);
+    const deleted = await (0, urlScheduler_1.deleteSchedule)(req.params.id);
     if (!deleted)
         return res.status(404).json({ error: "Schedule not found" });
     res.json({ success: true, deleted: true, id: req.params.id });
 });
 /** GET /api/schedules/:id/runs — run history for one schedule */
-app.get("/api/schedules/:id/runs", (req, res) => {
+app.get("/api/schedules/:id/runs", async (req, res) => {
     if (!checkAuth(req, res))
         return;
-    const schedule = (0, urlScheduler_1.getSchedule)(req.params.id);
+    const schedule = await (0, urlScheduler_1.getSchedule)(req.params.id);
     if (!schedule)
         return res.status(404).json({ error: "Schedule not found" });
-    const runs = (0, urlScheduler_1.listRuns)(req.params.id);
+    const runs = await (0, urlScheduler_1.listRuns)(req.params.id);
     res.json({ success: true, runs });
 });
 /** POST /api/schedules/:id/pause */
-app.post("/api/schedules/:id/pause", (req, res) => {
+app.post("/api/schedules/:id/pause", async (req, res) => {
     if (!checkAuth(req, res))
         return;
-    const schedule = (0, urlScheduler_1.pauseSchedule)(req.params.id);
+    const schedule = await (0, urlScheduler_1.pauseSchedule)(req.params.id);
     if (!schedule)
         return res.status(404).json({ error: "Schedule not found" });
     res.json({ success: true, schedule });
 });
 /** POST /api/schedules/:id/resume */
-app.post("/api/schedules/:id/resume", (req, res) => {
+app.post("/api/schedules/:id/resume", async (req, res) => {
     if (!checkAuth(req, res))
         return;
-    const schedule = (0, urlScheduler_1.resumeSchedule)(req.params.id);
+    const schedule = await (0, urlScheduler_1.resumeSchedule)(req.params.id);
     if (!schedule)
         return res.status(404).json({ error: "Schedule not found" });
     res.json({ success: true, schedule });
 });
-/** POST /api/schedules/:id/run — trigger immediate run */
+/** POST /api/schedules/:id/run — trigger immediate run (single URL) */
 app.post("/api/schedules/:id/run", async (req, res) => {
     if (!checkAuth(req, res))
         return;
-    const schedule = (0, urlScheduler_1.getSchedule)(req.params.id);
+    const schedule = await (0, urlScheduler_1.getSchedule)(req.params.id);
     if (!schedule)
         return res.status(404).json({ error: "Schedule not found" });
     console.log(`[api] Manual trigger for schedule "${schedule.name}"`);
     try {
         await (0, urlScheduler_1.runScheduleNow)(req.params.id);
-        res.json({ success: true, schedule: (0, urlScheduler_1.getSchedule)(req.params.id) });
+        res.json({ success: true, schedule: await (0, urlScheduler_1.getSchedule)(req.params.id) });
+    }
+    catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        res.status(500).json({ error: msg });
+    }
+});
+/** POST /api/schedules/:id/run-group — trigger all URLs in a schedule group sequentially */
+app.post("/api/schedules/:id/run-group", async (req, res) => {
+    if (!checkAuth(req, res))
+        return;
+    const schedule = await (0, urlScheduler_1.getSchedule)(req.params.id);
+    if (!schedule)
+        return res.status(404).json({ error: "Schedule not found" });
+    console.log(`[api] Manual group trigger from schedule "${schedule.name}"`);
+    try {
+        await (0, urlScheduler_1.runGroupNow)(req.params.id);
+        res.json({ success: true, schedule: await (0, urlScheduler_1.getSchedule)(req.params.id) });
     }
     catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -376,7 +459,8 @@ app.get("/api/auth/status", (_req, res) => {
 // ---------------------------------------------------------------------------
 // Status endpoint
 // ---------------------------------------------------------------------------
-app.get("/api/status", (_req, res) => {
+app.get("/api/status", async (_req, res) => {
+    const schedules = await (0, urlScheduler_1.listSchedules)();
     res.json({
         running: (0, crawlerManager_1.isRunning)(),
         targets: {
@@ -387,7 +471,7 @@ app.get("/api/status", (_req, res) => {
         },
         schedule: config_1.config.cron,
         maxResultsPerRun: config_1.config.maxResultsPerRun,
-        urlSchedules: (0, urlScheduler_1.listSchedules)().length,
+        urlSchedules: schedules.length,
     });
 });
 // ---------------------------------------------------------------------------
@@ -497,7 +581,7 @@ app.listen(config_1.config.port, () => {
         console.log("  Keywords: using env var defaults (fetch failed)");
     });
     (0, cronJobs_1.startScheduler)();
-    (0, urlScheduler_1.initUrlScheduler)();
+    (0, urlScheduler_1.initUrlScheduler)().catch((err) => console.error("[server] Failed to init URL scheduler:", err));
 });
 // Graceful shutdown
 process.on("SIGINT", () => {

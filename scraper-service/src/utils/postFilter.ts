@@ -1,4 +1,5 @@
 import { getCachedKeywords } from "../api/backendClient";
+import { config } from "../config";
 import type { ScrapedPost } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -48,7 +49,8 @@ export function isJobSeeker(text: string): boolean {
 export function filterPosts(posts: ScrapedPost[], tag = "[filter]"): ScrapedPost[] {
   const seenUrls = new Set<string>();
   return posts.filter((post) => {
-    if (!post.text || post.text.trim().length < 20) return false;
+    const minLen = config.minPostLength[post.platform] ?? 20;
+    if (!post.text || post.text.trim().length < minLen) return false;
     if (isJobSeeker(post.text)) {
       console.log(`${tag} Filtered job seeker: "${post.text.slice(0, 80)}..."`);
       return false;
