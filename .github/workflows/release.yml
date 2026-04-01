@@ -100,10 +100,12 @@ jobs:
             "$GOOGLE_AI_API_KEY" \
             "$GOOGLE_AI_API_KEY" \
             "$DISCORD_WEBHOOK_URL" > .env.local
-          printf 'BACKEND_AUTH_TOKEN=%s\nBACKEND_API_URL=%s\nDISCORD_WEBHOOK_URL=%s\n' \
+          printf 'BACKEND_AUTH_TOKEN=%s\nBACKEND_API_URL=%s\nDISCORD_WEBHOOK_URL=%s\nNEXT_PUBLIC_SUPABASE_URL=%s\nSUPABASE_SERVICE_ROLE_KEY=%s\n' \
             "$BACKEND_AUTH_TOKEN" \
             "http://localhost:3000" \
-            "$DISCORD_WEBHOOK_URL" > scraper-service/.env
+            "$DISCORD_WEBHOOK_URL" \
+            "$NEXT_PUBLIC_SUPABASE_URL" \
+            "$SUPABASE_SERVICE_ROLE_KEY" > scraper-service/.env
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
