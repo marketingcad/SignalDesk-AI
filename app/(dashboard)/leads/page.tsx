@@ -42,6 +42,9 @@ import {
   ArrowUpRight,
   Globe,
   Loader2,
+  CheckSquare,
+  Square,
+  MinusSquare,
 } from "lucide-react";
 
 type FilterPlatform = Platform | "All";
@@ -69,6 +72,9 @@ export default function LeadsPage() {
     onConfirm: () => void;
   } | null>(null);
   const actionRef = useRef<HTMLDivElement>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [deletingSelected, setDeletingSelected] = useState(false);
+  const [selectionMode, setSelectionMode] = useState(false);
 
   // Close action dropdown on outside click
   useEffect(() => {
@@ -171,6 +177,48 @@ export default function LeadsPage() {
     });
   };
 
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAll = () => {
+    setSelectedIds(new Set(filteredLeads.map((l) => l.id)));
+  };
+
+  const unselectAll = () => { setSelectedIds(new Set()); setSelectionMode(false); };
+
+  const handleDeleteSelected = () => {
+    if (selectedIds.size === 0) return;
+    setConfirmModal({
+      title: "Delete Selected Leads",
+      message: `Are you sure you want to permanently delete ${selectedIds.size} selected lead${selectedIds.size === 1 ? "" : "s"}? This action cannot be undone.`,
+      onConfirm: async () => {
+        setDeletingSelected(true);
+        setConfirmModal(null);
+        const ids = [...selectedIds];
+        setFilteredLeads((prev) => prev.filter((l) => !selectedIds.has(l.id)));
+        if (selectedLead && selectedIds.has(selectedLead.id)) setSelectedLead(null);
+        setSelectedIds(new Set());
+        setSelectionMode(false);
+        try {
+          await fetch("/api/leads", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ids }),
+          });
+        } catch (err) {
+          console.error("[leads] Bulk delete failed:", err);
+        } finally {
+          setDeletingSelected(false);
+        }
+      },
+    });
+  };
+
   const [exporting, setExporting] = useState(false);
 
   const handleExport = async () => {
@@ -220,9 +268,11 @@ export default function LeadsPage() {
     }
   };
 
-  // Reset to page 1 when filters change
+  // Reset to page 1 and clear selection when filters change
   useEffect(() => {
     setCurrentPage(1);
+    setSelectedIds(new Set());
+    setSelectionMode(false);
   }, [platformFilter, intentFilter, statusFilter, searchQuery, dateFrom, dateTo]);
 
   const fetchLeads = useCallback(() => {
@@ -414,7 +464,51 @@ export default function LeadsPage() {
                   <ChevronDown className={cn("h-3 w-3 transition-transform", actionOpen && "rotate-180")} />
                 </Button>
                 {actionOpen && (
-                  <div className="absolute right-0 top-full mt-1 z-50 w-44 rounded-md border border-border bg-card py-1 shadow-lg animate-fade-in">
+                  <div className="absolute right-0 top-full mt-1 z-50 w-52 rounded-md border border-border bg-card py-1 shadow-lg animate-fade-in">
+                    <button
+                      className={cn(
+                        "flex w-full items-center gap-2 px-3 py-2 text-xs font-medium transition-colors",
+                        selectionMode
+                          ? "text-primary bg-primary/5 hover:bg-primary/10"
+                          : "text-foreground hover:bg-muted/50"
+                      )}
+                      onClick={() => {
+                        setActionOpen(false);
+                        if (selectionMode) {
+                          unselectAll();
+                        } else {
+                          setSelectionMode(true);
+                        }
+                      }}
+                    >
+                      <CheckSquare className="h-3.5 w-3.5" />
+                      {selectionMode ? "Exit Selection Mode" : "Mark for Deletion"}
+                    </button>
+                    {selectionMode && (
+                      <>
+                        <button
+                          className="flex w-full items-center gap-2 px-3 py-2 text-xs font-medium text-foreground hover:bg-muted/50 transition-colors"
+                          onClick={() => {
+                            setActionOpen(false);
+                            selectAll();
+                          }}
+                        >
+                          <CheckSquare className="h-3.5 w-3.5 text-primary" />
+                          Mark All ({filteredLeads.length})
+                        </button>
+                        <button
+                          className="flex w-full items-center gap-2 px-3 py-2 text-xs font-medium text-foreground hover:bg-muted/50 transition-colors"
+                          onClick={() => {
+                            setActionOpen(false);
+                            setSelectedIds(new Set());
+                          }}
+                        >
+                          <Square className="h-3.5 w-3.5" />
+                          Unmark All
+                        </button>
+                      </>
+                    )}
+                    <div className="my-1 border-t border-border" />
                     <button
                       className="flex w-full items-center gap-2 px-3 py-2 text-xs font-medium text-rose-400 hover:bg-rose-500/10 transition-colors"
                       onClick={() => {
@@ -431,6 +525,57 @@ export default function LeadsPage() {
             </div>
           </div>
         </Card>
+
+        {/* Selection toolbar */}
+        {selectionMode && (
+          <Card className="border-primary/30 bg-primary/5 px-4 py-2.5 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <CheckSquare className="h-4 w-4 text-primary" />
+              <span className="text-sm font-medium text-foreground">
+                {selectedIds.size > 0
+                  ? `${selectedIds.size} lead${selectedIds.size === 1 ? "" : "s"} selected`
+                  : "Click cards to select leads"}
+              </span>
+              <button
+                onClick={selectAll}
+                className="text-xs text-primary hover:text-primary/80 font-medium transition-colors"
+              >
+                Mark all ({filteredLeads.length})
+              </button>
+              {selectedIds.size > 0 && (
+                <button
+                  onClick={() => setSelectedIds(new Set())}
+                  className="text-xs text-muted-foreground hover:text-foreground font-medium transition-colors"
+                >
+                  Unmark all
+                </button>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {selectedIds.size > 0 && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={handleDeleteSelected}
+                  disabled={deletingSelected}
+                >
+                  {deletingSelected ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                  Delete {selectedIds.size}
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 text-xs"
+                onClick={unselectAll}
+              >
+                <X className="h-3 w-3" />
+                Exit
+              </Button>
+            </div>
+          </Card>
+        )}
 
         {/* Scrape URL shortcut */}
         <Link
@@ -465,7 +610,10 @@ export default function LeadsPage() {
                     lead={lead}
                     index={i}
                     isSelected={selectedLead?.id === lead.id}
+                    isMarked={selectedIds.has(lead.id)}
+                    selectionMode={selectionMode}
                     onClick={() => setSelectedLead(selectedLead?.id === lead.id ? null : lead)}
+                    onToggleMark={() => toggleSelect(lead.id)}
                   />
                 ))}
               </div>
@@ -530,7 +678,26 @@ export default function LeadsPage() {
         )}>
           {/* Left Panel: Leads List */}
           <Card className="border-border bg-card overflow-hidden p-0 w-full lg:rounded-r-none animate-view-switch" style={{ width: `${leftWidth}%`, flexShrink: 0 }}>
-            <div className="grid grid-cols-[1fr_90px_80px_90px_70px] gap-3 border-b border-border bg-muted/30 px-4 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            <div className={cn(
+              "grid gap-3 border-b border-border bg-muted/30 px-4 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground",
+              selectionMode ? "grid-cols-[32px_1fr_90px_80px_90px_70px]" : "grid-cols-[1fr_90px_80px_90px_70px]"
+            )}>
+              {selectionMode && (
+                <button
+                  onClick={() => {
+                    if (selectedIds.size === filteredLeads.length) setSelectedIds(new Set());
+                    else selectAll();
+                  }}
+                  className="flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+                  title={selectedIds.size === filteredLeads.length ? "Unmark all" : "Mark all"}
+                >
+                  {selectedIds.size === 0
+                    ? <Square className="h-4 w-4" />
+                    : selectedIds.size === filteredLeads.length
+                      ? <CheckSquare className="h-4 w-4 text-primary" />
+                      : <MinusSquare className="h-4 w-4 text-primary" />}
+                </button>
+              )}
               <span>Lead</span>
               <span>Platform</span>
               <span>Intent</span>
@@ -539,17 +706,30 @@ export default function LeadsPage() {
             </div>
 
             <div className="divide-y divide-border max-h-[calc(100vh-320px)] overflow-y-auto">
-              {filteredLeads.map((lead) => (
+              {filteredLeads.map((lead) => {
+                const isMarked = selectedIds.has(lead.id);
+                return (
                 <div
                   key={lead.id}
                   className={cn(
-                    "group grid grid-cols-[1fr_90px_80px_90px_70px] gap-3 items-center px-4 py-3 transition-all cursor-pointer",
+                    "group grid gap-3 items-center px-4 py-3 transition-all cursor-pointer",
+                    selectionMode ? "grid-cols-[32px_1fr_90px_80px_90px_70px]" : "grid-cols-[1fr_90px_80px_90px_70px]",
                     selectedLead?.id === lead.id
                       ? "bg-primary/6 border-l-2 border-l-primary"
-                      : "hover:bg-accent/30 border-l-2 border-l-transparent"
+                      : isMarked
+                        ? "bg-rose-500/5 border-l-2 border-l-rose-500"
+                        : "hover:bg-accent/30 border-l-2 border-l-transparent"
                   )}
-                  onClick={() => setSelectedLead(lead)}
+                  onClick={selectionMode ? () => toggleSelect(lead.id) : () => setSelectedLead(lead)}
                 >
+                  {selectionMode && (
+                    <div className={cn(
+                      "flex items-center justify-center",
+                      isMarked ? "text-rose-400" : "text-muted-foreground"
+                    )}>
+                      {isMarked ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
+                    </div>
+                  )}
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-foreground/80">
@@ -572,7 +752,8 @@ export default function LeadsPage() {
                     {formatDate(new Date(lead.createdAt))}
                   </span>
                 </div>
-              ))}
+              );
+              })}
             </div>
 
             {loading && (
@@ -772,22 +953,42 @@ function LeadCard({
   lead,
   index,
   isSelected,
+  isMarked,
+  selectionMode,
   onClick,
+  onToggleMark,
 }: {
   lead: Lead;
   index: number;
   isSelected: boolean;
+  isMarked: boolean;
+  selectionMode: boolean;
   onClick: () => void;
+  onToggleMark: () => void;
 }) {
   return (
     <Card
       className={cn(
-        "border-border bg-card p-4 cursor-pointer transition-all duration-200 hover:shadow-md hover:border-primary/30 hover:-translate-y-0.5 animate-view-card-in",
-        isSelected && "ring-1 ring-primary border-primary/40"
+        "border-border bg-card p-4 cursor-pointer transition-all duration-200 hover:shadow-md hover:border-primary/30 hover:-translate-y-0.5 animate-view-card-in relative",
+        isSelected && !selectionMode && "ring-1 ring-primary border-primary/40",
+        isMarked && "ring-1 ring-rose-500/40 border-rose-500/30 bg-rose-500/5"
       )}
       style={{ animationDelay: `${Math.min(index * 30, 300)}ms` }}
-      onClick={onClick}
+      onClick={selectionMode ? onToggleMark : onClick}
     >
+      {/* Selection checkbox overlay */}
+      {selectionMode && (
+        <div className="absolute top-3 right-3 z-10">
+          <div className={cn(
+            "flex h-6 w-6 items-center justify-center rounded-md border-2 transition-all",
+            isMarked
+              ? "border-rose-500 bg-rose-500 text-white"
+              : "border-muted-foreground/40 bg-background hover:border-primary"
+          )}>
+            {isMarked && <CheckSquare className="h-3.5 w-3.5" />}
+          </div>
+        </div>
+      )}
       <div className="flex items-center gap-3 mb-3">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
           {lead.username.split(" ").map((n) => n[0]).join("").slice(0, 2)}

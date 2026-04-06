@@ -1,27 +1,27 @@
 // ---------------------------------------------------------------------------
-// Shared date helpers — filter posts to current week only
+// Shared date helpers — filter posts to last 7 days
 // Used by all scrapers (urlScraper, platform scrapers)
 // ---------------------------------------------------------------------------
 
 /**
- * Get the start of the current week (Monday 00:00:00 UTC).
+ * Get the cutoff date: 7 days ago at 00:00:00 UTC.
+ * This is a rolling window — always includes the last 7 full days,
+ * regardless of which day of the week it is.
  */
 export function getStartOfWeek(): Date {
   const now = new Date();
-  const day = now.getUTCDay(); // 0=Sun, 1=Mon, ..., 6=Sat
-  const diffToMonday = day === 0 ? 6 : day - 1;
-  const monday = new Date(now);
-  monday.setUTCDate(monday.getUTCDate() - diffToMonday);
-  monday.setUTCHours(0, 0, 0, 0);
-  return monday;
+  const cutoff = new Date(now);
+  cutoff.setUTCDate(cutoff.getUTCDate() - 7);
+  cutoff.setUTCHours(0, 0, 0, 0);
+  return cutoff;
 }
 
 /**
- * Check if a timestamp string falls within the current week (since Monday).
+ * Check if a timestamp string falls within the last 7 days.
  * Returns true if:
  *  - timestamp is null/undefined/empty (keep posts with no date — don't discard valid leads)
  *  - timestamp is unparseable (keep)
- *  - timestamp is >= start of current week
+ *  - timestamp is within the last 7 days
  */
 export function isCurrentWeek(ts: string | null | undefined): boolean {
   if (!ts) return true; // no date found → keep post
@@ -31,8 +31,8 @@ export function isCurrentWeek(ts: string | null | undefined): boolean {
 }
 
 /**
- * Check if a timestamp is OLDER than the current week.
- * Used for early-stop logic: when we detect a post older than this week,
+ * Check if a timestamp is OLDER than 7 days.
+ * Used for early-stop logic: when we detect a post older than 7 days,
  * we can stop scrolling because subsequent posts will be even older.
  * Returns false if timestamp is missing/unparseable (we can't be sure it's old).
  */
@@ -62,13 +62,13 @@ export function parseRelativeTs(text: string): string | null {
   const n = parseInt(m[1]);
   const unit = m[2];
   const d = new Date(now);
-  if (/^s/.test(unit))       d.setSeconds(d.getSeconds() - n);
-  else if (/^m/.test(unit))  d.setMinutes(d.getMinutes() - n);
-  else if (/^h/.test(unit))  d.setHours(d.getHours() - n);
-  else if (/^d/.test(unit))  d.setDate(d.getDate() - n);
-  else if (/^w/.test(unit))  d.setDate(d.getDate() - n * 7);
-  else if (/^mo/.test(unit)) d.setMonth(d.getMonth() - n);
-  else if (/^y/.test(unit))  d.setFullYear(d.getFullYear() - n);
+  if (/^s/.test(unit))        d.setSeconds(d.getSeconds() - n);
+  else if (/^mo/.test(unit))  d.setMonth(d.getMonth() - n);
+  else if (/^m/.test(unit))   d.setMinutes(d.getMinutes() - n);
+  else if (/^h/.test(unit))   d.setHours(d.getHours() - n);
+  else if (/^d/.test(unit))   d.setDate(d.getDate() - n);
+  else if (/^w/.test(unit))   d.setDate(d.getDate() - n * 7);
+  else if (/^y/.test(unit))   d.setFullYear(d.getFullYear() - n);
   else return null;
   return d.toISOString();
 }

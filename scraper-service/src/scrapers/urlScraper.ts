@@ -24,6 +24,8 @@ function getSearchKeywords(platform: "facebook" | "linkedin" | "x"): string[] {
   }
 }
 
+
+
 /**
  * Get all positive keywords (high + medium intent) from DB for post matching.
  * Uses scoringConfig from cached keywords so we match against the exact

@@ -202,9 +202,9 @@ export function RunHistoryTab({
       )}
 
       {/* Two-column layout */}
-      <div className="flex justify-center gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Schedule list */}
-        <div className="rounded-lg border border-border bg-card overflow-hidden w-full">
+        <div className="rounded-lg border border-border bg-card overflow-hidden min-w-0">
           <div className="border-b border-border px-4 py-3 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Calendar className="h-4 w-4 text-muted-foreground" />
@@ -449,7 +449,7 @@ export function RunHistoryTab({
         </div>
 
         {/* Run history */}
-        <div className="rounded-lg border border-border bg-card overflow-hidden min-w-0">
+        <div className="rounded-lg border border-border bg-card overflow-hidden min-w-0 min-h-100">
           <div className="border-b border-border px-4 py-3 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Clock className="h-4 w-4 text-muted-foreground" />
@@ -508,12 +508,12 @@ export function RunHistoryTab({
             </div>
           </div>
           {runHistoryLoading ? (
-            <div className="flex items-center justify-center py-16 gap-2">
+            <div className="flex items-center justify-center h-80 gap-2">
               <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
               <span className="text-xs text-muted-foreground">Loading runs…</span>
             </div>
           ) : runHistory.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 gap-3 px-4 text-center">
+            <div className="flex flex-col items-center justify-center h-80 gap-3 px-4 text-center">
               <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-muted/60">
                 <Timer className="h-6 w-6 text-muted-foreground/40" />
               </div>

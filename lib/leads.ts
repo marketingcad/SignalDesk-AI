@@ -273,6 +273,18 @@ export async function deleteLead(id: string): Promise<boolean> {
   return true;
 }
 
+export async function deleteLeadsBulk(ids: string[]): Promise<number> {
+  if (ids.length === 0) return 0;
+  const { data, error } = await supabase
+    .from("leads")
+    .delete()
+    .in("id", ids)
+    .select("id");
+
+  if (error) throw error;
+  return data?.length || 0;
+}
+
 export async function deleteAllLeads(): Promise<number> {
   const { data, error } = await supabase
     .from("leads")

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifySession, SESSION_COOKIE_NAME } from "@/lib/auth";
-import { getLeads, deleteAllLeads } from "@/lib/leads";
+import { getLeads, deleteAllLeads, deleteLeadsBulk } from "@/lib/leads";
 import type { Platform, IntentLevel, LeadStatus } from "@/lib/types";
 
 export async function GET(request: NextRequest) {
@@ -38,10 +38,19 @@ export async function DELETE(request: NextRequest) {
   }
 
   try {
+    // Bulk delete by IDs (from request body) or delete all
+    let body: { ids?: string[] } | null = null;
+    try { body = await request.json(); } catch { /* no body = delete all */ }
+
+    if (body?.ids?.length) {
+      const deleted = await deleteLeadsBulk(body.ids);
+      return NextResponse.json({ success: true, deleted });
+    }
+
     const deleted = await deleteAllLeads();
     return NextResponse.json({ success: true, deleted });
   } catch (error) {
-    console.error("[api/leads] Delete all error:", error);
+    console.error("[api/leads] Delete error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
