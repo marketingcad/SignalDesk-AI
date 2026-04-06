@@ -38,12 +38,14 @@ Lead intelligence dashboard for **Virtual Assistant hiring detection**. Scrapes 
 1. **Scrape** — Posts are collected from Facebook groups, Reddit subreddits, LinkedIn, and X via two methods:
    - **Chrome Extension** — Content scripts detect posts in real-time as you browse
    - **Scraper Service** — Playwright + Crawlee crawlers run on a cron schedule
-2. **Pre-filter** — Self-promotion and job-seeking posts are rejected using negative keyword matching before they reach the backend
-3. **Score** — Every qualifying post is scored (0-100) by a weighted keyword engine in [`lib/intent-scoring.ts`](lib/intent-scoring.ts), using **user-customizable keywords from the Settings page** (stored in Supabase), optionally enhanced by Google Gemini AI analysis via [`lib/ai-lead-qualifier.ts`](lib/ai-lead-qualifier.ts)
-4. **Deduplicate** — Posts are deduplicated by URL and content hash to prevent duplicates across sources
-5. **Store** — Leads are saved to Supabase with score, category, matched keywords, and AI qualification data
-6. **Alert** — Leads scoring **>= 65** trigger a Discord notification via the Smart Alert Engine in [`lib/alert-engine.ts`](lib/alert-engine.ts)
-7. **Dashboard** — Real-time analytics with filtering, charts, and lead management
+2. **Date filter** — Only posts from the **last 7 days** (rolling window) are kept; older posts are discarded
+3. **Pre-filter** — Self-promotion and job-seeking posts are rejected using **negative keywords from Settings** before they reach the backend
+4. **Keyword gate** — Posts must match at least one **positive keyword from Settings** (high_intent or medium_intent) to be processed. Posts with no keyword match are skipped entirely and never appear in the dashboard
+5. **Score** — Every qualifying post is scored (0-100) by a weighted keyword engine in [`lib/intent-scoring.ts`](lib/intent-scoring.ts), using **user-customizable keywords from the Settings page** (stored in Supabase), optionally enhanced by Google Gemini AI analysis via [`lib/ai-lead-qualifier.ts`](lib/ai-lead-qualifier.ts)
+6. **Deduplicate** — Posts are deduplicated by URL and content hash to prevent duplicates across sources
+7. **Store** — Leads are saved to Supabase with score, category, matched keywords, and AI qualification data
+8. **Alert** — Leads scoring **>= 65** trigger a Discord notification (with matched keywords shown) via the Smart Alert Engine in [`lib/alert-engine.ts`](lib/alert-engine.ts)
+9. **Dashboard** — Real-time analytics with filtering, charts, lead management, and bulk mark/delete
 
 ---
 
@@ -141,15 +143,23 @@ All keywords used throughout the system — for scraping, search queries, Google
         │         (search queries,              ├─ Google dorks (Facebook, LinkedIn, X)
         │          negative keywords,            ├─ Facebook search URLs
         │          scoring config)               ├─ Reddit search queries
-        │                                        └─ Post keyword filtering
+        │                                        ├─ Post keyword matching (high + medium)
+        │                                        └─ Negative keyword filtering
         │
-        └──► /api/leads/batch ──► DynamicScoringConfig
-                                    ├─ AI lead qualifier (keyword fallback)
-                                    └─ Intent scoring engine
+        ├──► /api/leads/batch ──► Keyword gate (rejects non-matching posts)
+        │                          └─ DynamicScoringConfig (weighted scoring)
+        │                              ├─ AI lead qualifier (keyword fallback)
+        │                              └─ Intent scoring engine → matched_keywords
+        │
+        └──► /api/leads/process ──► Keyword gate (same as batch)
+                                     └─ Scoring + alert pipeline
 ```
 
-- **Scraper Service** fetches keywords from `/api/keywords/search-queries` on startup and before every run
-- **Batch processing** builds a `DynamicScoringConfig` from DB keywords for scoring
+- **Scraper Service** fetches keywords from `/api/keywords/search-queries` on startup and **before every run** (force-refreshed)
+- **URL scraper** uses `scoringConfig.high_intent` + `medium_intent` keywords for in-scraper post matching via `getMatchingKeywords()`
+- **Batch and process APIs** enforce a **keyword gate** — posts must match at least one positive keyword from Settings to be inserted
+- **Batch processing** builds a `DynamicScoringConfig` from DB keywords for weighted scoring (high=40, medium=20, negative=-40)
+- **Matched keywords** are stored in `leads.matched_keywords`, displayed on the Leads page (highlighted in text + chips), and included in Discord notifications
 - **Static defaults** in [`lib/keywords.ts`](lib/keywords.ts) are used as fallback when the DB is empty
 - Users can **add/remove keywords at any time** from the Settings page — changes take effect on the next scraper run
 
@@ -249,12 +259,13 @@ JWT-based session authentication:
 | Method | Route | Description |
 |--------|-------|-------------|
 | GET | `/api/leads` | Fetch leads (filterable by platform, intent, status, date) |
-| POST | `/api/leads/process` | Ingest single lead (score + alert) |
-| POST | `/api/leads/batch` | Bulk ingest from extension/scraper |
+| POST | `/api/leads/process` | Ingest single lead (keyword gate + score + alert) |
+| POST | `/api/leads/batch` | Bulk ingest from extension/scraper (keyword gate + score) |
 | POST | `/api/leads/qualify` | AI qualification |
 | POST | `/api/leads/scrape-url` | Scrape a URL for posts |
 | GET | `/api/leads/scraped-posts` | Manual scrape history |
-| DELETE | `/api/leads/:id` | Delete a lead |
+| DELETE | `/api/leads` | Delete all leads, or bulk delete with `{ ids: string[] }` body |
+| DELETE | `/api/leads/:id` | Delete a single lead |
 
 ### Dashboard
 | Method | Route | Description |
@@ -325,9 +336,19 @@ Discord alerts are managed by the **Smart Alert Engine** in [`lib/alert-engine.t
 
 | Source | Trigger |
 |--------|---------|
+| Scraper Service | Scheduled or manual scrape finds leads scoring >= 65 |
 | Facebook Webhook | Real-time Facebook feed event classified |
 | Chrome Extension | Batch of leads submitted via extension |
 | Manual Upload | Single lead submitted via API |
+
+### Notification Content
+
+Each Discord notification embed includes:
+- Author name, platform, and intent score with visual score bar
+- Post text preview (400 chars, smart-truncated)
+- Intent category and level
+- **Matched keywords** from Settings displayed as inline code chips
+- Direct link to the original post
 
 ---
 
@@ -336,12 +357,56 @@ Discord alerts are managed by the **Smart Alert Engine** in [`lib/alert-engine.t
 | Page | Description |
 |------|-------------|
 | **Dashboard** | KPI cards, lead trend chart, platform distribution, high-intent previews |
-| **Leads** | Full leads table with filtering (platform, intent, status, date range, search) |
+| **Leads** | Card + table views with filtering, keyword highlighting, mark/unmark selection mode for bulk deletion |
 | **Alerts** | Real-time high-intent alerts feed |
 | **Reports** | Daily/weekly lead reporting |
-| **Scrape URL** | Manual URL scraping interface |
+| **Scrape URL** | Manual URL scraping with schedules, live run progress tracking, expandable post lists per run, and error alerts |
 | **Settings** | Platform toggles, **customizable keywords** (primary/secondary/negative), alert threshold, scoring rules |
 | **Users** | User management (admin only) |
+
+---
+
+## Leads Page Features
+
+### Card & Table Views
+Switch between card grid and table list layouts. Both support resizable split-panel with a detail view on the right.
+
+### Keyword Highlighting
+Matched keywords from Settings are displayed as colored chips on each lead and **highlighted in the post text** for quick scanning.
+
+### Mark & Delete (Selection Mode)
+Bulk lead management via the **Action** dropdown:
+
+1. Click **Action** → **Mark for Deletion** to enter selection mode
+2. **Checkboxes appear** on every card (top-right corner) and table row (left column)
+3. Click individual leads to toggle selection, or use:
+   - **Mark All** — selects all visible leads on the current page
+   - **Unmark All** — deselects everything
+4. Click **Delete N leads** to permanently remove selected leads (with confirmation)
+5. Click **Exit** to leave selection mode without deleting
+
+In table view, the header checkbox toggles between select-all, select-none, and shows a partial-selection indicator.
+
+### Export
+Export filtered leads to CSV with all fields (username, platform, score, status, keywords, URL, date).
+
+---
+
+## Scrape URL — Run History
+
+### Live Progress Tracking
+During sequential multi-URL scrapes, a **progress banner** shows:
+- Schedule name and "URL X of N" counter
+- Currently scraping URL
+- Animated progress bar
+- Auto-polls every 5 seconds for real-time updates
+
+### Expandable Post Lists
+Each completed run shows a clickable **"N posts found"** link. Expanding it reveals every post with author, text preview, matched keyword chips, and clickable post URL.
+
+### Error Alerts
+- Failed runs get a **red left border** and expanded error message block
+- Recent failures (< 10 min) appear as prominent alert cards at the top of the panel
 
 ---
 
@@ -366,7 +431,18 @@ User-customizable keywords managed from the Settings page:
 ### facebook_post_logs
 Audit trail for Facebook webhook events: post_id, author, message, classification, notified flag.
 
-### scrape_url_history
+### url_schedules
+Durable persistence for per-URL scraping schedules (replaces JSON files when Supabase is configured):
+- `id`, `name`, `url`, `cron`, `status` (`active`/`paused`)
+- `last_run_at`, `last_run_status`, `total_runs`, `created_at`, `updated_at`
+
+### url_schedule_runs
+Execution history for each scheduled run (auto-trimmed to last 500 per schedule):
+- `id`, `schedule_id`, `schedule_name`, `started_at`, `finished_at`
+- `status` (`ok`/`error`/`running`), `posts_found`, `leads_inserted`, `error_message`
+- `scraped_posts` (JSONB) — array of posts found during the run with author, text, URL, platform, timestamp, and matched keywords
+
+### scrape_url_sessions / scraped_posts
 Tracks manual URL scraping requests and their results.
 
 ### auto_delete_old_leads
