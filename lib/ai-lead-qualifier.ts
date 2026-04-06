@@ -533,9 +533,19 @@ export async function qualifyLead(
   });
 
   if (aiQualification) {
-    console.log(`[ai-lead-qualifier] ✅ Used AI scoring — Score: ${aiQualification.scoring.score}/100`);
+    // Run keyword scoring too so we get the user's actual Settings keyword matches
+    const kwScoring = scoreIntent(
+      { text: input.text, engagement: input.engagement, platform: input.platform },
+      dynamicConfig
+    );
+
+    // Only use Settings keyword matches — never AI labels
+    console.log(`[ai-lead-qualifier] ✅ Used AI scoring — Score: ${aiQualification.scoring.score}/100, Settings keywords: [${kwScoring.matchedKeywords.join(", ")}]`);
     return {
-      scoring: aiQualification.scoring,
+      scoring: {
+        ...aiQualification.scoring,
+        matchedKeywords: kwScoring.matchedKeywords,
+      },
       aiResult: aiQualification.aiResult,
       source: "ai",
     };
