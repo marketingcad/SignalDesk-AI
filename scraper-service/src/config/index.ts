@@ -47,11 +47,14 @@ export const config = {
   // Server
   port: parseInt(envOrDefault("PORT", "4000"), 10),
 
-  // Cron schedules (defaults tuned for free-tier: avoid Google IP bans)
+  // Cron schedules — staggered to avoid concurrent scrapes
+  // Reddit/X: hourly (public, lenient rate limits)
+  // LinkedIn: every 6h (Google dorks, stricter rate limits)
+  // Facebook: every 2h (needs login, moderate rate limits)
   cron: {
     reddit: envOrDefault("CRON_REDDIT", "0 */1 * * *"),
-    x: envOrDefault("CRON_X", "15 */1 * * *"),
-    linkedin: envOrDefault("CRON_LINKEDIN", "30 */2 * * *"),
+    x: envOrDefault("CRON_X", "30 */2 * * *"),
+    linkedin: envOrDefault("CRON_LINKEDIN", "15 */6 * * *"),
     facebook: envOrDefault("CRON_FACEBOOK", "45 */2 * * *"),
   },
 
@@ -59,7 +62,7 @@ export const config = {
   targets: {
     redditSubreddits: envList(
       "REDDIT_SUBREDDITS",
-      "virtualassistant,hiring,forhire,smallbusiness,entrepreneur,RemoteWork,WorkOnline,sidehustle,ecommerce,realestateinvesting,Bookkeeping,socialmediamarketing"
+      "entrepreneur,smallbusiness,ecommerce,startups,SaaS,realestateinvesting,dropship,FulfillmentByAmazon,hiring,forhire,virtualassistant,RemoteWork,Bookkeeping,socialmediamarketing,RealEstate,DigitalMarketing"
     ),
     xSearchQueries: envList(
       "X_SEARCH_QUERIES",
