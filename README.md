@@ -68,7 +68,7 @@ Lead intelligence dashboard for **Virtual Assistant hiring detection**. Scrapes 
 
 ---
 
-## Project Structure`
+## Project Structure
 
 ```
 signal-desk-ai/
@@ -85,6 +85,7 @@ signal-desk-ai/
 │   ├── src/main.rs         # Spawns Next.js + scraper, manages lifecycle
 │   ├── tauri.conf.json     # Window, updater, CSP, bundle config
 │   └── capabilities/       # Tauri permission capabilities
+├── docs/                   # Scraping guide and best practices
 ├── .github/workflows/      # CI/CD (release.yml — multi-OS builds)
 ├── supabase/               # Database migrations and schema
 ├── scripts/                # Utility scripts (setup, token generation)
@@ -114,10 +115,36 @@ The Chrome MV3 extension injects content scripts into supported platforms and mo
 
 A standalone Node.js service using Playwright and Crawlee for automated headless scraping:
 
-- **Platforms:** Reddit, X, LinkedIn, Facebook
-- **Scheduling:** Cron-based via `node-cron`, configurable per-URL schedules
+- **Scheduling:** Cron-based via `node-cron` + per-URL custom schedules
 - **Delivery:** Sends scraped leads to `POST /api/leads/batch`
+- **Keywords:** Fetches user keywords from `/api/keywords/search-queries` before every run (force-refreshed)
+- **Date filter:** Rolling 7-day window — only posts from the last 7 days are kept
 - **Discord summaries:** Posts a scrape cycle summary after every run
+
+#### Per-Platform Scraping Methods
+
+| Platform | Cron Default | Method | Login Required |
+|----------|-------------|--------|----------------|
+| **Facebook** | Every 2h | GraphQL interception + DOM fallback; Google dorks for search | Yes (private groups) |
+| **Reddit** | Every 1h | Subreddit keyword search via `www.reddit.com` + JSON API fallback | No |
+| **LinkedIn** | Every 6h | Google dorks (`site:linkedin.com/posts`) + Voyager API interception | Recommended |
+| **X (Twitter)** | Every 2h | Google dorks (`site:x.com`) + DOM extraction | No |
+
+#### Default Target Subreddits
+
+Business owner communities where hiring happens (not VA communities):
+`r/entrepreneur`, `r/smallbusiness`, `r/ecommerce`, `r/startups`, `r/SaaS`, `r/realestateinvesting`, `r/dropship`, `r/FulfillmentByAmazon`, `r/hiring`, `r/forhire`, `r/virtualassistant`, `r/RemoteWork`, `r/Bookkeeping`, `r/socialmediamarketing`, `r/RealEstate`, `r/DigitalMarketing`
+
+#### URL Scheduler (Facebook Groups)
+
+For direct Facebook group scraping, use the **Scrape URL** > **Schedules** tab:
+1. Create a schedule group (e.g., "VA Hiring Groups")
+2. Add Facebook group URLs (one per field)
+3. Set frequency to every 2 hours
+4. Enable auto-scrape to run immediately
+5. The app processes each URL sequentially with rate limiting
+
+> For detailed scraping strategies, keyword recommendations, and troubleshooting, see the [Scraping Guide](docs/SCRAPING-GUIDE.md).
 
 ---
 
@@ -217,11 +244,13 @@ The score is the sum of **positive signals**, **negative signals**, and **bonuse
 
 ### AI Lead Qualification
 
-Posts can also be analyzed by Google Gemini AI via [`lib/ai-lead-qualifier.ts`](lib/ai-lead-qualifier.ts), which evaluates:
+Posts are analyzed by Google Gemini AI via [`lib/ai-lead-qualifier.ts`](lib/ai-lead-qualifier.ts), which evaluates:
 - Hiring intent and urgency
 - Budget indicators and spam risk
 - Tasks/skills the poster needs
 - Returns structured qualification data stored as JSONB in the database
+
+**Matched keywords always come from Settings** — the AI provides the score and qualification data, but `matched_keywords` stored on each lead are strictly from your Settings page keywords (never AI-generated labels). Posts that don't match any Settings keyword are never saved.
 
 ---
 
@@ -669,7 +698,7 @@ This generates a public URL like `https://abc-xyz.trycloudflare.com` that anyone
 ### Releasing a New Version
 
 ```bash
-# 1. Bump version in package.json AND src-tauri/tauri.conf.json
+# 1. Bump version in package.json, src-tauri/tauri.conf.json, AND src-tauri/Cargo.toml
 # 2. Commit
 git add -A && git commit -m "release: v1.0.1"
 
@@ -745,6 +774,13 @@ cd ~/Library/Application\ Support/com.signaldesk.vahub/server/scraper
 > On Apple Silicon Macs using Homebrew, replace `/usr/local/bin/node` with `/opt/homebrew/bin/node`.
 
 This only needs to be done **once per device**. After that, the app and auto-updates work without these steps.
+
+### Documentation
+
+| Guide | Description |
+|-------|-------------|
+| [Scraping Guide](docs/SCRAPING-GUIDE.md) | Platform strategies, keyword recommendations, schedule setup, session management, pipeline diagram, troubleshooting |
+| [Scrape URL README](app/(dashboard)/scrape-url/README.md) | Technical details for the Scrape URL page: architecture, data flow, API endpoints, schedule management, run history |
 
 ### Platform-Specific Requirements
 
