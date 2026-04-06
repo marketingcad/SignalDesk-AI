@@ -1,7 +1,7 @@
 import * as cron from "node-cron";
 import { randomUUID } from "crypto";
 import { scrapeUrl } from "../scrapers";
-import { sendLeadsBatch } from "../api/backendClient";
+import { sendLeadsBatch, fetchKeywords } from "../api/backendClient";
 import { sendNewLeadsAlert, sendErrorAlert, sendSessionHealthAlert } from "../alerts/discord";
 import { filterPosts } from "../utils/postFilter";
 import { checkRateLimit, recordScrapeStart, getWaitTimeMs } from "../utils/rateLimiter";
@@ -147,6 +147,11 @@ async function runSchedule(id: string): Promise<void> {
   recordScrapeStart(platform);
 
   console.log(`[url-scheduler] Running "${schedule.name}" → ${schedule.url}`);
+
+  // Refresh keywords from /settings before scraping
+  await fetchKeywords(true).catch(() =>
+    console.warn(`[url-scheduler] Keyword refresh failed for "${schedule.name}", using cached`)
+  );
 
   // Create run record
   const runId = randomUUID();

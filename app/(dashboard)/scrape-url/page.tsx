@@ -319,13 +319,13 @@ export default function ScrapeUrlPage() {
   const handleResume  = async (id: string) => { await fetch(`/api/schedules/${id}/resume`, { method: "POST" }); loadSchedules(true); };
   const handleRunNow  = async (id: string) => {
     setRunningId(id);
-    await fetch(`/api/schedules/${id}/run`, { method: "POST" }).catch(() => {});
+    await fetch(`/api/schedules/${id}/run`, { method: "POST" }).catch((err) => console.error("[scrape-url] Run failed:", err));
     setRunningId(null);
     loadSchedules(true);
   };
   const handleRunGroup = async (id: string) => {
     setRunningId(id);
-    await fetch(`/api/schedules/${id}/run-group`, { method: "POST" }).catch(() => {});
+    await fetch(`/api/schedules/${id}/run-group`, { method: "POST" }).catch((err) => console.error("[scrape-url] Run group failed:", err));
     setRunningId(null);
     loadSchedules(true);
   };

@@ -4,6 +4,7 @@ import { qualifyLead } from "@/lib/ai-lead-qualifier";
 import { inferLocationFromText } from "@/lib/geo-fallback";
 import { supabase } from "@/lib/supabase";
 import { alertEngine } from "@/lib/alert-engine";
+import { HIRING_KEYWORDS } from "@/lib/keywords";
 import type { Platform } from "@/lib/types";
 
 interface IncomingPayload {
@@ -91,6 +92,33 @@ export async function POST(request: NextRequest) {
     console.log(`[leads/process] Duplicate content detected — existing lead ID: ${existingByText.id}`);
     return NextResponse.json(
       { success: true, duplicate: true, reason: "content", leadId: existingByText.id },
+      { status: 200 }
+    );
+  }
+
+  // --- Keyword gate: only keep posts that match at least one user keyword ---
+  let userKeywords: string[] = [];
+  const { data: dbKeywords } = await supabase
+    .from("keywords")
+    .select("keyword, category")
+    .order("created_at", { ascending: true });
+
+  if (dbKeywords && dbKeywords.length > 0) {
+    for (const row of dbKeywords) {
+      if (row.category === "high_intent" || row.category === "medium_intent") {
+        userKeywords.push(row.keyword.toLowerCase());
+      }
+    }
+  } else {
+    userKeywords = HIRING_KEYWORDS.map((kw) => kw.toLowerCase());
+  }
+
+  const lowerText = text.toLowerCase();
+  const hasKeywordMatch = userKeywords.some((kw) => lowerText.includes(kw));
+  if (!hasKeywordMatch) {
+    console.log(`[leads/process] No keyword match — skipped`);
+    return NextResponse.json(
+      { success: true, skipped: true, reason: "No keyword match" },
       { status: 200 }
     );
   }

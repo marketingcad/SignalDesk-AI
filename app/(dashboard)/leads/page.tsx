@@ -212,8 +212,9 @@ export default function LeadsPage() {
       a.download = `leads-${new Date().toISOString().slice(0, 10)}.csv`;
       a.click();
       URL.revokeObjectURL(url);
-    } catch {
-      // silent fail
+    } catch (err) {
+      console.error("[leads] Export failed:", err);
+      window.alert("Export failed. Please try again.");
     } finally {
       setExporting(false);
     }
@@ -243,7 +244,7 @@ export default function LeadsPage() {
           setTotalCount(data.count ?? 0);
         }
       })
-      .catch(() => {})
+      .catch((err) => console.error("[leads] Failed to fetch leads:", err))
       .finally(() => setLoading(false));
   }, [platformFilter, intentFilter, statusFilter, searchQuery, dateFrom, dateTo, currentPage]);
 
