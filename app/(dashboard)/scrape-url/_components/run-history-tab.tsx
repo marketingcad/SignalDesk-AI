@@ -16,8 +16,10 @@ import { cn } from "@/lib/utils";
 import {
   Loader2, CheckCircle2, Clock, Play, Pause, Trash2,
   Calendar, RefreshCw, Timer, XCircle, ChevronRight,
-  Zap, Activity,
+  ChevronDown, ChevronUp, ExternalLink, User, FileText,
+  AlertTriangle, Zap, Activity,
 } from "lucide-react";
+import { openUrl } from "@/lib/open-url";
 
 import { PlatformBadge } from "./platform-badge";
 import { ScheduleCountdown } from "./schedule-countdown";
@@ -58,6 +60,7 @@ export function RunHistoryTab({
   onRefreshSchedules: (silent?: boolean) => void;
 }) {
   const [expandedRunGroup, setExpandedRunGroup] = useState<string | null>(null);
+  const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
 
   // Group schedules by base name
   const runGroups: { baseName: string; items: UrlSchedule[] }[] = [];
@@ -67,6 +70,45 @@ export function RunHistoryTab({
     if (!rMap.has(base)) { rMap.set(base, []); runGroups.push({ baseName: base, items: rMap.get(base)! }); }
     rMap.get(base)!.push(s);
   }
+
+  // Derive which schedule IDs are actively running from run history
+  const activelyRunningIds = new Set(
+    runHistory.filter((r) => r.status === "running").map((r) => r.scheduleId)
+  );
+
+  // Build group progress info: which groups have active runs
+  const groupProgress: { baseName: string; total: number; completed: number; currentUrl: string; currentName: string }[] = [];
+  for (const group of runGroups) {
+    const groupIds = new Set(group.items.map((s) => s.id));
+    const groupRuns = runHistory.filter((r) => groupIds.has(r.scheduleId));
+    // Find recent batch: runs started within the same 10-minute window as the latest running one
+    const runningInGroup = groupRuns.filter((r) => r.status === "running");
+    if (runningInGroup.length === 0) continue;
+
+    const latestRunStart = new Date(runningInGroup[0].startedAt).getTime();
+    const batchWindow = 10 * 60 * 1000; // 10 min
+    const batchRuns = groupRuns.filter(
+      (r) => Math.abs(new Date(r.startedAt).getTime() - latestRunStart) < batchWindow
+        || r.status === "running"
+    );
+    const completed = batchRuns.filter((r) => r.status !== "running").length;
+    const currentRun = runningInGroup[0];
+    const currentSched = group.items.find((s) => s.id === currentRun.scheduleId);
+
+    groupProgress.push({
+      baseName: group.baseName,
+      total: group.items.length,
+      completed,
+      currentUrl: currentSched?.url ?? "",
+      currentName: currentRun.scheduleName ?? currentSched?.name ?? "",
+    });
+  }
+
+  // Recent failed runs (last 10 minutes) for error alerts
+  const tenMinAgo = Date.now() - 10 * 60 * 1000;
+  const recentFailedRuns = runHistory.filter(
+    (r) => r.status === "error" && new Date(r.startedAt).getTime() > tenMinAgo
+  );
 
   return (
     <div className="space-y-4">
@@ -88,6 +130,74 @@ export function RunHistoryTab({
               </div>
             </Card>
           ))}
+        </div>
+      )}
+
+      {/* Active group run progress banners */}
+      {groupProgress.map((gp) => (
+        <div key={gp.baseName} className="rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 flex items-center gap-3">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 border border-primary/20">
+            <Loader2 className="h-4 w-4 animate-spin text-primary" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-[13px] font-semibold text-foreground">
+                Scraping in progress — {gp.baseName}
+              </span>
+              <Badge variant="outline" className="text-[10px] px-2 rounded-full h-5 border-primary/30 bg-primary/10 text-primary">
+                URL {gp.completed + 1} of {gp.total}
+              </Badge>
+            </div>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-[11px] text-muted-foreground">Currently scraping:</span>
+              <span className="text-[11px] text-foreground font-mono truncate">{gp.currentUrl}</span>
+            </div>
+            {/* Progress bar */}
+            <div className="mt-2 h-1.5 rounded-full bg-muted/40 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-primary transition-all duration-500"
+                style={{ width: `${Math.max(((gp.completed + 0.5) / gp.total) * 100, 5)}%` }}
+              />
+            </div>
+            <p className="text-[10px] text-muted-foreground mt-1">
+              {gp.completed} of {gp.total} URLs completed
+            </p>
+          </div>
+        </div>
+      ))}
+
+      {/* Recent error alerts */}
+      {recentFailedRuns.length > 0 && groupProgress.length === 0 && (
+        <div className="space-y-2">
+          {recentFailedRuns.slice(0, 5).map((run) => {
+            const schedInfo = schedules.find((s) => s.id === run.scheduleId);
+            return (
+              <div key={run.id} className="rounded-lg border border-rose-500/30 bg-rose-500/5 px-4 py-3 flex items-start gap-3">
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-rose-500/10 border border-rose-500/20 mt-0.5">
+                  <AlertTriangle className="h-3.5 w-3.5 text-rose-400" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[12px] font-semibold text-rose-400">Scrape failed</span>
+                    <span className="text-[11px] text-foreground font-medium truncate">
+                      {run.scheduleName ?? run.scheduleId}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground shrink-0">{formatTs(run.startedAt)}</span>
+                  </div>
+                  {schedInfo && (
+                    <p className="text-[11px] text-muted-foreground font-mono truncate mt-0.5" title={schedInfo.url}>
+                      {schedInfo.url}
+                    </p>
+                  )}
+                  {run.errorMessage && (
+                    <p className="text-[11px] text-rose-400/80 mt-1 leading-relaxed line-clamp-2">
+                      {run.errorMessage}
+                    </p>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -128,7 +238,7 @@ export function RunHistoryTab({
                   const isExpanded = expandedRunGroup === group.baseName;
                   const allActive = group.items.every((s) => s.status === "active");
                   const someActive = group.items.some((s) => s.status === "active");
-                  const groupRunning = group.items.some((s) => runningId === s.id);
+                  const groupRunning = group.items.some((s) => runningId === s.id || activelyRunningIds.has(s.id));
                   return (
                     <div key={first.id}>
                       <button
@@ -263,7 +373,7 @@ export function RunHistoryTab({
                         <div className="border-t border-border/50 bg-muted/10">
                           {group.items.map((sched) => {
                             const platform = detectPlatform(sched.url);
-                            const isRunning = runningId === sched.id;
+                            const isRunning = runningId === sched.id || activelyRunningIds.has(sched.id);
                             return (
                               <div
                                 key={sched.id}
@@ -422,68 +532,157 @@ export function RunHistoryTab({
                 const durationSec = run.finishedAt
                   ? Math.round((new Date(run.finishedAt).getTime() - new Date(run.startedAt).getTime()) / 1000)
                   : null;
+                const posts = run.scrapedPosts ?? [];
+                const isRunExpanded = expandedRunId === run.id;
                 return (
-                  <div key={run.id} className="px-4 py-3 hover:bg-muted/20 transition-colors">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        {run.status === "running" ? (
-                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 border border-primary/20">
-                            <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                  <div key={run.id}>
+                    <div className={cn(
+                      "px-4 py-3 hover:bg-muted/20 transition-colors",
+                      run.status === "error" && "border-l-2 border-l-rose-500 bg-rose-500/5",
+                      run.status === "running" && "border-l-2 border-l-primary bg-primary/5"
+                    )}>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          {run.status === "running" ? (
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 border border-primary/20">
+                              <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                            </div>
+                          ) : run.status === "ok" ? (
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                            </div>
+                          ) : (
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-rose-500/10 border border-rose-500/20">
+                              <XCircle className="h-3.5 w-3.5 text-rose-400" />
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-[13px] font-semibold text-foreground truncate">
+                                {run.scheduleName ?? run.scheduleId}
+                              </span>
+                              <PlatformBadge platform={platform} />
+                            </div>
+                            {schedInfo && (
+                              <p className="text-[11px] text-muted-foreground font-mono truncate mt-0.5" title={schedInfo.url}>
+                                {schedInfo.url}
+                              </p>
+                            )}
                           </div>
-                        ) : run.status === "ok" ? (
-                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 border border-emerald-500/20">
-                            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
-                          </div>
-                        ) : (
-                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-rose-500/10 border border-rose-500/20">
-                            <XCircle className="h-3.5 w-3.5 text-rose-400" />
-                          </div>
-                        )}
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="text-[13px] font-semibold text-foreground truncate">
-                              {run.scheduleName ?? run.scheduleId}
-                            </span>
-                            <PlatformBadge platform={platform} />
-                          </div>
-                          {schedInfo && (
-                            <p className="text-[11px] text-muted-foreground font-mono truncate mt-0.5" title={schedInfo.url}>
-                              {schedInfo.url}
-                            </p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {run.status === "running" ? (
+                            <Badge variant="outline" className="text-[10px] px-2 rounded-full h-5 border-primary/30 bg-primary/10 text-primary">Running</Badge>
+                          ) : run.status === "ok" ? (
+                            <Badge variant="outline" className="text-[10px] px-2 rounded-full h-5 border-emerald-500/30 bg-emerald-500/10 text-emerald-400">Success</Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-[10px] px-2 rounded-full h-5 border-rose-500/30 bg-rose-500/10 text-rose-400">Failed</Badge>
+                          )}
+                          {posts.length > 0 && (
+                            <button
+                              onClick={() => setExpandedRunId(isRunExpanded ? null : run.id)}
+                              className="text-muted-foreground hover:text-foreground transition-colors"
+                              title={isRunExpanded ? "Hide posts" : `Show ${posts.length} posts`}
+                            >
+                              {isRunExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                            </button>
                           )}
                         </div>
                       </div>
-                      <div className="shrink-0">
-                        {run.status === "running" ? (
-                          <Badge variant="outline" className="text-[10px] px-2 rounded-full h-5 border-primary/30 bg-primary/10 text-primary">Running</Badge>
-                        ) : run.status === "ok" ? (
-                          <Badge variant="outline" className="text-[10px] px-2 rounded-full h-5 border-emerald-500/30 bg-emerald-500/10 text-emerald-400">Success</Badge>
-                        ) : (
-                          <Badge variant="outline" className="text-[10px] px-2 rounded-full h-5 border-rose-500/30 bg-rose-500/10 text-rose-400">Failed</Badge>
+                      <div className="flex items-center gap-3 mt-2 ml-10.5 flex-wrap">
+                        <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                          <Clock className="h-3 w-3 shrink-0" />
+                          {formatTs(run.startedAt)}
+                        </span>
+                        {durationSec !== null && (
+                          <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                            <Timer className="h-3 w-3 shrink-0" />
+                            {durationSec}s
+                          </span>
+                        )}
+                        {run.status === "ok" && (
+                          <>
+                            {posts.length > 0 ? (
+                              <button
+                                onClick={() => setExpandedRunId(isRunExpanded ? null : run.id)}
+                                className="inline-flex items-center gap-1 text-[11px] text-primary hover:text-primary/80 font-medium transition-colors cursor-pointer"
+                              >
+                                <FileText className="h-3 w-3 shrink-0" />
+                                {run.postsFound} posts found
+                              </button>
+                            ) : (
+                              <span className="text-[11px] text-muted-foreground">{run.postsFound} posts found</span>
+                            )}
+                            <span className="text-[11px] text-emerald-400 font-semibold">+{run.leadsInserted} leads</span>
+                          </>
+                        )}
+                        {run.status === "error" && (
+                          <span className="inline-flex items-center gap-1 text-[11px] text-rose-400 font-medium">
+                            <AlertTriangle className="h-3 w-3 shrink-0" />
+                            Scrape failed
+                          </span>
                         )}
                       </div>
-                    </div>
-                    <div className="flex items-center gap-3 mt-2 ml-10.5 flex-wrap">
-                      <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-                        <Clock className="h-3 w-3 shrink-0" />
-                        {formatTs(run.startedAt)}
-                      </span>
-                      {durationSec !== null && (
-                        <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-                          <Timer className="h-3 w-3 shrink-0" />
-                          {durationSec}s
-                        </span>
-                      )}
-                      {run.status === "ok" && (
-                        <>
-                          <span className="text-[11px] text-muted-foreground">{run.postsFound} posts found</span>
-                          <span className="text-[11px] text-emerald-400 font-semibold">+{run.leadsInserted} leads</span>
-                        </>
-                      )}
+                      {/* Error detail block */}
                       {run.status === "error" && run.errorMessage && (
-                        <span className="text-[11px] text-rose-400 truncate max-w-xs">{run.errorMessage}</span>
+                        <div className="mt-2 ml-10.5 rounded-md bg-rose-500/10 border border-rose-500/20 px-3 py-2">
+                          <p className="text-[11px] text-rose-400 leading-relaxed wrap-break-word">
+                            {run.errorMessage}
+                          </p>
+                        </div>
                       )}
                     </div>
+
+                    {/* Expanded scraped posts list */}
+                    {isRunExpanded && posts.length > 0 && (
+                      <div className="border-t border-border/50 bg-muted/10">
+                        <div className="px-4 py-2 border-b border-border/30 flex items-center justify-between">
+                          <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+                            Posts Found ({posts.length})
+                          </span>
+                        </div>
+                        <div className="divide-y divide-border/30 max-h-72 overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border hover:[&::-webkit-scrollbar-thumb]:bg-muted-foreground/30">
+                          {posts.map((post, pi) => (
+                            <div key={pi} className="px-4 py-2.5 flex items-start gap-3 hover:bg-muted/20 transition-colors">
+                              <span className="text-[10px] font-mono text-muted-foreground shrink-0 w-5 text-right pt-0.5">
+                                {pi + 1}.
+                              </span>
+                              <div className="min-w-0 flex-1 space-y-1">
+                                <div className="flex items-center gap-1.5">
+                                  <User className="h-3 w-3 text-muted-foreground shrink-0" />
+                                  <span className="text-[11px] font-semibold text-foreground">{post.author}</span>
+                                  <PlatformBadge platform={post.platform} />
+                                </div>
+                                <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-2">
+                                  {post.text}
+                                </p>
+                                {post.matchedKeywords?.length > 0 && (
+                                  <div className="flex items-center gap-1 flex-wrap">
+                                    {post.matchedKeywords.map((kw, ki) => (
+                                      <span
+                                        key={ki}
+                                        className="text-[9px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20"
+                                      >
+                                        {kw}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                                {post.url && (
+                                  <button
+                                    onClick={() => openUrl(post.url)}
+                                    className="inline-flex items-center gap-1 text-[10px] text-primary hover:underline"
+                                  >
+                                    <ExternalLink className="h-2.5 w-2.5" />
+                                    <span className="truncate max-w-xs">{post.url}</span>
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}

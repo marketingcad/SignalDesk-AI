@@ -139,6 +139,17 @@ The UI offers common presets via a cron expression builder (`_components/shared.
   postsFound: number;
   leadsInserted: number;
   errorMessage: string | null;
+  scrapedPosts?: RunScrapedPost[];   // Individual posts found (stored as JSONB)
+}
+
+// Individual post captured during a run
+{
+  author: string;
+  text: string;          // Truncated to 200 chars
+  url: string;
+  platform: Platform;
+  timestamp: string;
+  matchedKeywords: string[];  // Keywords from the scoring engine
 }
 ```
 
@@ -146,17 +157,83 @@ The UI offers common presets via a cron expression builder (`_components/shared.
 
 ## Run History
 
-The third tab shows execution history across all schedules:
+The third tab shows execution history across all schedules with real-time monitoring.
 
-- Status badge (ok / error / running)
-- Start and finish timestamps
-- Posts found and leads inserted
-- Error messages (if any)
-- Can filter by schedule, export to CSV, or clear all history
-- Shows countdown to the next scheduled run
+### Live progress tracking
+
+When a group of URLs is being scraped sequentially (e.g. 10 Facebook group URLs), a **progress banner** appears at the top of the Run History panel:
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  ⟳  Scraping in progress — VA Groups           URL 3 of 10  │
+│     Currently scraping: facebook.com/groups/hiring-vas       │
+│     ████████░░░░░░░░░░░░  3 of 10 URLs completed            │
+└──────────────────────────────────────────────────────────────┘
+```
+
+**How it works:**
+1. Each URL in a group creates its own run record with `status: "running"` before scraping begins
+2. The frontend **polls every 5 seconds** (auto-poll on the Runs tab) to pick up status changes
+3. The progress banner calculates position by comparing running vs completed runs within a 10-minute batch window
+4. Schedule list items also highlight the actively running URL using run history data (not just the single `runningId` prop)
+
+### Expandable scraped posts per run
+
+Each successful run entry shows a clickable **"N posts found"** link. Clicking it expands an inline panel listing every post discovered during that run:
+
+```
+✓  VA Groups (#3)  [Facebook]  — Success
+   Today 14:23  ·  42s  ·  📄 34 posts found  ·  +12 leads
+   ┌─────────────────────────────────────────────────────┐
+   │  Posts Found (34)                                   │
+   │  1.  👤 John Smith  [Facebook]                      │
+   │      Looking for a VA to handle my Shopify store... │
+   │      🏷 hiring va  shopify  virtual assistant       │
+   │      🔗 facebook.com/groups/123/posts/456           │
+   │  2.  👤 Jane Doe  [Facebook]                        │
+   │      Need someone to manage my emails and calendar  │
+   │      ...                                            │
+   └─────────────────────────────────────────────────────┘
+```
+
+Each post shows:
+- **Author** and platform badge
+- **Text preview** (first 200 characters, 2-line clamp)
+- **Matched keywords** as colored chips (from the scoring engine)
+- **Post URL** as a clickable link (opens in browser or Tauri shell)
+
+**Data flow:**
+1. When `urlScheduler.ts` runs a schedule, it captures filtered posts after `filterPosts()` and enriches them with matched keywords from `sendLeadsBatch()` results
+2. Posts are stored as JSONB in the `scraped_posts` column on `url_schedule_runs` (Supabase) or in the JSON fallback file
+3. The runs API returns `scrapedPosts[]` with each run record
+4. The frontend renders an expandable list with scroll (max 288px height)
+
+### Error alerts
+
+Failed runs are highlighted with prominent error styling:
+
+- **Red left border** on the run entry row + rose-tinted background
+- **AlertTriangle icon** with "Scrape failed" label in the stats row
+- **Full error message** displayed in a rose-colored detail block below the run metadata (not truncated)
+- **Recent failure banner** — when no runs are active, failed runs from the last 10 minutes appear as alert cards at the top of the Run History panel with the schedule name, URL, and full error message
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  ⚠  Scrape failed   VA Groups (#5)       Today 14:28        │
+│     facebook.com/groups/va-hiring-hub                        │
+│     page.goto: Timeout 30000ms exceeded; requires login      │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### Standard run info
+
+- Status badge (ok / error / running) with color-coded borders
+- Start timestamp, duration in seconds
+- Posts found count and leads inserted
+- Filter by schedule, refresh, or clear all history
 
 **Endpoints:**
-- `GET /api/schedules/runs` — all runs (optional `?scheduleId=` filter)
+- `GET /api/schedules/runs` — all runs (optional `?scheduleId=` filter), includes `scrapedPosts`
 - `DELETE /api/schedules/runs` — clear history
 
 ---
@@ -196,9 +273,13 @@ The universal entry point is `scrapeUrl(url)` in `urlScraper.ts`, which auto-det
 | `scrape_url_sessions` | Log of each scrape execution (manual or scheduled)     |
 | `scraped_posts`       | Individual posts found, linked to session and lead     |
 | `url_schedules`       | Durable schedule persistence (replaces JSON files)     |
-| `url_schedule_runs`   | Durable run history (auto-trimmed to last 500 per schedule) |
+| `url_schedule_runs`   | Durable run history with scraped posts JSONB (auto-trimmed to last 500 per schedule) |
 
-To enable Supabase persistence for schedules, set `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in the scraper service `.env`. Run `supabase/url_schedules.sql` in the SQL Editor first. Without these vars, the system falls back to local JSON files.
+To enable Supabase persistence for schedules, set `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in the scraper service `.env`. Run these migrations in the SQL Editor:
+1. `supabase/url_schedules.sql` — creates tables and auto-trim trigger
+2. `supabase/add_scraped_posts_to_runs.sql` — adds `scraped_posts` JSONB column
+
+Without these env vars, the system falls back to local JSON files.
 
 ---
 
@@ -210,8 +291,9 @@ app/(dashboard)/scrape-url/
 ├── _components/
 │   ├── scrape-now-tab.tsx            # Manual scrape UI
 │   ├── schedules-tab.tsx             # Schedule CRUD UI
-│   ├── run-history-tab.tsx           # Run history display
-│   └── shared.ts                     # Types, cron builder, utilities
+│   ├── run-history-tab.tsx           # Run history + progress tracking + post list + error alerts
+│   ├── url-result-row.tsx            # Expandable URL result row (used in Scrape Now)
+│   └── shared.ts                     # Types (ScheduleRun, RunScrapedPost), cron builder, utilities
 
 app/api/
 ├── leads/scrape-url/route.ts        # Proxies scrape requests
@@ -257,3 +339,7 @@ scraper-service/src/
 | **Session health monitoring**  | Discord alert after N consecutive runs return 0 posts (default: 3)        | `SESSION_HEALTH_THRESHOLD`        |
 | **Configurable post length**   | Per-platform minimum post character length (X defaults to 10, others 20)  | `MIN_POST_LENGTH_<PLATFORM>`      |
 | **Durable persistence**        | Supabase tables for schedules/runs (falls back to JSON files)             | `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` |
+| **Scraped post storage**       | Each run stores its posts as JSONB for later inspection in the UI         | _(automatic)_                     |
+| **Real-time run polling**      | Run History tab polls every 5s for live progress during active scrapes    | _(automatic)_                     |
+| **Group run progress**         | Visual progress bar + URL counter during sequential multi-URL runs        | _(automatic)_                     |
+| **Error alert banners**        | Recent failures (<10 min) shown as prominent alert cards at top of panel  | _(automatic)_                     |

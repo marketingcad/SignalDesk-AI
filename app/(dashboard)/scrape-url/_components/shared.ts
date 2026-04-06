@@ -49,6 +49,15 @@ export type UrlSchedule = {
   totalRuns: number;
 };
 
+export type RunScrapedPost = {
+  author: string;
+  text: string;
+  url: string;
+  platform: string;
+  timestamp: string;
+  matchedKeywords: string[];
+};
+
 export type ScheduleRun = {
   id: string;
   scheduleId: string;
@@ -59,6 +68,7 @@ export type ScheduleRun = {
   postsFound: number;
   leadsInserted: number;
   errorMessage: string | null;
+  scrapedPosts?: RunScrapedPost[];
 };
 
 export type BookmarkEntry = {

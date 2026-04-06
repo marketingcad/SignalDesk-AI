@@ -24,6 +24,7 @@ import type {
   CreateScheduleInput,
   UpdateScheduleInput,
   ScheduleRun,
+  RunScrapedPost,
   Platform,
 } from "../types";
 
@@ -166,6 +167,7 @@ async function runSchedule(id: string): Promise<void> {
   let postsFound = 0;
   let leadsInserted = 0;
   let errorMessage: string | null = null;
+  let runScrapedPosts: RunScrapedPost[] = [];
 
   try {
     const result = await scrapeWithRetry(schedule.url, `[url-scheduler] "${schedule.name}"`);
@@ -181,6 +183,29 @@ async function runSchedule(id: string): Promise<void> {
       if (batchResult) {
         leadsInserted = batchResult.inserted;
         await sendNewLeadsAlert(schedule.url, result.platform, filtered, batchResult);
+
+        // Build per-post data with matched keywords from batch results
+        const kwMap = new Map<string, string[]>();
+        for (const r of batchResult.results) {
+          if (r.url && r.matchedKeywords?.length) kwMap.set(r.url, r.matchedKeywords);
+        }
+        runScrapedPosts = filtered.map((p) => ({
+          author: p.author,
+          text: p.text.slice(0, 200),
+          url: p.url,
+          platform: p.platform,
+          timestamp: p.timestamp,
+          matchedKeywords: kwMap.get(p.url) ?? [],
+        }));
+      } else {
+        runScrapedPosts = filtered.map((p) => ({
+          author: p.author,
+          text: p.text.slice(0, 200),
+          url: p.url,
+          platform: p.platform,
+          timestamp: p.timestamp,
+          matchedKeywords: [],
+        }));
       }
     }
 
@@ -222,6 +247,7 @@ async function runSchedule(id: string): Promise<void> {
     postsFound,
     leadsInserted,
     errorMessage,
+    scrapedPosts: runScrapedPosts.length > 0 ? runScrapedPosts : undefined,
   });
 
   // Persist run stats on schedule

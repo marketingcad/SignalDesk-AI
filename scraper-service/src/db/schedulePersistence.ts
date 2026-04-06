@@ -65,6 +65,7 @@ interface SupabaseRunRow {
   posts_found: number;
   leads_inserted: number;
   error_message: string | null;
+  scraped_posts: unknown[] | null;
 }
 
 function rowToSchedule(r: SupabaseScheduleRow): UrlSchedule {
@@ -93,6 +94,7 @@ function rowToRun(r: SupabaseRunRow): ScheduleRun {
     postsFound: r.posts_found,
     leadsInserted: r.leads_inserted,
     errorMessage: r.error_message,
+    scrapedPosts: Array.isArray(r.scraped_posts) ? (r.scraped_posts as ScheduleRun["scrapedPosts"]) : undefined,
   };
 }
 
@@ -298,6 +300,7 @@ export async function insertRun(run: ScheduleRun): Promise<void> {
     posts_found: run.postsFound,
     leads_inserted: run.leadsInserted,
     error_message: run.errorMessage,
+    scraped_posts: run.scrapedPosts ?? null,
   });
 
   if (error) {
@@ -323,6 +326,7 @@ export async function patchRun(runId: string, patch: Partial<ScheduleRun>): Prom
   if (patch.postsFound !== undefined) dbPatch.posts_found = patch.postsFound;
   if (patch.leadsInserted !== undefined) dbPatch.leads_inserted = patch.leadsInserted;
   if (patch.errorMessage !== undefined) dbPatch.error_message = patch.errorMessage;
+  if (patch.scrapedPosts !== undefined) dbPatch.scraped_posts = patch.scrapedPosts;
 
   const { error } = await sb.from("url_schedule_runs").update(dbPatch).eq("id", runId);
   if (error) {

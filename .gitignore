@@ -50,8 +50,6 @@ next-env.d.ts
 /extension/dist
 /extension/node_modules
 
-# apify service
-/apify-service/node_modules
 
 # Tauri
 /src-tauri/target/

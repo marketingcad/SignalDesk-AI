@@ -93,6 +93,15 @@ export interface UpdateScheduleInput {
 // Schedule Run — individual execution record
 // ---------------------------------------------------------------------------
 
+export interface RunScrapedPost {
+  author: string;
+  text: string;
+  url: string;
+  platform: Platform;
+  timestamp: string;
+  matchedKeywords: string[];
+}
+
 export interface ScheduleRun {
   id: string;
   scheduleId: string;
@@ -103,4 +112,5 @@ export interface ScheduleRun {
   postsFound: number;
   leadsInserted: number;
   errorMessage: string | null;
+  scrapedPosts?: RunScrapedPost[];
 }

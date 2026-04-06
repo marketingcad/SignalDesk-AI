@@ -15,10 +15,10 @@ Lead intelligence dashboard for **Virtual Assistant hiring detection**. Scrapes 
                                  |
                                  | POST /api/leads/batch
                                  v
-+------------------+    +-------------------+    +------------------+
-| Apify Service    +--->|  Next.js Backend  |<---+ Scraper Service  |
-| (Cloud Actors)   |    |  (API Routes)     |    | (Playwright +    |
-+------------------+    +--------+----------+    |  Crawlee + Cron) |
+                        +-------------------+    +------------------+
+                        |  Next.js Backend  |<---+ Scraper Service  |
+                        |  (API Routes)     |    | (Playwright +    |
+                        +--------+----------+    |  Crawlee + Cron) |
                                  |               +------------------+
                     +------------+------------+
                     |            |             |
@@ -35,10 +35,9 @@ Lead intelligence dashboard for **Virtual Assistant hiring detection**. Scrapes 
 
 ### End-to-End Pipeline
 
-1. **Scrape** — Posts are collected from Facebook groups, Reddit subreddits, LinkedIn, and X via three methods:
+1. **Scrape** — Posts are collected from Facebook groups, Reddit subreddits, LinkedIn, and X via two methods:
    - **Chrome Extension** — Content scripts detect posts in real-time as you browse
    - **Scraper Service** — Playwright + Crawlee crawlers run on a cron schedule
-   - **Apify Service** — Cloud-hosted Apify actors scrape at scale
 2. **Pre-filter** — Self-promotion and job-seeking posts are rejected using negative keyword matching before they reach the backend
 3. **Score** — Every qualifying post is scored (0-100) by a weighted keyword engine in [`lib/intent-scoring.ts`](lib/intent-scoring.ts), using **user-customizable keywords from the Settings page** (stored in Supabase), optionally enhanced by Google Gemini AI analysis via [`lib/ai-lead-qualifier.ts`](lib/ai-lead-qualifier.ts)
 4. **Deduplicate** — Posts are deduplicated by URL and content hash to prevent duplicates across sources
@@ -56,8 +55,8 @@ Lead intelligence dashboard for **Virtual Assistant hiring detection**. Scrapes 
 | Backend | Next.js API Routes |
 | Database | Supabase (PostgreSQL) |
 | Auth | bcryptjs (password hashing), jose (JWT signing, 7-day sessions) |
-| Scraping | Playwright + Crawlee (scraper-service), Apify SDK (apify-service) |
-| Scheduling | node-cron (scraper-service), Apify triggers |
+| Scraping | Playwright + Crawlee (scraper-service) |
+| Scheduling | node-cron (scraper-service) |
 | Notifications | Discord Webhooks, Nodemailer (email) |
 | AI | Google Generative AI (Gemini) for lead qualification |
 | Browser Extension | Chrome MV3, content scripts + service worker |
@@ -67,7 +66,7 @@ Lead intelligence dashboard for **Virtual Assistant hiring detection**. Scrapes 
 
 ---
 
-## Project Structure
+## Project Structure`
 
 ```
 signal-desk-ai/
@@ -79,7 +78,6 @@ signal-desk-ai/
 ├── lib/                    # Core logic (scoring, auth, alerts, AI, DB queries)
 ├── hooks/                  # Custom React hooks (realtime subscriptions, API fetcher)
 ├── scraper-service/        # Standalone Playwright + Crawlee scraper (node-cron)
-├── apify-service/          # Apify actor orchestrator + webhook receiver
 ├── extension/              # Chrome MV3 extension (content scripts + popup)
 ├── src-tauri/              # Tauri desktop app shell (Rust)
 │   ├── src/main.rs         # Spawns Next.js + scraper, manages lifecycle
@@ -118,15 +116,6 @@ A standalone Node.js service using Playwright and Crawlee for automated headless
 - **Scheduling:** Cron-based via `node-cron`, configurable per-URL schedules
 - **Delivery:** Sends scraped leads to `POST /api/leads/batch`
 - **Discord summaries:** Posts a scrape cycle summary after every run
-
-### 3. Apify Service (Cloud)
-
-Integrates with Apify's cloud scraping platform for managed, scalable scraping:
-
-- **Webhook receiver:** `POST /api/apify/webhook` handles Apify actor completion callbacks
-- **Dataset normalization:** Transforms Apify output to the standard lead format
-- **Manual triggers:** API endpoints to trigger runs per-platform or scrape specific URLs
-- **URL Scheduling:** CRUD API for custom URL scraping schedules with cron expressions
 
 ---
 
@@ -286,7 +275,6 @@ JWT-based session authentication:
 ### Webhooks
 | Method | Route | Description |
 |--------|-------|-------------|
-| POST | `/api/apify/webhook` | Apify actor completion callback |
 | POST | `/api/facebook/webhook` | Facebook real-time feed events |
 
 ### Admin
@@ -337,7 +325,6 @@ Discord alerts are managed by the **Smart Alert Engine** in [`lib/alert-engine.t
 
 | Source | Trigger |
 |--------|---------|
-| Apify Scraper | Apify actor completes, leads scored >= 65 |
 | Facebook Webhook | Real-time Facebook feed event classified |
 | Chrome Extension | Batch of leads submitted via extension |
 | Manual Upload | Single lead submitted via API |
@@ -420,10 +407,6 @@ JWT_SECRET=
 # Discord (required for notifications)
 DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/YOUR_ID/YOUR_TOKEN
 
-# Apify (required for cloud scraping)
-APIFY_API_TOKEN=
-APIFY_WEBHOOK_SECRET=
-
 # Facebook (required for Facebook webhook)
 FB_VERIFY_TOKEN=
 FB_APP_SECRET=
@@ -464,14 +447,6 @@ Open [http://localhost:3000](http://localhost:3000) to view the dashboard.
 
 ```bash
 cd scraper-service
-npm install
-npm start
-```
-
-### Running the Apify Service
-
-```bash
-cd apify-service
 npm install
 npm start
 ```

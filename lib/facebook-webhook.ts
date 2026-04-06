@@ -171,7 +171,7 @@ export async function sendDiscordLeadAlert(
       },
       {
         name: "📍 Source",
-        value: payload.source || "apify",
+        value: payload.source || "scraper",
         inline: true,
       },
       {

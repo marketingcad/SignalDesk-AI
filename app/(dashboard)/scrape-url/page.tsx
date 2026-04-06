@@ -72,6 +72,7 @@ export default function ScrapeUrlPage() {
   const [clearingRuns, setClearingRuns] = useState(false);
   const [selectedRunScheduleId, setSelectedRunScheduleId] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const runsPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── Load bookmarks ──────────────────────────────────────
   const loadBookmarkedUrls = useCallback(() => {
@@ -228,12 +229,20 @@ export default function ScrapeUrlPage() {
   }, [activeTab, loadSchedules]);
 
   useEffect(() => {
-    if (activeTab === "runs") {
-      loadSchedules(true);
-      loadRunHistory(selectedRunScheduleId ?? undefined);
+    if (activeTab !== "runs") {
+      if (runsPollRef.current) clearInterval(runsPollRef.current);
+      return;
     }
+    loadSchedules(true);
+    loadRunHistory(selectedRunScheduleId ?? undefined);
+    // Poll every 5s so running indicators update in near-real-time
+    runsPollRef.current = setInterval(() => {
+      loadRunHistory(selectedRunScheduleId ?? undefined);
+      loadSchedules(true);
+    }, 5_000);
+    return () => { if (runsPollRef.current) clearInterval(runsPollRef.current); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab]);
+  }, [activeTab, selectedRunScheduleId]);
 
   // ── Schedule actions ─────────────────────────────────────
   const handleCreateSchedule = async () => {

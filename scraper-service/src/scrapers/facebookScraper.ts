@@ -18,8 +18,7 @@ import { BROWSER_ARGS } from "./browserArgs";
  *    individual post permalinks from div[role="article"] containers.
  *
  * NOTE: Most Facebook groups require login. Strategy 2 works best with
- * saved cookies via browserAuth. The Apify service + Chrome extension
- * handle logged-in scraping as a complement.
+ * saved cookies via browserAuth.
  */
 
 // ---------------------------------------------------------------------------
