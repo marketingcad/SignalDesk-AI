@@ -21,6 +21,7 @@ import {
   Sparkles,
   Check,
   Lightbulb,
+  Search,
 } from "lucide-react";
 
 type KeywordCategory = "high_intent" | "medium_intent" | "negative";
@@ -600,6 +601,11 @@ function KeywordSection({
 }) {
   const [adding, setAdding] = useState(false);
   const [newKeyword, setNewKeyword] = useState("");
+  const [search, setSearch] = useState("");
+
+  const filtered = search
+    ? keywords.filter((kw) => kw.toLowerCase().includes(search.toLowerCase()))
+    : keywords;
 
   const colorMap = {
     emerald: {
@@ -665,8 +671,20 @@ function KeywordSection({
           </Button>
         </div>
       )}
+      {keywords.length > 0 && (
+        <div className="relative mb-2">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <Input
+            type="text"
+            placeholder="Search keywords..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="h-8 text-xs bg-secondary/50 border-border pl-8"
+          />
+        </div>
+      )}
       <div className="flex flex-wrap gap-1.5">
-        {keywords.map((kw) => (
+        {filtered.map((kw) => (
           <span
             key={kw}
             className={cn(
@@ -687,6 +705,9 @@ function KeywordSection({
         ))}
         {keywords.length === 0 && (
           <p className="text-xs text-muted-foreground italic">No keywords yet. Click Add to create one.</p>
+        )}
+        {keywords.length > 0 && filtered.length === 0 && (
+          <p className="text-xs text-muted-foreground italic">No keywords matching &ldquo;{search}&rdquo;</p>
         )}
       </div>
     </div>

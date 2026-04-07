@@ -22,7 +22,7 @@ import {
   runPlatform,
   isRunning,
 } from "./crawler/crawlerManager";
-import { scrapeUrl } from "./scrapers";
+import { scrapeUrl, scrapeUrlsBatch } from "./scrapers";
 import { sendLeadsBatch, fetchKeywords } from "./api/backendClient";
 import { sendErrorAlert, sendNewLeadsAlert } from "./alerts/discord";
 import { loginAndSave, hasSavedCookies } from "./crawler/browserAuth";
@@ -288,6 +288,92 @@ app.post("/api/scrape-url", async (req, res) => {
     totalInserted: items.reduce((s, i) => s + (i.batch?.inserted ?? 0), 0),
     totalDuplicates: items.reduce((s, i) => s + (i.batch?.duplicates ?? 0), 0),
     items,
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Batch scrape — single browser, multiple URLs, one combined lead submission
+// Accepts: { urls: string[], source?: string }
+// ---------------------------------------------------------------------------
+
+app.post("/api/scrape-url/batch", async (req, res) => {
+  if (!checkAuth(req, res)) return;
+
+  const body = req.body as { urls?: string[]; source?: string };
+  const urls = Array.isArray(body.urls) ? body.urls.filter((u) => typeof u === "string" && u.trim()) : [];
+
+  if (urls.length === 0) {
+    return res.status(400).json({ error: "Provide 'urls' (non-empty string array)" });
+  }
+
+  // Validate all URLs
+  const badUrls: string[] = [];
+  for (const u of urls) {
+    try { new URL(u); } catch { badUrls.push(u); }
+  }
+  if (badUrls.length > 0) {
+    return res.status(400).json({ error: "Invalid URL format", invalid: badUrls });
+  }
+
+  const sourceName = typeof body.source === "string" ? body.source.trim() : undefined;
+
+  console.log(`[api] Batch scrape triggered: ${urls.length} URL(s)${sourceName ? ` (source: ${sourceName})` : ""}`);
+
+  // Refresh keywords before scraping
+  await fetchKeywords(true).catch(() => {});
+
+  // Scrape all URLs with single browser
+  const batchResult = await scrapeUrlsBatch(urls, sourceName);
+
+  // Filter posts (remove job seekers, unknown authors, short posts)
+  const filtered = filterPosts(batchResult.posts, "[batch-scraper]").filter((p) => {
+    if (!p.author || p.author.toLowerCase() === "unknown" || p.author.startsWith("urn:li:")) return false;
+    return true;
+  });
+
+  console.log(`[api] Batch: ${filtered.length} posts after filtering (${batchResult.posts.length - filtered.length} rejected)`);
+
+  // Send ONE combined batch to the backend
+  let leadsBatchResult = null;
+  if (filtered.length > 0) {
+    leadsBatchResult = await sendLeadsBatch(filtered);
+    if (leadsBatchResult) {
+      // Send alert for the whole batch
+      const firstPlatform = batchResult.urlResults.find((r) => r.success)?.platform || "Other";
+      await sendNewLeadsAlert(
+        `Batch (${urls.length} URLs)`,
+        firstPlatform,
+        filtered,
+        leadsBatchResult
+      );
+    }
+  }
+
+  // Build per-URL keyword mapping from batch results
+  const kwMap = new Map<string, string[]>();
+  for (const r of leadsBatchResult?.results ?? []) {
+    if (r.url && r.matchedKeywords) kwMap.set(r.url, r.matchedKeywords);
+  }
+
+  res.json({
+    success: true,
+    totalUrls: batchResult.totalUrls,
+    successUrls: batchResult.successCount,
+    failedUrls: batchResult.failedCount,
+    retriedUrls: batchResult.retriedCount,
+    totalPostsFound: filtered.length,
+    totalInserted: leadsBatchResult?.inserted ?? 0,
+    totalDuplicates: leadsBatchResult?.duplicates ?? 0,
+    duration: batchResult.duration,
+    urlResults: batchResult.urlResults,
+    scrapedPosts: filtered.slice(0, 100).map((p) => ({
+      author: p.author,
+      text: p.text.slice(0, 200),
+      url: p.url,
+      platform: p.platform,
+      timestamp: p.timestamp,
+      matchedKeywords: kwMap.get(p.url) ?? [],
+    })),
   });
 });
 

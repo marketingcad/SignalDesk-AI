@@ -127,12 +127,30 @@ export async function POST(request: NextRequest) {
   const validPosts: IncomingPost[] = [];
   const seenTexts = new Set<string>(); // also dedup within the batch itself
   let skippedNoKeyword = 0;
+  let skippedRedditNotVA = 0;
+  let skippedTooOld = 0;
+
+  // Rolling 7-day window: reject posts older than 7 days regardless of score or keywords
+  const cutoffDate = new Date();
+  cutoffDate.setUTCDate(cutoffDate.getUTCDate() - 7);
+  cutoffDate.setUTCHours(0, 0, 0, 0);
 
   for (const post of posts) {
     if (!post.platform || !post.text || !post.username || !post.url) {
       results.push({ url: post.url || "unknown", error: "Missing required fields" });
       continue;
     }
+
+    // --- Date gate: skip posts older than 7 days ---
+    if (post.timestamp) {
+      const postDate = new Date(post.timestamp);
+      if (!isNaN(postDate.getTime()) && postDate < cutoffDate) {
+        skippedTooOld++;
+        results.push({ url: post.url, error: `Post too old (${post.timestamp}) — only last 7 days accepted` });
+        continue;
+      }
+    }
+
     const existingId = existingUrlMap.get(post.url);
     if (existingId) {
       results.push({ url: post.url, duplicate: true, leadId: existingId });
@@ -163,10 +181,12 @@ export async function POST(request: NextRequest) {
     validPosts.push(post);
   }
 
+  if (skippedTooOld > 0) {
+    console.log(`[leads/batch] Skipped ${skippedTooOld} posts — older than 7 days`);
+  }
   if (skippedNoKeyword > 0) {
     console.log(`[leads/batch] Skipped ${skippedNoKeyword} posts — no keyword match`);
   }
-
   // --- Score all valid posts (rate-limited chunks with retry + keyword fallback) ---
   if (validPosts.length > 0) {
     const qualifyResults = await qualifyLeadsBatch(
@@ -186,6 +206,28 @@ export async function POST(request: NextRequest) {
     for (let i = 0; i < validPosts.length; i++) {
       const post = validPosts[i];
       const { scoring, aiResult } = qualifyResults[i];
+
+      // --- Reddit AI relevance gate ---
+      // Reddit posts are fetched by broad keywords like [hiring], so many are not VA-related.
+      // Use AI detection to skip posts that are clearly not about hiring a VA.
+      if (post.platform === "Reddit" && aiResult) {
+        const isNotVARelated =
+          aiResult.isHiring === false ||
+          aiResult.intentCategory === "NOT_RELATED" ||
+          aiResult.spamRisk === "LIKELY_SCAM";
+
+        // Also reject low-scoring Reddit posts (AI score ≤ 3 out of 10 = not a real lead)
+        const isTooLowScore = aiResult.leadScore <= 3;
+
+        if (isNotVARelated || isTooLowScore) {
+          skippedRedditNotVA++;
+          results.push({
+            url: post.url,
+            error: `Reddit AI filter — ${isNotVARelated ? "not VA-related" : "score too low"} (AI: ${aiResult.intentCategory}, score: ${aiResult.leadScore}/10, hiring: ${aiResult.isHiring})`,
+          });
+          continue;
+        }
+      }
 
       // Resolve geographic location (AI → keyword fallback)
       let aiLocation = aiResult?.location && aiResult.location !== "Others"
@@ -227,6 +269,10 @@ export async function POST(request: NextRequest) {
         aiResult,
       });
     }
+  }
+
+  if (skippedRedditNotVA > 0) {
+    console.log(`[leads/batch] Skipped ${skippedRedditNotVA} Reddit posts — AI detected not VA-related`);
   }
 
   // --- Bulk insert ---
@@ -281,7 +327,7 @@ export async function POST(request: NextRequest) {
   }
 
   console.log(
-    `[leads/batch] Done — ${insertedCount} inserted, ${existingUrlMap.size} duplicates, ${skippedNoKeyword} no-keyword-match, ${results.filter((r) => r.error && !r.error.includes("No keyword match")).length} errors`
+    `[leads/batch] Done — ${insertedCount} inserted, ${existingUrlMap.size} duplicates, ${skippedTooOld} too-old, ${skippedNoKeyword} no-keyword-match, ${skippedRedditNotVA} reddit-not-VA, ${results.filter((r) => r.error && !r.error.includes("No keyword match") && !r.error.includes("Reddit AI filter") && !r.error.includes("Post too old")).length} errors`
   );
 
   return NextResponse.json(
@@ -290,7 +336,9 @@ export async function POST(request: NextRequest) {
       processed: posts.length,
       inserted: insertedCount,
       duplicates: existingUrlMap.size,
+      skippedTooOld,
       skippedNoKeyword,
+      skippedRedditNotVA,
       results,
     },
     { status: 201 }

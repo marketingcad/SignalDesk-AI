@@ -1,10 +1,10 @@
 import * as cron from "node-cron";
 import { randomUUID } from "crypto";
-import { scrapeUrl } from "../scrapers";
+import { scrapeUrl, scrapeUrlsBatch } from "../scrapers";
 import { sendLeadsBatch, fetchKeywords } from "../api/backendClient";
 import { sendNewLeadsAlert, sendErrorAlert, sendSessionHealthAlert } from "../alerts/discord";
 import { filterPosts } from "../utils/postFilter";
-import { checkRateLimit, recordScrapeStart, getWaitTimeMs } from "../utils/rateLimiter";
+import { checkRateLimit, recordScrapeStart } from "../utils/rateLimiter";
 import { isRunning } from "../crawler/crawlerManager";
 import { config } from "../config";
 import {
@@ -282,41 +282,157 @@ async function runGroup(groupKey: string): Promise<void> {
   const groupName = groupKey.split("||")[0];
   runningGroups.add(groupKey);
 
-  console.log(`\n[url-scheduler] ═══ Group "${groupName}" triggered — ${memberIds.length} URL(s) to process ═══`);
+  console.log(`\n[url-scheduler] ═══ Group "${groupName}" triggered — ${memberIds.length} URL(s) via BATCH scrape ═══`);
+
+  // Collect active schedule URLs and their IDs
+  const activeSchedules: { id: string; schedule: UrlSchedule }[] = [];
+  for (const id of memberIds) {
+    const schedule = await dbGetSchedule(id);
+    if (schedule && schedule.status === "active") {
+      activeSchedules.push({ id, schedule });
+    }
+  }
+
+  if (activeSchedules.length === 0) {
+    runningGroups.delete(groupKey);
+    console.log(`[url-scheduler] ═══ Group "${groupName}" — no active members ═══\n`);
+    return;
+  }
+
+  // Refresh keywords before batch scraping
+  await fetchKeywords(true).catch(() =>
+    console.warn(`[url-scheduler] Keyword refresh failed for group "${groupName}", using cached`)
+  );
+
+  // Create a single run record for the whole group (use first schedule as anchor)
+  const runId = randomUUID();
+  const run: ScheduleRun = {
+    id: runId,
+    scheduleId: activeSchedules[0].id,
+    scheduleName: `${groupName} (${activeSchedules.length} URLs)`,
+    startedAt: new Date().toISOString(),
+    finishedAt: null,
+    status: "running",
+    postsFound: 0,
+    leadsInserted: 0,
+    errorMessage: null,
+  };
+  await dbInsertRun(run);
+
+  let runStatus: "ok" | "error" = "ok";
+  let postsFound = 0;
+  let leadsInserted = 0;
+  let errorMessage: string | null = null;
+  let runScrapedPosts: RunScrapedPost[] = [];
 
   try {
-    for (let i = 0; i < memberIds.length; i++) {
-      const id = memberIds[i];
-      const schedule = await dbGetSchedule(id);
-      if (!schedule || schedule.status !== "active") {
-        console.log(`[url-scheduler] Group [${i + 1}/${memberIds.length}] — skipped (inactive or deleted)`);
-        continue;
-      }
+    // ── Batch scrape: single browser, all URLs, skip-and-retry failures ──
+    const urls = activeSchedules.map((s) => s.schedule.url);
+    const batchResult = await scrapeUrlsBatch(urls, groupName);
 
-      // Wait for the platform rate limit to clear before running
-      const platform = detectPlatform(schedule.url);
-      const waitMs = getWaitTimeMs(platform);
-      if (waitMs > 0) {
-        const waitSec = Math.ceil((waitMs + 1000) / 1000); // +1s buffer
-        console.log(
-          `[url-scheduler] Group [${i + 1}/${memberIds.length}] waiting ${waitSec}s for ${platform} rate limit before "${schedule.name}"`
-        );
-        await new Promise((resolve) => setTimeout(resolve, waitMs + 1000));
-      }
+    // Filter posts
+    const filtered = filterPosts(batchResult.posts, `[url-scheduler] "${groupName}"`);
+    console.log(
+      `[url-scheduler] Group "${groupName}": ${filtered.length} posts after filtering (${batchResult.posts.length - filtered.length} rejected)`
+    );
+    postsFound = filtered.length;
 
-      // Run the schedule — runSchedule handles its own error catching
-      try {
-        console.log(`[url-scheduler] Group [${i + 1}/${memberIds.length}] → "${schedule.name}"`);
-        await runSchedule(id);
-      } catch (err) {
-        console.error(`[url-scheduler] Group member "${schedule.name}" failed:`, err);
-        // Continue to next member — don't abort the group
+    // Send ONE combined batch to backend
+    if (filtered.length > 0) {
+      const batchResponse = await sendLeadsBatch(filtered);
+      if (batchResponse) {
+        leadsInserted = batchResponse.inserted;
+        const firstPlatform = batchResult.urlResults.find((r) => r.success)?.platform || "Other";
+        await sendNewLeadsAlert(`${groupName} (batch)`, firstPlatform, filtered, batchResponse);
+
+        // Build keyword map for run history
+        const kwMap = new Map<string, string[]>();
+        for (const r of batchResponse.results) {
+          if (r.url && r.matchedKeywords?.length) kwMap.set(r.url, r.matchedKeywords);
+        }
+        runScrapedPosts = filtered.map((p) => ({
+          author: p.author,
+          text: p.text.slice(0, 200),
+          url: p.url,
+          platform: p.platform,
+          timestamp: p.timestamp,
+          matchedKeywords: kwMap.get(p.url) ?? [],
+        }));
+      } else {
+        runScrapedPosts = filtered.map((p) => ({
+          author: p.author,
+          text: p.text.slice(0, 200),
+          url: p.url,
+          platform: p.platform,
+          timestamp: p.timestamp,
+          matchedKeywords: [],
+        }));
       }
     }
+
+    // Collect errors from failed URLs
+    const failedUrlResults = batchResult.urlResults.filter((r) => !r.success);
+    if (failedUrlResults.length > 0) {
+      const failedErrors = failedUrlResults
+        .map((r) => `${r.url}: ${r.errors.join("; ")}`)
+        .join(" | ");
+      errorMessage = `${failedUrlResults.length}/${batchResult.totalUrls} URLs failed: ${failedErrors}`;
+      // Only mark as error if ALL URLs failed
+      if (batchResult.successCount === 0) {
+        runStatus = "error";
+        await sendErrorAlert(
+          failedUrlResults[0]?.platform || "Other",
+          `Group "${groupName}" — all ${batchResult.totalUrls} URLs failed`
+        );
+      }
+    }
+
+    // Session health: if zero posts from all URLs
+    if (postsFound === 0 && runStatus === "ok") {
+      // Track on the first schedule in the group
+      const firstId = activeSchedules[0].id;
+      const prev = consecutiveZeroPosts.get(firstId) ?? 0;
+      const count = prev + 1;
+      consecutiveZeroPosts.set(firstId, count);
+      if (count >= config.sessionHealthThreshold) {
+        await sendSessionHealthAlert(groupName, urls[0], detectPlatform(urls[0]), count);
+      }
+    } else {
+      consecutiveZeroPosts.set(activeSchedules[0].id, 0);
+    }
+  } catch (err) {
+    runStatus = "error";
+    errorMessage = err instanceof Error ? err.message : String(err);
+    console.error(`[url-scheduler] Group "${groupName}" batch failed: ${errorMessage}`);
   } finally {
     runningGroups.delete(groupKey);
-    console.log(`[url-scheduler] ═══ Group "${groupName}" finished ═══\n`);
   }
+
+  // Update run record
+  await dbPatchRun(runId, {
+    finishedAt: new Date().toISOString(),
+    status: runStatus,
+    postsFound,
+    leadsInserted,
+    errorMessage,
+    scrapedPosts: runScrapedPosts.length > 0 ? runScrapedPosts : undefined,
+  });
+
+  // Update each schedule's metadata
+  const now = new Date().toISOString();
+  for (const { id } of activeSchedules) {
+    const schedule = await dbGetSchedule(id);
+    if (schedule) {
+      await dbPatchSchedule(id, {
+        lastRunAt: now,
+        lastRunStatus: runStatus,
+        totalRuns: (schedule.totalRuns ?? 0) + 1,
+        updatedAt: now,
+      });
+    }
+  }
+
+  console.log(`[url-scheduler] ═══ Group "${groupName}" finished — ${postsFound} posts, ${leadsInserted} leads ═══\n`);
 }
 
 // ---------------------------------------------------------------------------

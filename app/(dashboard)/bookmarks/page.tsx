@@ -76,6 +76,7 @@ export default function BookmarksPage() {
   useEffect(() => { fetchBookmarks(); }, [fetchBookmarks]);
 
   const handleCreate = async () => {
+    
     if (!newUrl.trim()) return;
     setCreating(true);
     try {

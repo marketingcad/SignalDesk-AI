@@ -67,6 +67,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Missing required fields: platform, text, username, url" }, { status: 400 });
   }
 
+  // --- Date gate: reject posts older than 7 days (all platforms) ---
+  if (timestamp) {
+    const postDate = new Date(timestamp);
+    const cutoff = new Date();
+    cutoff.setUTCDate(cutoff.getUTCDate() - 7);
+    cutoff.setUTCHours(0, 0, 0, 0);
+    if (!isNaN(postDate.getTime()) && postDate < cutoff) {
+      console.log(`[leads/process] Post too old (${timestamp}) — only last 7 days accepted`);
+      return NextResponse.json(
+        { success: true, skipped: true, reason: `Post too old (${timestamp}) — only last 7 days accepted` },
+        { status: 200 }
+      );
+    }
+  }
+
   // --- Deduplication by URL or post content ---
   const { data: existingByUrl } = await supabase
     .from("leads")

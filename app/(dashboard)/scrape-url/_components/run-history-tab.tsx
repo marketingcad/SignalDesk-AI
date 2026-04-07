@@ -61,6 +61,7 @@ export function RunHistoryTab({
 }) {
   const [expandedRunGroup, setExpandedRunGroup] = useState<string | null>(null);
   const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
+  const [manualRefresh, setManualRefresh] = useState(false);
 
   // Group schedules by base name
   const runGroups: { baseName: string; items: UrlSchedule[] }[] = [];
@@ -471,7 +472,7 @@ export function RunHistoryTab({
                 </Button>
               )}
               <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px] text-muted-foreground"
-                onClick={() => onLoadRunHistory(selectedRunScheduleId ?? undefined)}>
+                onClick={() => { setManualRefresh(true); onLoadRunHistory(selectedRunScheduleId ?? undefined).finally(() => setManualRefresh(false)); }}>
                 <RefreshCw className={cn("h-3 w-3", runHistoryLoading && "animate-spin")} />
               </Button>
               {runHistory.length > 0 && (
@@ -507,12 +508,12 @@ export function RunHistoryTab({
               )}
             </div>
           </div>
-          {runHistoryLoading ? (
+          {runHistoryLoading && manualRefresh ? (
             <div className="flex items-center justify-center h-80 gap-2">
               <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
               <span className="text-xs text-muted-foreground">Loading runs…</span>
             </div>
-          ) : runHistory.length === 0 ? (
+          ) : runHistory.length === 0 && !runHistoryLoading ? (
             <div className="flex flex-col items-center justify-center h-80 gap-3 px-4 text-center">
               <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-muted/60">
                 <Timer className="h-6 w-6 text-muted-foreground/40" />
@@ -522,7 +523,7 @@ export function RunHistoryTab({
                 <p className="text-xs text-muted-foreground mt-1 max-w-xs leading-relaxed">
                   Run history will appear here once a scheduled scrape executes.
                 </p>
-              </div>
+              </div>``
             </div>
           ) : (
             <div className="divide-y divide-border h-130 overflow-y-scroll [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border hover:[&::-webkit-scrollbar-thumb]:bg-muted-foreground/30">

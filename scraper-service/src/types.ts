@@ -23,6 +23,30 @@ export interface ScraperModule {
 }
 
 // ---------------------------------------------------------------------------
+// Batch URL scrape — single browser, multiple URLs, combined results
+// ---------------------------------------------------------------------------
+
+export interface BatchUrlResult {
+  url: string;
+  platform: Platform;
+  success: boolean;
+  postsFound: number;
+  errors: string[];
+  /** true if this URL was retried after initial failure */
+  retried?: boolean;
+}
+
+export interface BatchScrapeResult {
+  posts: ScrapedPost[];
+  urlResults: BatchUrlResult[];
+  totalUrls: number;
+  successCount: number;
+  failedCount: number;
+  retriedCount: number;
+  duration: number;
+}
+
+// ---------------------------------------------------------------------------
 // Multi-URL scrape response
 // ---------------------------------------------------------------------------
 
