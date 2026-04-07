@@ -1886,35 +1886,14 @@ export async function scrapeUrlsBatch(
   console.log(`${tag} Source: ${source}`);
   console.log(`${tag} ════════════════════════════════════════════════\n`);
 
-  const cookiesExist = hasSavedCookies();
-
   // ── Launch ONE browser + context ──────────────────────────────────────
   let context: import("playwright").BrowserContext | null = null;
   let browser: import("playwright").Browser | null = null;
 
   try {
-    if (cookiesExist && shouldUseStorageState()) {
-      const statePath = getStorageState();
-      browser = await chromium.launch({ headless: config.headless, args: BROWSER_ARGS });
-      context = await browser.newContext({
-        storageState: statePath,
-        userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      });
-    } else if (cookiesExist) {
-      context = await chromium.launchPersistentContext(getProfileDir(), {
-        headless: config.headless,
-        args: BROWSER_ARGS,
-        userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      });
-    } else {
-      browser = await chromium.launch({ headless: config.headless, args: BROWSER_ARGS });
-      context = await browser.newContext({
-        userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      });
-    }
-
-    context.setDefaultNavigationTimeout(90000);
-    context.setDefaultTimeout(60000);
+    const browserCtx = await createBrowserContext();
+    context = browserCtx.context;
+    browser = browserCtx.browser;
 
     // ── First pass: scrape all URLs, collect failures ──────────────────
     const failedUrls: string[] = [];
@@ -2011,11 +1990,51 @@ export async function scrapeUrlsBatch(
 }
 
 // ---------------------------------------------------------------------------
-// Internal: scrape a single URL within an existing browser context.
-// Creates a new page (tab) per URL, closes it when done.
+// Create a reusable browser context for batch operations.
+// Caller is responsible for closing context and browser when done.
 // ---------------------------------------------------------------------------
 
-async function scrapeOneUrl(
+export async function createBrowserContext(): Promise<{
+  context: import("playwright").BrowserContext;
+  browser: import("playwright").Browser | null;
+}> {
+  const cookiesExist = hasSavedCookies();
+  let context: import("playwright").BrowserContext;
+  let browser: import("playwright").Browser | null = null;
+
+  if (cookiesExist && shouldUseStorageState()) {
+    const statePath = getStorageState();
+    browser = await chromium.launch({ headless: config.headless, args: BROWSER_ARGS });
+    context = await browser.newContext({
+      storageState: statePath,
+      userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    });
+  } else if (cookiesExist) {
+    context = await chromium.launchPersistentContext(getProfileDir(), {
+      headless: config.headless,
+      args: BROWSER_ARGS,
+      userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    });
+  } else {
+    browser = await chromium.launch({ headless: config.headless, args: BROWSER_ARGS });
+    context = await browser.newContext({
+      userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    });
+  }
+
+  context.setDefaultNavigationTimeout(90000);
+  context.setDefaultTimeout(60000);
+
+  return { context, browser };
+}
+
+// ---------------------------------------------------------------------------
+// Scrape a single URL within an existing browser context.
+// Creates a new page (tab) per URL, closes it when done.
+// Exported for use by urlScheduler's progressive batch mode.
+// ---------------------------------------------------------------------------
+
+export async function scrapeOneUrl(
   context: import("playwright").BrowserContext,
   targetUrl: string,
   tag: string,

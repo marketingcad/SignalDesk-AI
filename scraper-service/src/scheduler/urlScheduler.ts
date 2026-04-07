@@ -1,6 +1,6 @@
 import * as cron from "node-cron";
 import { randomUUID } from "crypto";
-import { scrapeUrl, scrapeUrlsBatch } from "../scrapers";
+import { scrapeUrl, scrapeOneUrl, createBrowserContext } from "../scrapers";
 import { sendLeadsBatch, fetchKeywords } from "../api/backendClient";
 import { sendNewLeadsAlert, sendErrorAlert, sendSessionHealthAlert } from "../alerts/discord";
 import { filterPosts } from "../utils/postFilter";
@@ -270,6 +270,13 @@ async function runSchedule(id: string): Promise<void> {
 // waiting for per-platform rate limits between each URL.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Progressive batch constants
+// ---------------------------------------------------------------------------
+
+const BATCH_INTER_URL_DELAY_MS = 3000;  // delay between URLs in same pass
+const BATCH_MAX_PASSES = 3;             // max retry passes for failed URLs
+
 async function runGroup(groupKey: string): Promise<void> {
   if (runningGroups.has(groupKey)) {
     console.log(`[url-scheduler] Group "${groupKey.split("||")[0]}" — skipped (already running)`);
@@ -282,9 +289,9 @@ async function runGroup(groupKey: string): Promise<void> {
   const groupName = groupKey.split("||")[0];
   runningGroups.add(groupKey);
 
-  console.log(`\n[url-scheduler] ═══ Group "${groupName}" triggered — ${memberIds.length} URL(s) via BATCH scrape ═══`);
+  console.log(`\n[url-scheduler] ═══ Group "${groupName}" triggered — ${memberIds.length} URL(s) via progressive batch ═══`);
 
-  // Collect active schedule URLs and their IDs
+  // ── Collect active schedules ────────────────────────────────────────
   const activeSchedules: { id: string; schedule: UrlSchedule }[] = [];
   for (const id of memberIds) {
     const schedule = await dbGetSchedule(id);
@@ -304,135 +311,212 @@ async function runGroup(groupKey: string): Promise<void> {
     console.warn(`[url-scheduler] Keyword refresh failed for group "${groupName}", using cached`)
   );
 
-  // Create a single run record for the whole group (use first schedule as anchor)
-  const runId = randomUUID();
-  const run: ScheduleRun = {
-    id: runId,
-    scheduleId: activeSchedules[0].id,
-    scheduleName: `${groupName} (${activeSchedules.length} URLs)`,
-    startedAt: new Date().toISOString(),
-    finishedAt: null,
-    status: "running",
-    postsFound: 0,
-    leadsInserted: 0,
-    errorMessage: null,
-  };
-  await dbInsertRun(run);
-
-  let runStatus: "ok" | "error" = "ok";
-  let postsFound = 0;
-  let leadsInserted = 0;
-  let errorMessage: string | null = null;
-  let runScrapedPosts: RunScrapedPost[] = [];
-
-  try {
-    // ── Batch scrape: single browser, all URLs, skip-and-retry failures ──
-    const urls = activeSchedules.map((s) => s.schedule.url);
-    const batchResult = await scrapeUrlsBatch(urls, groupName);
-
-    // Filter posts
-    const filtered = filterPosts(batchResult.posts, `[url-scheduler] "${groupName}"`);
-    console.log(
-      `[url-scheduler] Group "${groupName}": ${filtered.length} posts after filtering (${batchResult.posts.length - filtered.length} rejected)`
-    );
-    postsFound = filtered.length;
-
-    // Send ONE combined batch to backend
-    if (filtered.length > 0) {
-      const batchResponse = await sendLeadsBatch(filtered);
-      if (batchResponse) {
-        leadsInserted = batchResponse.inserted;
-        const firstPlatform = batchResult.urlResults.find((r) => r.success)?.platform || "Other";
-        await sendNewLeadsAlert(`${groupName} (batch)`, firstPlatform, filtered, batchResponse);
-
-        // Build keyword map for run history
-        const kwMap = new Map<string, string[]>();
-        for (const r of batchResponse.results) {
-          if (r.url && r.matchedKeywords?.length) kwMap.set(r.url, r.matchedKeywords);
-        }
-        runScrapedPosts = filtered.map((p) => ({
-          author: p.author,
-          text: p.text.slice(0, 200),
-          url: p.url,
-          platform: p.platform,
-          timestamp: p.timestamp,
-          matchedKeywords: kwMap.get(p.url) ?? [],
-        }));
-      } else {
-        runScrapedPosts = filtered.map((p) => ({
-          author: p.author,
-          text: p.text.slice(0, 200),
-          url: p.url,
-          platform: p.platform,
-          timestamp: p.timestamp,
-          matchedKeywords: [],
-        }));
-      }
-    }
-
-    // Collect errors from failed URLs
-    const failedUrlResults = batchResult.urlResults.filter((r) => !r.success);
-    if (failedUrlResults.length > 0) {
-      const failedErrors = failedUrlResults
-        .map((r) => `${r.url}: ${r.errors.join("; ")}`)
-        .join(" | ");
-      errorMessage = `${failedUrlResults.length}/${batchResult.totalUrls} URLs failed: ${failedErrors}`;
-      // Only mark as error if ALL URLs failed
-      if (batchResult.successCount === 0) {
-        runStatus = "error";
-        await sendErrorAlert(
-          failedUrlResults[0]?.platform || "Other",
-          `Group "${groupName}" — all ${batchResult.totalUrls} URLs failed`
-        );
-      }
-    }
-
-    // Session health: if zero posts from all URLs
-    if (postsFound === 0 && runStatus === "ok") {
-      // Track on the first schedule in the group
-      const firstId = activeSchedules[0].id;
-      const prev = consecutiveZeroPosts.get(firstId) ?? 0;
-      const count = prev + 1;
-      consecutiveZeroPosts.set(firstId, count);
-      if (count >= config.sessionHealthThreshold) {
-        await sendSessionHealthAlert(groupName, urls[0], detectPlatform(urls[0]), count);
-      }
-    } else {
-      consecutiveZeroPosts.set(activeSchedules[0].id, 0);
-    }
-  } catch (err) {
-    runStatus = "error";
-    errorMessage = err instanceof Error ? err.message : String(err);
-    console.error(`[url-scheduler] Group "${groupName}" batch failed: ${errorMessage}`);
-  } finally {
-    runningGroups.delete(groupKey);
+  // ── Create per-URL run records (all start as "running") ─────────────
+  const runMap = new Map<string, { runId: string; scheduleId: string; schedule: UrlSchedule }>();
+  for (const { id, schedule } of activeSchedules) {
+    const runId = randomUUID();
+    const run: ScheduleRun = {
+      id: runId,
+      scheduleId: id,
+      scheduleName: schedule.name,
+      startedAt: new Date().toISOString(),
+      finishedAt: null,
+      status: "running",
+      postsFound: 0,
+      leadsInserted: 0,
+      errorMessage: null,
+    };
+    await dbInsertRun(run);
+    runMap.set(schedule.url, { runId, scheduleId: id, schedule });
   }
 
-  // Update run record
-  await dbPatchRun(runId, {
-    finishedAt: new Date().toISOString(),
-    status: runStatus,
-    postsFound,
-    leadsInserted,
-    errorMessage,
-    scrapedPosts: runScrapedPosts.length > 0 ? runScrapedPosts : undefined,
-  });
+  // ── Open ONE browser for the entire group ───────────────────────────
+  const allPosts: import("../types").ScrapedPost[] = [];
+  let context: import("playwright").BrowserContext | null = null;
+  let browser: import("playwright").Browser | null = null;
 
-  // Update each schedule's metadata
+  try {
+    const browserCtx = await createBrowserContext();
+    context = browserCtx.context;
+    browser = browserCtx.browser;
+
+    console.log(`[url-scheduler] Browser launched — scraping ${activeSchedules.length} URLs`);
+
+    // URLs still pending (starts with all, shrinks each pass)
+    let pendingUrls = activeSchedules.map((s) => s.schedule.url);
+
+    // ── Loop: scrape all pending → collect failures → retry ───────────
+    for (let pass = 1; pass <= BATCH_MAX_PASSES; pass++) {
+      if (pendingUrls.length === 0) break;
+
+      const isRetryPass = pass > 1;
+      const passLabel = isRetryPass
+        ? `RETRY PASS ${pass}/${BATCH_MAX_PASSES}`
+        : `PASS ${pass}/${BATCH_MAX_PASSES}`;
+
+      console.log(`\n[url-scheduler] ── ${passLabel}: ${pendingUrls.length} URL(s) ──`);
+
+      const failedThisPass: string[] = [];
+
+      for (let i = 0; i < pendingUrls.length; i++) {
+        const targetUrl = pendingUrls[i];
+        const entry = runMap.get(targetUrl);
+        if (!entry) continue;
+
+        const label = `[${i + 1}/${pendingUrls.length}]`;
+
+        // Delay between URLs (skip first in each pass)
+        if (i > 0) {
+          await new Promise((r) => setTimeout(r, BATCH_INTER_URL_DELAY_MS));
+        }
+
+        // Mark run as "running" (for retry passes, reset the status)
+        if (isRetryPass) {
+          await dbPatchRun(entry.runId, {
+            status: "running",
+            errorMessage: null,
+          });
+        }
+
+        console.log(`[url-scheduler] ${passLabel} ${label} → "${entry.schedule.name}" (${targetUrl})`);
+
+        // Scrape using shared browser context
+        const result = await scrapeOneUrl(context, targetUrl, `[url-scheduler]`, label, groupName);
+
+        if (result.urlResult.success) {
+          // ── Success: collect posts, update run record ────────────
+          allPosts.push(...result.posts);
+          await dbPatchRun(entry.runId, {
+            finishedAt: new Date().toISOString(),
+            status: "ok",
+            postsFound: result.posts.length,
+            errorMessage: null,
+            scrapedPosts: result.posts.slice(0, 50).map((p) => ({
+              author: p.author,
+              text: p.text.slice(0, 200),
+              url: p.url,
+              platform: p.platform,
+              timestamp: p.timestamp,
+              matchedKeywords: [],
+            })),
+          });
+          console.log(`[url-scheduler] ${passLabel} ${label} ✅ ${result.posts.length} posts`);
+        } else {
+          // ── Failed: mark error, add to retry queue ──────────────
+          const errMsg = result.urlResult.errors.join("; ");
+          const retriesLeft = BATCH_MAX_PASSES - pass;
+          await dbPatchRun(entry.runId, {
+            status: "error",
+            errorMessage: retriesLeft > 0
+              ? `${errMsg} (will retry — ${retriesLeft} pass(es) left)`
+              : errMsg,
+            postsFound: 0,
+          });
+          failedThisPass.push(targetUrl);
+          console.log(`[url-scheduler] ${passLabel} ${label} ❌ Failed: ${errMsg}${retriesLeft > 0 ? ` — will retry` : ` — giving up`}`);
+        }
+      }
+
+      // Next pass only processes the failures from this pass
+      pendingUrls = failedThisPass;
+
+      if (failedThisPass.length > 0 && pass < BATCH_MAX_PASSES) {
+        console.log(`[url-scheduler] ${failedThisPass.length} URL(s) failed — retrying in next pass...`);
+        // Brief pause before retry pass
+        await new Promise((r) => setTimeout(r, 5000));
+      }
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[url-scheduler] Group "${groupName}" browser error: ${msg}`);
+    // Mark any still-running records as error
+    for (const [, entry] of runMap) {
+      await dbPatchRun(entry.runId, {
+        finishedAt: new Date().toISOString(),
+        status: "error",
+        errorMessage: `Browser crashed: ${msg}`,
+      }).catch(() => {});
+    }
+  } finally {
+    if (context) await context.close().catch(() => {});
+    if (browser) await browser.close().catch(() => {});
+  }
+
+  // ── Send ONE combined batch of all posts to backend ─────────────────
+  const filtered = filterPosts(allPosts, `[url-scheduler] "${groupName}"`);
+  console.log(
+    `[url-scheduler] Group "${groupName}": ${filtered.length} posts after filtering (${allPosts.length - filtered.length} rejected)`
+  );
+
+  let leadsInserted = 0;
+  if (filtered.length > 0) {
+    const batchResponse = await sendLeadsBatch(filtered);
+    if (batchResponse) {
+      leadsInserted = batchResponse.inserted;
+
+      // Get the dominant platform for the alert
+      const platformCounts = new Map<Platform, number>();
+      for (const p of filtered) {
+        platformCounts.set(p.platform, (platformCounts.get(p.platform) || 0) + 1);
+      }
+      let alertPlatform: Platform = "Other";
+      let maxCount = 0;
+      for (const [plat, count] of platformCounts) {
+        if (count > maxCount) { alertPlatform = plat; maxCount = count; }
+      }
+      await sendNewLeadsAlert(`${groupName} (${activeSchedules.length} URLs)`, alertPlatform, filtered, batchResponse);
+
+      // Update per-URL run records with matched keywords from batch results
+      const kwMap = new Map<string, string[]>();
+      for (const r of batchResponse.results) {
+        if (r.url && r.matchedKeywords?.length) kwMap.set(r.url, r.matchedKeywords);
+      }
+      // Update scrapedPosts on successful runs with keyword data
+      for (const [url, entry] of runMap) {
+        const postsForUrl = filtered.filter((p) =>
+          p.source === groupName && (p.url === url || p.url.includes(url.replace(/https?:\/\//, "")))
+        );
+        if (postsForUrl.length > 0) {
+          await dbPatchRun(entry.runId, {
+            scrapedPosts: postsForUrl.slice(0, 50).map((p) => ({
+              author: p.author,
+              text: p.text.slice(0, 200),
+              url: p.url,
+              platform: p.platform,
+              timestamp: p.timestamp,
+              matchedKeywords: kwMap.get(p.url) ?? [],
+            })),
+          });
+        }
+      }
+    }
+  }
+
+  // ── Update each schedule's metadata ─────────────────────────────────
   const now = new Date().toISOString();
-  for (const { id } of activeSchedules) {
-    const schedule = await dbGetSchedule(id);
+  for (const { scheduleId } of runMap.values()) {
+    const schedule = await dbGetSchedule(scheduleId);
     if (schedule) {
-      await dbPatchSchedule(id, {
+      await dbPatchSchedule(scheduleId, {
         lastRunAt: now,
-        lastRunStatus: runStatus,
+        lastRunStatus: "ok",
         totalRuns: (schedule.totalRuns ?? 0) + 1,
         updatedAt: now,
       });
     }
   }
 
-  console.log(`[url-scheduler] ═══ Group "${groupName}" finished — ${postsFound} posts, ${leadsInserted} leads ═══\n`);
+  // Mark any still-running records as finished (safety net)
+  for (const [, entry] of runMap) {
+    await dbPatchRun(entry.runId, {
+      finishedAt: new Date().toISOString(),
+    }).catch(() => {});
+  }
+
+  runningGroups.delete(groupKey);
+
+  const successCount = [...runMap.values()].length;
+  console.log(`[url-scheduler] ═══ Group "${groupName}" finished — ${filtered.length} posts, ${leadsInserted} leads, ${successCount} URLs ═══\n`);
 }
 
 // ---------------------------------------------------------------------------
