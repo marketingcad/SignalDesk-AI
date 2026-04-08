@@ -152,6 +152,132 @@ export async function loginAndSave(platform?: string): Promise<void> {
   console.log("===================================================\n");
 }
 
+// ---------------------------------------------------------------------------
+// Cookie validation — lightweight check to detect expired sessions
+// ---------------------------------------------------------------------------
+
+/** Test URLs that require login. If we land on a login page, cookies are stale. */
+const VALIDATION_TARGETS: Record<string, { url: string; loginIndicators: RegExp[] }> = {
+  facebook: {
+    url: "https://www.facebook.com/me",
+    // If redirected to login page or see login form, cookies are expired
+    loginIndicators: [
+      /\/login/i,
+      /\/checkpoint/i,
+      /id="loginform"/i,
+      /id="email"/i,
+    ],
+  },
+  linkedin: {
+    url: "https://www.linkedin.com/feed/",
+    loginIndicators: [
+      /\/login/i,
+      /\/uas\/login/i,
+      /\/authwall/i,
+      /class="sign-in-form"/i,
+    ],
+  },
+};
+
+export type CookieValidationResult = "valid" | "expired" | "no_cookies" | "error";
+
+/**
+ * Validate cookies for a specific platform by loading a page that requires auth
+ * and checking if we get redirected to a login page.
+ *
+ * Returns: "valid" | "expired" | "no_cookies" | "error"
+ */
+export async function validateCookies(
+  platform: "facebook" | "linkedin"
+): Promise<CookieValidationResult> {
+  const target = VALIDATION_TARGETS[platform];
+  if (!target) return "error";
+
+  // Check if we even have cookies to validate
+  if (!hasSavedCookies()) return "no_cookies";
+
+  const storageState = getStorageState();
+  if (!storageState) return "no_cookies";
+
+  let browser;
+
+  try {
+    browser = await chromium.launch({
+      headless: true,
+      args: [
+        "--disable-blink-features=AutomationControlled",
+        "--no-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+      ],
+    });
+
+    const context = await browser.newContext({
+      storageState,
+      userAgent:
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    });
+
+    const page = await context.newPage();
+
+    try {
+      await page.goto(target.url, { waitUntil: "domcontentloaded", timeout: 20000 });
+    } catch {
+      // Timeout or navigation error — could be network issue, not auth
+      await context.close();
+      return "error";
+    }
+
+    const finalUrl = page.url();
+    const bodyHtml = await page.content().catch(() => "");
+
+    await context.close();
+
+    // Check if the final URL or page content indicates a login wall
+    for (const indicator of target.loginIndicators) {
+      if (indicator.test(finalUrl) || indicator.test(bodyHtml)) {
+        console.log(
+          `[auth] ${platform} cookie validation: EXPIRED (matched: ${indicator.source})`
+        );
+        return "expired";
+      }
+    }
+
+    console.log(`[auth] ${platform} cookie validation: VALID`);
+    return "valid";
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[auth] ${platform} cookie validation error: ${msg}`);
+    return "error";
+  } finally {
+    if (browser) await browser.close().catch(() => {});
+  }
+}
+
+/**
+ * Validate cookies for all auth-requiring platforms.
+ * Returns a map of platform → validation result.
+ */
+export async function validateAllCookies(): Promise<
+  Record<string, CookieValidationResult>
+> {
+  const results: Record<string, CookieValidationResult> = {};
+
+  for (const platform of Object.keys(VALIDATION_TARGETS) as Array<
+    "facebook" | "linkedin"
+  >) {
+    results[platform] = await validateCookies(platform);
+    // Small delay between checks to avoid looking like a bot
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+
+  return results;
+}
+
+// ---------------------------------------------------------------------------
+// CLI entry point
+// ---------------------------------------------------------------------------
+
 // Allow running directly: npm run auth:login -- linkedin
 if (require.main === module) {
   const platform = process.argv[2]?.toLowerCase();

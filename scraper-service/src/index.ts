@@ -25,9 +25,11 @@ import {
 import { scrapeUrl, scrapeUrlsBatch } from "./scrapers";
 import { sendLeadsBatch, fetchKeywords } from "./api/backendClient";
 import { sendErrorAlert, sendNewLeadsAlert } from "./alerts/discord";
-import { loginAndSave, hasSavedCookies } from "./crawler/browserAuth";
+import { loginAndSave, hasSavedCookies, validateCookies, validateAllCookies } from "./crawler/browserAuth";
 import { filterPosts } from "./utils/postFilter";
 import { checkRateLimit, recordScrapeStart } from "./utils/rateLimiter";
+import { getAllHealth, resetHealth, reportValidationResult } from "./utils/sessionHealth";
+import { sendAuthExpiredAlert } from "./alerts/discord";
 import type { Platform, UrlScrapeItemResult } from "./types";
 
 const app = express();
@@ -558,6 +560,99 @@ app.post("/api/auth/setup", async (req, res) => {
 
 app.get("/api/auth/status", (_req, res) => {
   res.json({ cookiesSaved: hasSavedCookies() });
+});
+
+// ---------------------------------------------------------------------------
+// Auth health — session health status + on-demand cookie validation
+// ---------------------------------------------------------------------------
+
+/** GET /api/auth/health — current session health for all platforms */
+app.get("/api/auth/health", (req, res) => {
+  if (!checkAuth(req, res)) return;
+  const health = getAllHealth();
+  const hasExpired = health.some((h) => h.status === "expired");
+  const hasWarning = health.some((h) => h.status === "warning");
+
+  res.json({
+    overall: hasExpired ? "expired" : hasWarning ? "warning" : "healthy",
+    platforms: health,
+    cookiesSaved: hasSavedCookies(),
+  });
+});
+
+/** POST /api/auth/validate — trigger on-demand cookie validation for a platform */
+app.post("/api/auth/validate", async (req, res) => {
+  if (!checkAuth(req, res)) return;
+
+  const { platform } = req.body as { platform?: string };
+  const validPlatforms = ["facebook", "linkedin"];
+
+  if (platform && !validPlatforms.includes(platform.toLowerCase())) {
+    return res.status(400).json({
+      error: `Invalid platform. Must be one of: ${validPlatforms.join(", ")}`,
+    });
+  }
+
+  console.log(`[api] Cookie validation triggered${platform ? ` for ${platform}` : " for all platforms"}`);
+
+  const platformMap: Record<string, Platform> = { facebook: "Facebook", linkedin: "LinkedIn" };
+
+  if (platform) {
+    const result = await validateCookies(platform.toLowerCase() as "facebook" | "linkedin");
+    const platformKey = platformMap[platform.toLowerCase()];
+    if (!platformKey) return res.status(400).json({ error: "Invalid platform" });
+
+    if (result !== "error") {
+      reportValidationResult(platformKey, result);
+      if (result === "expired" || result === "no_cookies") {
+        await sendAuthExpiredAlert(
+          platformKey,
+          result === "no_cookies" ? "no_cookies" : "cookie_validation"
+        );
+      }
+    }
+
+    res.json({ success: true, platform, result });
+  } else {
+    const results = await validateAllCookies();
+
+    for (const [key, result] of Object.entries(results)) {
+      const p = platformMap[key];
+      if (!p || result === "error") continue;
+
+      reportValidationResult(p, result);
+      if (result === "expired" || result === "no_cookies") {
+        await sendAuthExpiredAlert(p, result === "no_cookies" ? "no_cookies" : "cookie_validation");
+      }
+    }
+
+    res.json({ success: true, results });
+  }
+});
+
+/** POST /api/auth/health/reset — reset health tracking after re-login */
+app.post("/api/auth/health/reset", (req, res) => {
+  if (!checkAuth(req, res)) return;
+
+  const { platform } = req.body as { platform?: string };
+  const platformMap: Record<string, Platform> = {
+    facebook: "Facebook",
+    linkedin: "LinkedIn",
+    reddit: "Reddit",
+    x: "X",
+  };
+
+  if (platform) {
+    const p = platformMap[platform.toLowerCase()];
+    if (!p) return res.status(400).json({ error: "Invalid platform" });
+    resetHealth(p);
+    console.log(`[api] Health state reset for ${p}`);
+    res.json({ success: true, reset: p });
+  } else {
+    Object.values(platformMap).forEach(resetHealth);
+    console.log("[api] Health state reset for all platforms");
+    res.json({ success: true, reset: "all" });
+  }
 });
 
 // ---------------------------------------------------------------------------

@@ -1,7 +1,8 @@
 import { scrapeReddit, scrapeX, scrapeLinkedin, scrapeFacebook } from "../scrapers";
 import { sendLeadsBatch } from "../api/backendClient";
-import { sendRunSummary, sendErrorAlert, sendNewLeadsAlert } from "../alerts/discord";
+import { sendRunSummary, sendErrorAlert, sendNewLeadsAlert, sendAuthExpiredAlert } from "../alerts/discord";
 import { filterPosts } from "../utils/postFilter";
+import { reportRunResult } from "../utils/sessionHealth";
 import type { Platform, ScrapeResult } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -58,6 +59,13 @@ export async function runPlatform(platform: Platform): Promise<ScrapeResult> {
     if (discordErrors.length > 0) {
       await sendErrorAlert(platform, discordErrors.join("\n"));
     }
+  }
+
+  // Track session health — alert if consecutive zero-post runs hit threshold
+  const justCrossedThreshold = reportRunResult(platform, filtered.length);
+  if (justCrossedThreshold) {
+    console.warn(`[crawler] ${platform}: session health threshold reached — cookies may be expired`);
+    await sendAuthExpiredAlert(platform, "zero_posts");
   }
 
   return { ...result, posts: filtered };
