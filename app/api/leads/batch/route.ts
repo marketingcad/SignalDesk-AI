@@ -207,23 +207,23 @@ export async function POST(request: NextRequest) {
       const post = validPosts[i];
       const { scoring, aiResult } = qualifyResults[i];
 
-      // --- Reddit AI relevance gate ---
-      // Reddit posts are fetched by broad keywords like [hiring], so many are not VA-related.
-      // Use AI detection to skip posts that are clearly not about hiring a VA.
-      if (post.platform === "Reddit" && aiResult) {
+      // --- AI relevance gate (all platforms) ---
+      // Use AI detection to skip posts that are not about hiring a VA:
+      // self-promotion, job seekers, spam, and unrelated posts.
+      if (aiResult) {
         const isNotVARelated =
           aiResult.isHiring === false ||
           aiResult.intentCategory === "NOT_RELATED" ||
           aiResult.spamRisk === "LIKELY_SCAM";
 
-        // Also reject low-scoring Reddit posts (AI score ≤ 3 out of 10 = not a real lead)
+        // Also reject low-scoring posts (AI score ≤ 3 out of 10 = not a real lead)
         const isTooLowScore = aiResult.leadScore <= 3;
 
         if (isNotVARelated || isTooLowScore) {
           skippedRedditNotVA++;
           results.push({
             url: post.url,
-            error: `Reddit AI filter — ${isNotVARelated ? "not VA-related" : "score too low"} (AI: ${aiResult.intentCategory}, score: ${aiResult.leadScore}/10, hiring: ${aiResult.isHiring})`,
+            error: `AI filter — ${isNotVARelated ? "not VA-related" : "score too low"} (AI: ${aiResult.intentCategory}, score: ${aiResult.leadScore}/10, hiring: ${aiResult.isHiring}, platform: ${post.platform})`,
           });
           continue;
         }

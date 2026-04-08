@@ -1043,7 +1043,7 @@ async function extractLinkedin(page: Page): Promise<Omit<ScrapedPost, "platform"
   const responseHandler = async (response: PlaywrightResponse) => {
     const url = response.url();
     // LinkedIn Voyager API endpoints for feed data
-    if (!url.includes("/voyager/api/") && !url.includes("/api/feed/") && !url.includes("/graphql")) return;
+    if (!url.includes("/voyager/api/") && !url.includes("/api/feed/") && !url.includes("/graphql")) return;                                               
     // Only capture feed-related responses
     if (!url.includes("feed") && !url.includes("update") && !url.includes("search") && !url.includes("graphql")) return;
 

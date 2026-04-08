@@ -186,7 +186,11 @@ const NEGATIVE_SIGNALS: NegativeSignal[] = [
   { phrase: "book a discovery call", weight: -25 },
   { phrase: "check out my portfolio", weight: -25 },
   { phrase: "years of experience as a va", weight: -30 },
-  { phrase: "dm me for", weight: -20 },
+  { phrase: "years of experience in", weight: -25 },
+  { phrase: "what i can help you with", weight: -30 },
+  { phrase: "why me", weight: -25 },
+  { phrase: "share my resume", weight: -30 },
+  { phrase: "dm me", weight: -20 },
   { phrase: "dm for rates", weight: -20 },
 ];
 

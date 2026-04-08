@@ -155,7 +155,7 @@ export const SEEKING_KEYWORDS: string[] = [
   "i can be your va",
   "my services include",
   "services i offer",
-  "dm me for",
+  "dm me",
   "dm for rates",
   "accepting new clients",
   "i offer virtual assistant",
@@ -163,6 +163,10 @@ export const SEEKING_KEYWORDS: string[] = [
   "book a discovery call",
   "check out my portfolio",
   "years of experience as a va",
+  "years of experience in",
+  "what i can help you with",
+  "why me",
+  "share my resume",
 
   // Reddit tag
   "[for hire]",
