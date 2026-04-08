@@ -16,14 +16,14 @@ import {
 import {
   Globe, Link2, Search, Loader2, AlertTriangle, CheckCircle2,
   ArrowRight, FileSearch, Layers, Clock, Sparkles, Hash,
-  Plus, Trash2, ChevronRight, LogIn, Bookmark, Download,
+  Plus, Trash2, ChevronRight, LogIn, Bookmark,
 } from "lucide-react";
 
 import { PlatformBadge } from "./platform-badge";
 import { UrlResultRow } from "./url-result-row";
 import type { UrlItemResult, MultiScrapeResponse, HistoryEntry, BookmarkEntry } from "./shared";
 import {
-  detectPlatform, formatHistoryTs, groupByDate, exportToCsv,
+  detectPlatform, formatHistoryTs, groupByDate,
   PLATFORM_META, PLATFORM_EXAMPLES,
 } from "./shared";
 
@@ -142,33 +142,6 @@ export function ScrapeNowTab({
 
   const handleRetry = (url: string) => doScrape([url]);
 
-  const handleExportResults = () => {
-    if (results.length === 0) return;
-    const rows = results.map((r) => ({
-      url: r.url,
-      platform: r.platform ?? "",
-      success: r.success ? "Yes" : "No",
-      posts_found: r.postsFound ?? 0,
-      leads_inserted: r.batch?.inserted ?? 0,
-      duplicates: r.batch?.duplicates ?? 0,
-      error: r.error ?? "",
-    }));
-    exportToCsv(`scrape-results-${new Date().toISOString().slice(0, 10)}.csv`, rows);
-  };
-
-  const handleExportHistory = () => {
-    if (history.length === 0) return;
-    const rows = history.map((h) => ({
-      url: h.url,
-      platform: h.platform ?? "",
-      posts_found: h.postsFound,
-      leads_inserted: h.inserted,
-      duplicates: h.duplicates,
-      timestamp: h.timestamp.toISOString(),
-      error: h.error ?? "",
-    }));
-    exportToCsv(`scrape-history-${new Date().toISOString().slice(0, 10)}.csv`, rows);
-  };
 
   // Failed results for retry-all
   const failedResults = results.filter((r) => !r.success || !!r.error);
@@ -328,15 +301,6 @@ export function ScrapeNowTab({
                       Retry {failedResults.length} Failed
                     </Button>
                   )}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleExportResults}
-                    className="h-7 gap-1 text-[11px] text-muted-foreground hover:text-foreground"
-                  >
-                    <Download className="h-3 w-3" />
-                    CSV
-                  </Button>
                   <Link href="/leads" className="inline-flex items-center gap-1 text-xs text-primary hover:text-primary/80 font-medium transition-colors">
                     View Leads <ArrowRight className="h-3 w-3" />
                   </Link>
@@ -390,17 +354,6 @@ export function ScrapeNowTab({
               {history.length > 0 && <Badge variant="secondary" className="text-[10px]">{history.length}</Badge>}
             </div>
             <div className="flex items-center gap-1">
-              {history.length > 0 && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleExportHistory}
-                  className="h-7 gap-1 text-[11px] text-muted-foreground hover:text-foreground"
-                >
-                  <Download className="h-3 w-3" />
-                  CSV
-                </Button>
-              )}
               {history.length > 0 && (
                 <AlertDialog>
                   <AlertDialogTrigger asChild>

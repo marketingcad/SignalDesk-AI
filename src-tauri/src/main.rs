@@ -976,6 +976,7 @@ fn main() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_fs::init())
         .manage(processes)
         .invoke_handler(tauri::generate_handler![
             get_app_version,

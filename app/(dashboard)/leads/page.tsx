@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { openUrl } from "@/lib/open-url";
+import { isTauri } from "@/lib/tauri";
 import { Header } from "@/components/header";
 import { IntentBadge } from "@/components/intent-badge";
 import { PlatformBadge } from "@/components/platform-badge";
@@ -253,13 +254,28 @@ export default function LeadsPage() {
         new Date(l.createdAt).toISOString(),
       ]);
       const csv = [headers, ...rows].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
-      const blob = new Blob([csv], { type: "text/csv" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `leads-${new Date().toISOString().slice(0, 10)}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
+
+      if (isTauri()) {
+        // Desktop app: use Tauri dialog + fs to save file
+        const { save } = await import("@tauri-apps/plugin-dialog");
+        const { writeTextFile } = await import("@tauri-apps/plugin-fs");
+        const filePath = await save({
+          defaultPath: `leads-${new Date().toISOString().slice(0, 10)}.csv`,
+          filters: [{ name: "CSV", extensions: ["csv"] }],
+        });
+        if (filePath) {
+          await writeTextFile(filePath, csv);
+        }
+      } else {
+        // Browser: use blob download
+        const blob = new Blob([csv], { type: "text/csv" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `leads-${new Date().toISOString().slice(0, 10)}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
     } catch (err) {
       console.error("[leads] Export failed:", err);
       window.alert("Export failed. Please try again.");

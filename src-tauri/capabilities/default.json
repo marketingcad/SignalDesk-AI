@@ -10,6 +10,8 @@
     "dialog:default",
     "process:default",
     "notification:default",
-    "updater:default"
+    "updater:default",
+    "fs:allow-write-text-file",
+    "fs:allow-exists"
   ]
 }

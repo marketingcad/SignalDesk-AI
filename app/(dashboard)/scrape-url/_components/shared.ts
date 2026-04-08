@@ -271,7 +271,7 @@ export function groupByDate<T extends { timestamp: Date }>(entries: T[]): { labe
 }
 
 /** Export data as CSV download */
-export function exportToCsv(filename: string, rows: Record<string, string | number>[]) {
+export async function exportToCsv(filename: string, rows: Record<string, string | number>[]) {
   if (rows.length === 0) return;
   const headers = Object.keys(rows[0]);
   const csvContent = [
@@ -286,11 +286,24 @@ export function exportToCsv(filename: string, rows: Record<string, string | numb
     ),
   ].join("\n");
 
-  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
+  const { isTauri } = await import("@/lib/tauri");
+  if (isTauri()) {
+    const { save } = await import("@tauri-apps/plugin-dialog");
+    const { writeTextFile } = await import("@tauri-apps/plugin-fs");
+    const filePath = await save({
+      defaultPath: filename,
+      filters: [{ name: "CSV", extensions: ["csv"] }],
+    });
+    if (filePath) {
+      await writeTextFile(filePath, csvContent);
+    }
+  } else {
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
 }
