@@ -135,6 +135,28 @@ A standalone Node.js service using Playwright and Crawlee for automated headless
 Business owner communities where hiring happens (not VA communities):
 `r/entrepreneur`, `r/smallbusiness`, `r/ecommerce`, `r/startups`, `r/SaaS`, `r/realestateinvesting`, `r/dropship`, `r/FulfillmentByAmazon`, `r/hiring`, `r/forhire`, `r/virtualassistant`, `r/RemoteWork`, `r/Bookkeeping`, `r/socialmediamarketing`, `r/RealEstate`, `r/DigitalMarketing`
 
+#### LinkedIn Search URLs (VA Hiring Intent)
+
+Pre-built LinkedIn content search URLs filtered to past-week posts, sorted by date:
+
+**High Intent**
+- [`need a virtual assistant`](https://www.linkedin.com/search/results/content/?keywords=need%20a%20virtual%20assistant&datePosted=past-week&sortBy=date_posted)
+- [`looking for a VA`](https://www.linkedin.com/search/results/content/?keywords=looking%20for%20a%20VA&datePosted=past-week&sortBy=date_posted)
+- [`hire a virtual assistant`](https://www.linkedin.com/search/results/content/?keywords=hire%20a%20virtual%20assistant&datePosted=past-week&sortBy=date_posted)
+- [`VA needed`](https://www.linkedin.com/search/results/content/?keywords=VA%20needed&datePosted=past-week&sortBy=date_posted)
+- [`hiring remote assistant`](https://www.linkedin.com/search/results/content/?keywords=hiring%20remote%20assistant&datePosted=past-week&sortBy=date_posted)
+- [`hiring appointment setter`](https://www.linkedin.com/search/results/content/?keywords=hiring%20appointment%20setter&datePosted=past-week&sortBy=date_posted)
+- [`hiring executive assistant remote`](https://www.linkedin.com/search/results/content/?keywords=hiring%20executive%20assistant%20remote&datePosted=past-week&sortBy=date_posted)
+- [`need admin support remote`](https://www.linkedin.com/search/results/content/?keywords=need%20admin%20support%20remote&datePosted=past-week&sortBy=date_posted)
+- [`outsourcing admin work`](https://www.linkedin.com/search/results/content/?keywords=outsourcing%20admin%20work&datePosted=past-week&sortBy=date_posted)
+
+**Medium Intent**
+- [`any VA recommendations`](https://www.linkedin.com/search/results/content/?keywords=any%20VA%20recommendations&datePosted=past-week&sortBy=date_posted)
+- [`where to hire a virtual assistant`](https://www.linkedin.com/search/results/content/?keywords=where%20to%20hire%20a%20virtual%20assistant&datePosted=past-week&sortBy=date_posted)
+- [`should I hire a VA`](https://www.linkedin.com/search/results/content/?keywords=should%20I%20hire%20a%20VA&datePosted=past-week&sortBy=date_posted)
+- [`overwhelmed with admin`](https://www.linkedin.com/search/results/content/?keywords=overwhelmed%20with%20admin&datePosted=past-week&sortBy=date_posted)
+- [`thinking of hiring a VA`](https://www.linkedin.com/search/results/content/?keywords=thinking%20of%20hiring%20a%20VA&datePosted=past-week&sortBy=date_posted)
+
 #### URL Scheduler (Facebook Groups)
 
 For direct Facebook group scraping, use the **Scrape URL** > **Schedules** tab:
