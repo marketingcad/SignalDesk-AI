@@ -139,7 +139,8 @@ Business owner communities where hiring happens (not VA communities):
 
 Pre-built LinkedIn content search URLs filtered to past-week posts, sorted by date:
 
-**High Intent**
+**High Intent — Direct Hiring**
+- [`hiring virtual assistant`](https://www.linkedin.com/search/results/content/?keywords=hiring%20virtual%20assistant&datePosted=past-week&sortBy=date_posted)
 - [`need a virtual assistant`](https://www.linkedin.com/search/results/content/?keywords=need%20a%20virtual%20assistant&datePosted=past-week&sortBy=date_posted)
 - [`looking for a VA`](https://www.linkedin.com/search/results/content/?keywords=looking%20for%20a%20VA&datePosted=past-week&sortBy=date_posted)
 - [`hire a virtual assistant`](https://www.linkedin.com/search/results/content/?keywords=hire%20a%20virtual%20assistant&datePosted=past-week&sortBy=date_posted)
@@ -150,12 +151,31 @@ Pre-built LinkedIn content search URLs filtered to past-week posts, sorted by da
 - [`need admin support remote`](https://www.linkedin.com/search/results/content/?keywords=need%20admin%20support%20remote&datePosted=past-week&sortBy=date_posted)
 - [`outsourcing admin work`](https://www.linkedin.com/search/results/content/?keywords=outsourcing%20admin%20work&datePosted=past-week&sortBy=date_posted)
 
-**Medium Intent**
+**Medium Intent — Research & Recommendations**
 - [`any VA recommendations`](https://www.linkedin.com/search/results/content/?keywords=any%20VA%20recommendations&datePosted=past-week&sortBy=date_posted)
 - [`where to hire a virtual assistant`](https://www.linkedin.com/search/results/content/?keywords=where%20to%20hire%20a%20virtual%20assistant&datePosted=past-week&sortBy=date_posted)
 - [`should I hire a VA`](https://www.linkedin.com/search/results/content/?keywords=should%20I%20hire%20a%20VA&datePosted=past-week&sortBy=date_posted)
 - [`overwhelmed with admin`](https://www.linkedin.com/search/results/content/?keywords=overwhelmed%20with%20admin&datePosted=past-week&sortBy=date_posted)
 - [`thinking of hiring a VA`](https://www.linkedin.com/search/results/content/?keywords=thinking%20of%20hiring%20a%20VA&datePosted=past-week&sortBy=date_posted)
+
+**Niche / Tool-Specific (High-Value Leads)**
+- [`hiring GoHighLevel VA`](https://www.linkedin.com/search/results/content/?keywords=hiring%20GoHighLevel%20VA&datePosted=past-week&sortBy=date_posted)
+- [`hiring social media VA`](https://www.linkedin.com/search/results/content/?keywords=hiring%20social%20media%20VA&datePosted=past-week&sortBy=date_posted)
+- [`hiring real estate VA`](https://www.linkedin.com/search/results/content/?keywords=hiring%20real%20estate%20VA&datePosted=past-week&sortBy=date_posted)
+- [`hiring bookkeeping VA`](https://www.linkedin.com/search/results/content/?keywords=hiring%20bookkeeping%20VA&datePosted=past-week&sortBy=date_posted)
+- [`hiring ecommerce VA`](https://www.linkedin.com/search/results/content/?keywords=hiring%20ecommerce%20VA&datePosted=past-week&sortBy=date_posted)
+- [`need VA for Shopify`](https://www.linkedin.com/search/results/content/?keywords=need%20VA%20for%20Shopify&datePosted=past-week&sortBy=date_posted)
+- [`need VA for HubSpot`](https://www.linkedin.com/search/results/content/?keywords=need%20VA%20for%20HubSpot&datePosted=past-week&sortBy=date_posted)
+
+**Hashtag Feeds (Broader, Higher Volume)**
+- [`#virtualassistant`](https://www.linkedin.com/feed/hashtag/virtualassistant)
+- [`#hiringva`](https://www.linkedin.com/feed/hashtag/hiringva)
+- [`#remotehiring`](https://www.linkedin.com/feed/hashtag/remotehiring)
+- [`#virtualassistantjobs`](https://www.linkedin.com/feed/hashtag/virtualassistantjobs)
+- [`#delegatetogrow`](https://www.linkedin.com/feed/hashtag/delegatetogrow)
+- [`#hireava`](https://www.linkedin.com/feed/hashtag/hireava)
+- [`#outsourcing`](https://www.linkedin.com/feed/hashtag/outsourcing)
+- [`#remoteassistant`](https://www.linkedin.com/feed/hashtag/remoteassistant)
 
 #### URL Scheduler (Facebook Groups)
 
