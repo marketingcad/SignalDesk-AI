@@ -12,7 +12,9 @@
     "scrape:x": "ts-node -e \"require('./src/crawler/crawlerManager').runPlatform('X')\"",
     "scrape:linkedin": "ts-node -e \"require('./src/crawler/crawlerManager').runPlatform('LinkedIn')\"",
     "scrape:facebook": "ts-node -e \"require('./src/crawler/crawlerManager').runPlatform('Facebook')\"",
-    "auth:login": "ts-node src/crawler/browserAuth.ts"
+    "auth:login": "ts-node src/crawler/browserAuth.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "keywords": [
     "scraper",
@@ -38,6 +40,7 @@
     "@types/node": "^25.4.0",
     "@types/node-cron": "^3.0.11",
     "ts-node": "^10.9.2",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.3"
   }
 }

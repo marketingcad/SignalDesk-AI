@@ -189,27 +189,44 @@ app.post("/api/scrape-url", async (req, res) => {
 
   const items: UrlScrapeItemResult[] = [];
 
+  // Rate limit once per platform per batch — not per URL.
+  // This prevents the 2nd+ URL of the same platform from being blocked
+  // within a single "Scrape Now" request, while still protecting against
+  // rapid repeated requests.
+  const rateLimitedPlatforms = new Set<string>();
+  const batchCheckedPlatforms = new Set<string>();
+
   for (const targetUrl of rawUrls) {
     try {
-      // Rate limit check per platform
       const urlPlatform = detectPlatformFromUrl(targetUrl);
-      const rateCheck = checkRateLimit(urlPlatform);
-      if (!rateCheck.allowed) {
-        const waitSec = Math.ceil(rateCheck.retryAfterMs / 1000);
-        console.log(`[api] Rate limited (${urlPlatform}) for ${targetUrl} — retry in ${waitSec}s`);
+
+      // Only check rate limit once per platform per batch
+      if (!batchCheckedPlatforms.has(urlPlatform)) {
+        batchCheckedPlatforms.add(urlPlatform);
+        const rateCheck = checkRateLimit(urlPlatform);
+        if (!rateCheck.allowed) {
+          rateLimitedPlatforms.add(urlPlatform);
+          const waitSec = Math.ceil(rateCheck.retryAfterMs / 1000);
+          console.log(`[api] Rate limited (${urlPlatform}) — retry in ${waitSec}s`);
+        } else {
+          recordScrapeStart(urlPlatform);
+        }
+      }
+
+      if (rateLimitedPlatforms.has(urlPlatform)) {
+        const waitSec = Math.ceil((config.platformRateLimitMs[urlPlatform] ?? 0) / 1000);
         items.push({
           url: targetUrl,
           success: false,
           platform: urlPlatform,
           postsFound: 0,
           duration: 0,
-          errors: [`Rate limited: ${urlPlatform} scrapes must be at least ${Math.ceil((config.platformRateLimitMs[urlPlatform] ?? 0) / 1000)}s apart. Retry in ${waitSec}s.`],
+          errors: [`Rate limited: ${urlPlatform} scrapes must be at least ${waitSec}s apart. Try again later.`],
           batch: null,
           scrapedPosts: [],
         });
         continue;
       }
-      recordScrapeStart(urlPlatform);
 
       const result = await scrapeUrlWithRetry(targetUrl, `[url-scraper]`);
 

@@ -22,6 +22,11 @@ import {
   Check,
   Lightbulb,
   Search,
+  KeyRound,
+  RefreshCw,
+  CheckCircle2,
+  XCircle,
+  CircleDot,
 } from "lucide-react";
 
 type KeywordCategory = "high_intent" | "medium_intent" | "negative";
@@ -51,11 +56,89 @@ export default function SettingsPage() {
   const [savingSection, setSavingSection] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // --- Browser Login state ---
+  const [authStatus, setAuthStatus] = useState<{
+    cookiesSaved: boolean;
+    health: {
+      overall: "healthy" | "warning" | "expired";
+      platforms: Array<{
+        platform: string;
+        consecutiveZeroRuns: number;
+        lastRunAt: string | null;
+        lastPostCount: number;
+        status: "healthy" | "warning" | "expired";
+        lastValidatedAt: string | null;
+        lastValidationResult: string | null;
+      }>;
+    } | null;
+  } | null>(null);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [loginTriggered, setLoginTriggered] = useState(false);
+  const [validating, setValidating] = useState<string | null>(null);
+
   // --- Keyword Discovery state ---
   const [discovering, setDiscovering] = useState(false);
   const [suggestions, setSuggestions] = useState<Array<{ keyword: string; category: string; reason: string }>>([]);
   const [discoveryMeta, setDiscoveryMeta] = useState<{ leadsAnalyzed: number; message?: string } | null>(null);
   const [addedSuggestions, setAddedSuggestions] = useState<Set<string>>(new Set());
+
+  // --- Browser Login actions ---
+  const loadAuthStatus = async () => {
+    setAuthLoading(true);
+    try {
+      const res = await fetch("/api/auth/browser-login");
+      if (res.ok) {
+        const data = await res.json();
+        setAuthStatus(data);
+      }
+    } catch {
+      // scraper service unreachable
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const triggerBrowserLogin = async () => {
+    setLoginTriggered(true);
+    try {
+      await fetch("/api/auth/browser-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "login" }),
+      });
+    } catch {
+      // scraper unreachable
+    }
+  };
+
+  const validatePlatform = async (platform: string) => {
+    setValidating(platform);
+    try {
+      await fetch("/api/auth/browser-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "validate", platform: platform.toLowerCase() }),
+      });
+      await loadAuthStatus();
+    } catch {
+      // scraper unreachable
+    } finally {
+      setValidating(null);
+    }
+  };
+
+  const resetPlatformHealth = async (platform: string) => {
+    try {
+      await fetch("/api/auth/browser-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reset", platform: platform.toLowerCase() }),
+      });
+      await loadAuthStatus();
+    } catch {
+      // scraper unreachable
+    }
+  };
 
   // --- Load all settings on mount ---
   useEffect(() => {
@@ -97,6 +180,7 @@ export default function SettingsPage() {
       }
     };
     load();
+    loadAuthStatus();
   }, []);
 
   // --- Keywords CRUD (already wired to API) ---
@@ -294,6 +378,154 @@ export default function SettingsPage() {
                 </div>
               );
             })}
+          </div>
+        </SettingsSection>
+
+        {/* Browser Login */}
+        <SettingsSection
+          icon={KeyRound}
+          title="Browser Login"
+          description="Manage authenticated sessions for Facebook and LinkedIn scraping"
+        >
+          <div className="space-y-4">
+            {/* Status overview */}
+            {authLoading && !authStatus ? (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Checking session status...
+              </div>
+            ) : authStatus === null ? (
+              <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3">
+                <p className="text-xs text-amber-400">
+                  Scraper service is not reachable. Start it to manage browser sessions.
+                </p>
+              </div>
+            ) : (
+              <>
+                {/* Cookie status banner */}
+                <div className={cn(
+                  "flex items-center gap-3 rounded-lg border px-4 py-3",
+                  authStatus.cookiesSaved
+                    ? "border-emerald-500/20 bg-emerald-500/5"
+                    : "border-rose-500/20 bg-rose-500/5"
+                )}>
+                  {authStatus.cookiesSaved ? (
+                    <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+                  ) : (
+                    <XCircle className="h-4 w-4 text-rose-400 shrink-0" />
+                  )}
+                  <p className="text-xs text-foreground">
+                    {authStatus.cookiesSaved
+                      ? "Browser cookies are saved. Authenticated scraping is available."
+                      : "No browser cookies saved. Click \"Open Browser Login\" to authenticate."}
+                  </p>
+                </div>
+
+                {/* Per-platform health */}
+                {authStatus.health?.platforms && (
+                  <div className="space-y-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Platform Sessions
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {authStatus.health.platforms
+                        .filter((p) => p.platform === "Facebook" || p.platform === "LinkedIn")
+                        .map((p) => {
+                          const isHealthy = p.status === "healthy";
+                          const isWarning = p.status === "warning";
+                          const isExpired = p.status === "expired";
+                          return (
+                            <div
+                              key={p.platform}
+                              className={cn(
+                                "flex items-center justify-between rounded-lg border px-4 py-3",
+                                isHealthy && "border-border bg-secondary",
+                                isWarning && "border-amber-500/20 bg-amber-500/5",
+                                isExpired && "border-rose-500/20 bg-rose-500/5"
+                              )}
+                            >
+                              <div className="flex items-center gap-3">
+                                <CircleDot className={cn(
+                                  "h-4 w-4",
+                                  isHealthy && "text-emerald-400",
+                                  isWarning && "text-amber-400",
+                                  isExpired && "text-rose-400"
+                                )} />
+                                <div>
+                                  <p className="text-sm font-medium text-foreground">{p.platform}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {isHealthy && "Session active"}
+                                    {isWarning && `${p.consecutiveZeroRuns} consecutive empty runs`}
+                                    {isExpired && (
+                                      p.lastValidationResult === "no_cookies"
+                                        ? "No cookies — login required"
+                                        : "Session expired — re-login required"
+                                    )}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 w-7 p-0"
+                                  onClick={() => validatePlatform(p.platform)}
+                                  disabled={validating === p.platform}
+                                  title="Validate cookies"
+                                >
+                                  {validating === p.platform ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  ) : (
+                                    <RefreshCw className="h-3.5 w-3.5" />
+                                  )}
+                                </Button>
+                                {(isWarning || isExpired) && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 text-xs px-2"
+                                    onClick={() => resetPlatformHealth(p.platform)}
+                                    title="Reset health tracking"
+                                  >
+                                    Reset
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Login button */}
+            <div className="flex items-center gap-3">
+              <Button
+                size="sm"
+                className="gap-1.5 shadow-sm shadow-primary/25"
+                onClick={triggerBrowserLogin}
+                disabled={loginTriggered}
+              >
+                {loginTriggered ? (
+                  <>
+                    <Check className="h-3.5 w-3.5" />
+                    Browser Opened
+                  </>
+                ) : (
+                  <>
+                    <KeyRound className="h-3.5 w-3.5" />
+                    Open Browser Login
+                  </>
+                )}
+              </Button>
+              {loginTriggered && (
+                <span className="text-xs text-muted-foreground animate-fade-in">
+                  A browser window has opened. Log in to Facebook and LinkedIn, then close it.
+                </span>
+              )}
+            </div>
           </div>
         </SettingsSection>
 

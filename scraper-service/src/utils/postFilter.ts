@@ -5,48 +5,18 @@ import type { ScrapedPost } from "../types";
 // ---------------------------------------------------------------------------
 // Shared post pre-filter — reject job seekers and self-promotion
 // Used by both crawlerManager (scheduled runs) and urlScraper (manual URL scrapes)
+//
+// Negative keywords are managed exclusively from the /settings page.
+// The scraper fetches them via /api/keywords/search-queries and caches them.
+// If no keywords are loaded yet, no negative filtering is applied.
 // ---------------------------------------------------------------------------
 
-const REJECT_PATTERNS = [
-  /\bi(?:'m| am) a virtual assistant\b/i,
-  /\bi(?:'m| am) \w[\w\s,'-]{0,40}virtual assistant\b/i, // "I'm Bruno, a bilingual Virtual Assistant"
-  /\blooking for (?:va |virtual assistant )(?:work|job|position|role)/i,
-  /\blooking for (?:long[- ]term|project[- ]based|freelance|remote)\b.*\bopportunit/i, // "looking for long-term opportunities"
-  /\bhire me\b/i,
-  /\bva available\b/i,
-  /\bfreelance va here\b/i,
-  /\bavailable for hire\b/i,
-  /\bopen for clients\b/i,
-  /\bi provide va services\b/i,
-  /\bmy services include\b/i,
-  /\[for hire\]/i, // fixed: removed broken \b around brackets
-  /\boffering va services\b/i,
-  /\bdm me\b/i, // broadened: catches "dm me here", "dm me for rates", etc.
-  /\blooking for work\b/i,
-  /\blooking for clients\b/i,
-  /\bservices i offer\b/i,
-  /\bi can be your va\b/i,
-  /\bi will be your virtual assistant\b/i,
-  /\bdm for rates\b/i,
-  /\bwhat i can help you with\b/i, // service listing intro
-  /\bwhy me\b/i, // self-pitch header
-  /\bi(?:'m| am) looking for\b.*\bopportunit/i, // "I'm looking for ... opportunities"
-  /\byears of experience\b/i, // resume language
-  /\bshare my resume\b/i, // resume offering
-];
-
 export function isJobSeeker(text: string): boolean {
-  // Check hardcoded patterns first
-  if (REJECT_PATTERNS.some((pattern) => pattern.test(text))) return true;
-
-  // Check dynamic negative keywords from /settings
   const cached = getCachedKeywords();
-  if (cached?.negativeKeywords?.length) {
-    const lower = text.toLowerCase();
-    if (cached.negativeKeywords.some((kw) => lower.includes(kw.toLowerCase()))) return true;
-  }
+  if (!cached?.negativeKeywords?.length) return false;
 
-  return false;
+  const lower = text.toLowerCase();
+  return cached.negativeKeywords.some((kw) => lower.includes(kw.toLowerCase()));
 }
 
 /**
