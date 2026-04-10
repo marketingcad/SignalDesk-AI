@@ -755,9 +755,27 @@ export default function LeadsPage() {
                         <p className="text-sm font-medium text-foreground truncate">
                           {lead.username}
                         </p>
-                        <p className="text-xs text-muted-foreground truncate">
-                          {lead.source}
-                        </p>
+                        {lead.matchedKeywords.length > 0 ? (
+                          <div className="flex items-center gap-1 mt-0.5 overflow-hidden">
+                            {lead.matchedKeywords.filter((kw) => !kw.startsWith("ai:") && !kw.startsWith("task:") && !kw.startsWith("tool:")).slice(0, 3).map((kw) => (
+                              <span
+                                key={kw}
+                                className="shrink-0 rounded bg-primary/10 border border-primary/20 px-1.5 py-0 text-[10px] font-medium text-primary truncate max-w-[120px]"
+                              >
+                                {kw}
+                              </span>
+                            ))}
+                            {lead.matchedKeywords.filter((kw) => !kw.startsWith("ai:") && !kw.startsWith("task:") && !kw.startsWith("tool:")).length > 3 && (
+                              <span className="text-[10px] text-muted-foreground shrink-0">
+                                +{lead.matchedKeywords.filter((kw) => !kw.startsWith("ai:") && !kw.startsWith("task:") && !kw.startsWith("tool:")).length - 3}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-muted-foreground truncate">
+                            {lead.source}
+                          </p>
+                        )}
                       </div>
                     </div>
                   </div>

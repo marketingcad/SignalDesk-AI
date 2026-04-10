@@ -242,6 +242,11 @@ export async function POST(request: NextRequest) {
         if (fallbackLocation) aiLocation = fallbackLocation;
       }
 
+      // Merge scoring keywords with ALL user keywords that appear in the post
+      const lowerText = post.text.toLowerCase();
+      const userMatches = userKeywords.filter((kw) => lowerText.includes(kw));
+      const allKeywords = Array.from(new Set([...userMatches, ...scoring.matchedKeywords]));
+
       toInsert.push({
         platform: post.platform,
         source: post.source || "Unknown",
@@ -253,7 +258,7 @@ export async function POST(request: NextRequest) {
         intent_category: scoring.category,
         status: "New",
         engagement: post.engagement || 0,
-        matched_keywords: scoring.matchedKeywords,
+        matched_keywords: allKeywords,
         detected_at: post.timestamp || new Date().toISOString(),
         user_id: session.userId,
         ...(aiLocation ? { location: aiLocation } : {}),
@@ -265,7 +270,7 @@ export async function POST(request: NextRequest) {
         score: scoring.score,
         level: scoring.level,
         category: scoring.category,
-        matchedKeywords: scoring.matchedKeywords,
+        matchedKeywords: allKeywords,
         aiResult,
       });
     }

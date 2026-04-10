@@ -172,6 +172,10 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Merge scoring keywords with ALL user keywords that appear in the post
+  const userMatches = userKeywords.filter((kw) => lowerText.includes(kw));
+  const allKeywords = Array.from(new Set([...userMatches, ...scoringResult.matchedKeywords]));
+
   const { data: lead, error: insertError } = await supabase
     .from("leads")
     .insert({
@@ -185,7 +189,7 @@ export async function POST(request: NextRequest) {
       intent_category: scoringResult.category,
       status: "New",
       engagement: engagement || 0,
-      matched_keywords: scoringResult.matchedKeywords,
+      matched_keywords: allKeywords,
       detected_at: timestamp || new Date().toISOString(),
       user_id: session.userId,
       ...(aiLocation ? { location: aiLocation } : {}),
@@ -213,7 +217,7 @@ export async function POST(request: NextRequest) {
       score: scoringResult.score,
       level: scoringResult.level,
       category: scoringResult.category,
-      matchedKeywords: scoringResult.matchedKeywords,
+      matchedKeywords: allKeywords,
       created_time: timestamp || new Date().toISOString(),
     });
   } else {
