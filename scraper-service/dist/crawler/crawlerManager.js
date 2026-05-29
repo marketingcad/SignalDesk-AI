@@ -7,6 +7,7 @@ const scrapers_1 = require("../scrapers");
 const backendClient_1 = require("../api/backendClient");
 const discord_1 = require("../alerts/discord");
 const postFilter_1 = require("../utils/postFilter");
+const sessionHealth_1 = require("../utils/sessionHealth");
 const SCRAPERS = {
     Reddit: scrapers_1.scrapeReddit,
     X: scrapers_1.scrapeX,
@@ -42,6 +43,12 @@ async function runPlatform(platform) {
         if (discordErrors.length > 0) {
             await (0, discord_1.sendErrorAlert)(platform, discordErrors.join("\n"));
         }
+    }
+    // Track session health — alert if consecutive zero-post runs hit threshold
+    const justCrossedThreshold = (0, sessionHealth_1.reportRunResult)(platform, filtered.length);
+    if (justCrossedThreshold) {
+        console.warn(`[crawler] ${platform}: session health threshold reached — cookies may be expired`);
+        await (0, discord_1.sendAuthExpiredAlert)(platform, "zero_posts");
     }
     return { ...result, posts: filtered };
 }

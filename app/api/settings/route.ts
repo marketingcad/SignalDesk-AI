@@ -9,6 +9,7 @@ import { supabase } from "@/lib/supabase";
 //   "platform_toggles" → { Facebook: true, LinkedIn: true, Reddit: true, X: false, Other: true }
 //   "alert_threshold"  → { value: 80 }
 //   "notifications"    → { discord_enabled: true, email_enabled: true, discord_webhook_url: "..." }
+//   "date_range_filter"→ { enabled: false, mode: "today" | "range", startDate: "2026-05-01", endDate: "2026-05-30" }
 
 type SettingsPayload = {
   platform_toggles?: Record<string, boolean>;
@@ -17,6 +18,12 @@ type SettingsPayload = {
     discord_enabled: boolean;
     email_enabled: boolean;
     discord_webhook_url: string;
+  };
+  date_range_filter?: {
+    enabled: boolean;
+    mode: "today" | "range";
+    startDate: string;
+    endDate: string;
   };
 };
 
@@ -38,6 +45,7 @@ export async function GET(request: NextRequest) {
       platform_toggles: { Facebook: true, LinkedIn: true, Reddit: true, X: false, Other: true },
       alert_threshold: { value: 80 },
       notifications: { discord_enabled: true, email_enabled: true, discord_webhook_url: "" },
+      date_range_filter: { enabled: false, mode: "today", startDate: "", endDate: "" },
     });
   }
 
@@ -51,6 +59,7 @@ export async function GET(request: NextRequest) {
     platform_toggles: settings.platform_toggles ?? { Facebook: true, LinkedIn: true, Reddit: true, X: false, Other: true },
     alert_threshold: settings.alert_threshold ?? { value: 80 },
     notifications: settings.notifications ?? { discord_enabled: true, email_enabled: true, discord_webhook_url: "" },
+    date_range_filter: settings.date_range_filter ?? { enabled: false, startDate: "", endDate: "" },
   };
 
   return NextResponse.json(result);
@@ -70,7 +79,7 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: "Missing key or value" }, { status: 400 });
   }
 
-  const validKeys = ["platform_toggles", "alert_threshold", "notifications"];
+  const validKeys = ["platform_toggles", "alert_threshold", "notifications", "date_range_filter"];
   if (!validKeys.includes(key)) {
     return NextResponse.json({ error: "Invalid settings key" }, { status: 400 });
   }

@@ -8,39 +8,17 @@ const config_1 = require("../config");
 // ---------------------------------------------------------------------------
 // Shared post pre-filter — reject job seekers and self-promotion
 // Used by both crawlerManager (scheduled runs) and urlScraper (manual URL scrapes)
+//
+// Negative keywords are managed exclusively from the /settings page.
+// The scraper fetches them via /api/keywords/search-queries and caches them.
+// If no keywords are loaded yet, no negative filtering is applied.
 // ---------------------------------------------------------------------------
-const REJECT_PATTERNS = [
-    /\bi(?:'m| am) a virtual assistant\b/i,
-    /\blooking for (?:va |virtual assistant )(?:work|job|position|role)/i,
-    /\bhire me\b/i,
-    /\bva available\b/i,
-    /\bfreelance va here\b/i,
-    /\bavailable for hire\b/i,
-    /\bopen for clients\b/i,
-    /\bi provide va services\b/i,
-    /\bmy services include\b/i,
-    /\b\[for hire\]\b/i,
-    /\boffering va services\b/i,
-    /\bdm me for rates\b/i,
-    /\blooking for work\b/i,
-    /\blooking for clients\b/i,
-    /\bservices i offer\b/i,
-    /\bi can be your va\b/i,
-    /\bi will be your virtual assistant\b/i,
-    /\bdm for rates\b/i,
-];
 function isJobSeeker(text) {
-    // Check hardcoded patterns first
-    if (REJECT_PATTERNS.some((pattern) => pattern.test(text)))
-        return true;
-    // Check dynamic negative keywords from /settings
     const cached = (0, backendClient_1.getCachedKeywords)();
-    if (cached?.negativeKeywords?.length) {
-        const lower = text.toLowerCase();
-        if (cached.negativeKeywords.some((kw) => lower.includes(kw.toLowerCase())))
-            return true;
-    }
-    return false;
+    if (!cached?.negativeKeywords?.length)
+        return false;
+    const lower = text.toLowerCase();
+    return cached.negativeKeywords.some((kw) => lower.includes(kw.toLowerCase()));
 }
 /**
  * Filter scraped posts: remove too-short posts, job seekers, and duplicates.

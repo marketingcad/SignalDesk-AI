@@ -27,6 +27,8 @@ import {
   CheckCircle2,
   XCircle,
   CircleDot,
+  CalendarRange,
+  Trash2,
 } from "lucide-react";
 
 type KeywordCategory = "high_intent" | "medium_intent" | "negative";
@@ -50,6 +52,19 @@ export default function SettingsPage() {
 
   // --- Threshold state ---
   const [threshold, setThreshold] = useState(80);
+
+  // --- Date Range filter state ---
+  const [dateRange, setDateRange] = useState<{
+    enabled: boolean;
+    mode: "today" | "range";
+    startDate: string;
+    endDate: string;
+  }>({
+    enabled: false,
+    mode: "today",
+    startDate: "",
+    endDate: "",
+  });
 
   // --- UI state ---
   const [savedSection, setSavedSection] = useState<string | null>(null);
@@ -157,6 +172,14 @@ export default function SettingsPage() {
           }
           if (settings.alert_threshold) {
             setThreshold(settings.alert_threshold.value);
+          }
+          if (settings.date_range_filter) {
+            setDateRange({
+              enabled: !!settings.date_range_filter.enabled,
+              mode: settings.date_range_filter.mode === "range" ? "range" : "today",
+              startDate: settings.date_range_filter.startDate || "",
+              endDate: settings.date_range_filter.endDate || "",
+            });
           }
         }
 
@@ -279,6 +302,10 @@ export default function SettingsPage() {
         key = "alert_threshold";
         value = { value: threshold };
         break;
+      case "date_range":
+        key = "date_range_filter";
+        value = dateRange;
+        break;
       default:
         setSavingSection(null);
         return;
@@ -297,6 +324,28 @@ export default function SettingsPage() {
       }
     } catch {
       // save failed silently
+    } finally {
+      setSavingSection(null);
+    }
+  };
+
+  // --- Clear/delete the saved date range config (reset to default off) ---
+  const clearDateRange = async () => {
+    const cleared = { enabled: false, mode: "today" as const, startDate: "", endDate: "" };
+    setDateRange(cleared);
+    setSavingSection("date_range");
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: "date_range_filter", value: cleared }),
+      });
+      if (res.ok) {
+        setSavedSection("date_range");
+        setTimeout(() => setSavedSection(null), 2000);
+      }
+    } catch {
+      // clear failed silently
     } finally {
       setSavingSection(null);
     }
@@ -560,6 +609,154 @@ export default function SettingsPage() {
               </span>
               <span>Max (100)</span>
             </div>
+          </div>
+        </SettingsSection>
+
+        {/* Date Range */}
+        <SettingsSection
+          icon={CalendarRange}
+          title="Date Range"
+          description="Only capture leads whose post date falls within this range — others are skipped and never sent to Discord"
+          onSave={() => handleSectionSave("date_range")}
+          saved={savedSection === "date_range"}
+          saving={savingSection === "date_range"}
+        >
+          <div className="space-y-4">
+            {/* Active/inactive status + clear */}
+            <div className="flex items-center justify-between">
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium",
+                  dateRange.enabled
+                    ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
+                    : "border-border bg-secondary text-muted-foreground"
+                )}
+              >
+                {dateRange.enabled ? (
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                ) : (
+                  <XCircle className="h-3.5 w-3.5" />
+                )}
+                {dateRange.enabled
+                  ? `Active — ${dateRange.mode === "today" ? "Today only" : "Custom range"}`
+                  : "Inactive — default 7-day window"}
+              </span>
+              {(dateRange.enabled || dateRange.startDate || dateRange.endDate) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 gap-1 text-xs text-rose-400 hover:text-rose-300 hover:bg-rose-500/10"
+                  onClick={clearDateRange}
+                  disabled={savingSection === "date_range"}
+                  title="Clear date range and revert to the default window"
+                >
+                  <Trash2 className="h-3 w-3" />
+                  Clear
+                </Button>
+              )}
+            </div>
+
+            {/* Enable toggle */}
+            <div className="flex items-center justify-between rounded-xl border border-border bg-accent/30 p-4">
+              <div>
+                <p className="text-sm font-semibold text-foreground">Limit leads to a date range</p>
+                <p className="text-xs text-muted-foreground">
+                  When off, the default rolling 7-day window is used
+                </p>
+              </div>
+              <ToggleSwitch
+                enabled={dateRange.enabled}
+                onChange={() => setDateRange((prev) => ({ ...prev, enabled: !prev.enabled }))}
+              />
+            </div>
+
+            {/* Mode selector + dates */}
+            <div
+              className={cn(
+                "space-y-4 transition-opacity",
+                dateRange.enabled ? "opacity-100" : "opacity-50 pointer-events-none"
+              )}
+            >
+              {/* Segmented mode control */}
+              <div className="grid grid-cols-2 gap-2 rounded-lg border border-border bg-secondary/50 p-1">
+                <button
+                  type="button"
+                  onClick={() => setDateRange((prev) => ({ ...prev, mode: "today" }))}
+                  className={cn(
+                    "flex items-center justify-center gap-1.5 rounded-md px-3 py-2 text-xs font-medium transition-colors",
+                    dateRange.mode === "today"
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <CircleDot className="h-3.5 w-3.5" />
+                  Today only
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDateRange((prev) => ({ ...prev, mode: "range" }))}
+                  className={cn(
+                    "flex items-center justify-center gap-1.5 rounded-md px-3 py-2 text-xs font-medium transition-colors",
+                    dateRange.mode === "range"
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <CalendarRange className="h-3.5 w-3.5" />
+                  Custom range
+                </button>
+              </div>
+
+              {/* Custom date inputs (only for range mode) */}
+              {dateRange.mode === "range" && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 animate-fade-in">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground">Start date</label>
+                    <Input
+                      type="date"
+                      value={dateRange.startDate}
+                      max={dateRange.endDate || undefined}
+                      onChange={(e) => setDateRange((prev) => ({ ...prev, startDate: e.target.value }))}
+                      className="h-9 text-sm bg-secondary/50 border-border"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground">End date</label>
+                    <Input
+                      type="date"
+                      value={dateRange.endDate}
+                      min={dateRange.startDate || undefined}
+                      onChange={(e) => setDateRange((prev) => ({ ...prev, endDate: e.target.value }))}
+                      className="h-9 text-sm bg-secondary/50 border-border"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {dateRange.enabled && (
+              <div className="rounded-lg border border-border bg-secondary px-4 py-3 text-xs text-muted-foreground">
+                {dateRange.mode === "today" ? (
+                  <span className="flex items-center gap-1.5">
+                    <CircleDot className="h-3.5 w-3.5 text-emerald-400" />
+                    Capturing only leads posted <span className="font-medium text-foreground">today</span>. This updates automatically each day — no need to change the dates.
+                  </span>
+                ) : dateRange.startDate || dateRange.endDate ? (
+                  <span className="flex items-center gap-1.5">
+                    <CalendarRange className="h-3.5 w-3.5 text-primary" />
+                    Capturing leads
+                    {dateRange.startDate ? ` from ${dateRange.startDate}` : " up to"}
+                    {dateRange.endDate ? ` to ${dateRange.endDate}` : dateRange.startDate ? " onward" : ""}.
+                    Posts outside this range are skipped.
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1.5">
+                    <AlertTriangle className="h-3.5 w-3.5 text-amber-400" />
+                    Set a start and/or end date. Leaving both blank falls back to the default 7-day window.
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         </SettingsSection>
 

@@ -44,16 +44,19 @@ exports.config = {
     discordWebhookUrl: envOrDefault("DISCORD_WEBHOOK_URL", ""),
     // Server
     port: parseInt(envOrDefault("PORT", "4000"), 10),
-    // Cron schedules (defaults tuned for free-tier: avoid Google IP bans)
+    // Cron schedules — staggered to avoid concurrent scrapes
+    // Reddit/X: hourly (public, lenient rate limits)
+    // LinkedIn: every 6h (Google dorks, stricter rate limits)
+    // Facebook: every 2h (needs login, moderate rate limits)
     cron: {
         reddit: envOrDefault("CRON_REDDIT", "0 */1 * * *"),
-        x: envOrDefault("CRON_X", "15 */1 * * *"),
-        linkedin: envOrDefault("CRON_LINKEDIN", "30 */2 * * *"),
+        x: envOrDefault("CRON_X", "30 */2 * * *"),
+        linkedin: envOrDefault("CRON_LINKEDIN", "15 */6 * * *"),
         facebook: envOrDefault("CRON_FACEBOOK", "45 */2 * * *"),
     },
     // Targets
     targets: {
-        redditSubreddits: envList("REDDIT_SUBREDDITS", "virtualassistant,hiring,forhire,smallbusiness,entrepreneur,RemoteWork,WorkOnline,sidehustle,ecommerce,realestateinvesting,Bookkeeping,socialmediamarketing"),
+        redditSubreddits: envList("REDDIT_SUBREDDITS", "entrepreneur,smallbusiness,ecommerce,startups,SaaS,realestateinvesting,dropship,FulfillmentByAmazon,hiring,forhire,virtualassistant,RemoteWork,Bookkeeping,socialmediamarketing,RealEstate,DigitalMarketing"),
         xSearchQueries: envList("X_SEARCH_QUERIES", "hiring virtual assistant,need a VA,looking for VA,hire a va,va needed,hiring remote assistant,hiring executive assistant remote,hiring ghl va,hiring social media va,hiring real estate va,hiring cold caller va,hiring appointment setter,need admin support,need someone to manage my crm,any va recommendations,recommend a good va,where to hire a va,overwhelmed with admin,scaling my business and need help,hiring GoHighLevel va,need someone for clickfunnels,hiring bookkeeping va,need va for hubspot,need va for salesforce"),
         linkedinSearchQueries: envList("LINKEDIN_SEARCH_QUERIES", "hiring virtual assistant,need VA for business,looking for a virtual assistant,hire a virtual assistant,virtual assistant needed,hiring remote assistant,hiring executive assistant remote,need admin support,outsourcing admin work,where to find a va,thinking of hiring a va,need someone to manage my crm,overwhelmed with admin,hiring ghl va,hiring appointment setter"),
         facebookSearchQueries: envList("FACEBOOK_SEARCH_QUERIES", "hiring virtual assistant,need a VA,looking for virtual assistant,hire VA for business,hiring remote assistant,need admin support,hiring appointment setter,hiring social media va,looking for a va,overwhelmed need help,hiring ghl va,need someone to manage my crm"),

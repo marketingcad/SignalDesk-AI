@@ -2,7 +2,7 @@ import { chromium } from "playwright";
 import type { Page, Response as PlaywrightResponse } from "playwright";
 import { config } from "../config";
 import { getCachedKeywords } from "../api/backendClient";
-import { hasSavedCookies, getProfileDir, getStorageState, shouldUseStorageState } from "../crawler/browserAuth";
+import { hasSavedCookies, getProfileDir, getStorageState, shouldUseStorageState, saveStorageState } from "../crawler/browserAuth";
 import { isCurrentWeek, isOlderThanCurrentWeek, resolveTimestamp } from "../utils/dateHelpers";
 import type { Platform, ScrapedPost, ScrapeResult, BatchScrapeResult, BatchUrlResult } from "../types";
 import { BROWSER_ARGS } from "./browserArgs";
@@ -1638,6 +1638,9 @@ export async function scrapeUrl(targetUrl: string): Promise<ScrapeResult> {
 
   let context: import("playwright").BrowserContext | null = null;
   let browser: import("playwright").Browser | null = null;
+  // Set true once we confirm the saved session is still logged in, so we can
+  // safely refresh the rolling cookie file (and never overwrite it when logged out).
+  let authConfirmed = false;
   try {
     let page: import("playwright").Page;
 
@@ -1748,6 +1751,7 @@ export async function scrapeUrl(targetUrl: string): Promise<ScrapeResult> {
           };
         });
         const loggedIn = fbLoginCheck.hasProfileLink || fbLoginCheck.hasLogoutLink || fbLoginCheck.articleCount > 0;
+        if (loggedIn) authConfirmed = true;
         console.log(`[url-scraper] Facebook login check:`);
         console.log(`[url-scraper]   Logged in:       ${loggedIn ? "YES" : "NO (likely not authenticated)"}`);
         console.log(`[url-scraper]   Profile link:    ${fbLoginCheck.hasProfileLink}`);
@@ -1765,6 +1769,7 @@ export async function scrapeUrl(targetUrl: string): Promise<ScrapeResult> {
           return { feedCards, hasNavProfile: !!navProfile };
         });
         const loggedIn = liLoginCheck.hasNavProfile || liLoginCheck.feedCards > 0;
+        if (loggedIn) authConfirmed = true;
         console.log(`[url-scraper] LinkedIn login check:`);
         console.log(`[url-scraper]   Logged in:    ${loggedIn ? "YES" : "NO (likely not authenticated)"}`);
         console.log(`[url-scraper]   Nav profile:  ${liLoginCheck.hasNavProfile}`);
@@ -1779,6 +1784,7 @@ export async function scrapeUrl(targetUrl: string): Promise<ScrapeResult> {
           return { tweets, hasNavProfile: !!navProfile };
         });
         const loggedIn = xLoginCheck.hasNavProfile || xLoginCheck.tweets > 0;
+        if (loggedIn) authConfirmed = true;
         console.log(`[url-scraper] X/Twitter login check:`);
         console.log(`[url-scraper]   Logged in:    ${loggedIn ? "YES" : "NO (likely not authenticated)"}`);
         console.log(`[url-scraper]   Nav profile:  ${xLoginCheck.hasNavProfile}`);
@@ -1819,6 +1825,13 @@ export async function scrapeUrl(targetUrl: string): Promise<ScrapeResult> {
           url: item.url || targetUrl,
         });
       }
+    }
+
+    // Rolling session: re-save the freshly-rotated cookies so the login never
+    // ages out while the scraper keeps running. Only when we confirmed we're
+    // still logged in (never overwrite good cookies with a logged-out state).
+    if (authConfirmed && shouldUseStorageState()) {
+      await saveStorageState(context);
     }
 
     await context.close();
@@ -1948,6 +1961,13 @@ export async function scrapeUrlsBatch(
           console.log(`${tag} ${label} ❌ Retry failed — giving up on ${targetUrl}`);
         }
       }
+    }
+
+    // Rolling session: any successful scrape proves the saved login is still
+    // alive, so re-save the freshly-rotated cookies. This keeps the session from
+    // expiring between scheduled runs — log in once, no re-auth needed.
+    if (shouldUseStorageState() && urlResults.some((r) => r.success)) {
+      await saveStorageState(context);
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

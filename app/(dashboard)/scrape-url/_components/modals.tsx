@@ -9,13 +9,8 @@ import {
   DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
 import {
-  AlertDialog, AlertDialogContent, AlertDialogHeader,
-  AlertDialogFooter, AlertDialogTitle, AlertDialogDescription,
-  AlertDialogAction, AlertDialogCancel,
-} from "@/components/ui/alert-dialog";
-import {
   Link2, Loader2, AlertTriangle,
-  Plus, Trash2, Pencil, Save, Bookmark, Star, CheckCircle2,
+  Plus, Trash2, Pencil, Save, Bookmark, CheckCircle2,
 } from "lucide-react";
 import { PlatformBadge } from "./platform-badge";
 import { CronPicker } from "./schedules-tab";
@@ -204,119 +199,6 @@ export function EditScheduleModal({
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Save Bookmark Modal
-// ─────────────────────────────────────────────────────────────────────────────
-
-export function SaveBookmarkModal({
-  bookmarkModal,
-  setBookmarkModal,
-  bmName, setBmName,
-  bmNotes, setBmNotes,
-  bmSaving,
-  onSave,
-}: {
-  bookmarkModal: { url: string; platform: string | null } | null;
-  setBookmarkModal: React.Dispatch<React.SetStateAction<{ url: string; platform: string | null } | null>>;
-  bmName: string;
-  setBmName: React.Dispatch<React.SetStateAction<string>>;
-  bmNotes: string;
-  setBmNotes: React.Dispatch<React.SetStateAction<string>>;
-  bmSaving: boolean;
-  onSave: () => Promise<void>;
-}) {
-  return (
-    <Dialog open={!!bookmarkModal} onOpenChange={(open) => { if (!open) setBookmarkModal(null); }}>
-      <DialogContent className="w-[calc(100vw-2rem)] max-w-md max-h-[calc(100vh-4rem)] flex flex-col overflow-hidden">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Star className="h-4 w-4 text-amber-400" />
-            Save to Bookmarks
-          </DialogTitle>
-          <DialogDescription>Bookmark this URL for quick access later.</DialogDescription>
-        </DialogHeader>
-
-        {bookmarkModal && (
-          <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-foreground">URL</label>
-              <div className="relative">
-                <Link2 className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={bookmarkModal.url}
-                  readOnly
-                  className="h-9 pl-9 text-sm bg-secondary/50 border-border text-muted-foreground"
-                />
-              </div>
-              {bookmarkModal.platform && <PlatformBadge platform={bookmarkModal.platform} />}
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-foreground">Name</label>
-              <Input
-                placeholder="e.g. VA Facebook Group"
-                value={bmName}
-                onChange={(e) => setBmName(e.target.value)}
-                className="h-9 text-sm bg-secondary/50 border-border"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-foreground">Notes (optional)</label>
-              <Input
-                placeholder="e.g. High-quality leads group"
-                value={bmNotes}
-                onChange={(e) => setBmNotes(e.target.value)}
-                className="h-9 text-sm bg-secondary/50 border-border"
-              />
-            </div>
-          </div>
-        )}
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setBookmarkModal(null)} className="h-9">Cancel</Button>
-          <Button onClick={onSave} disabled={bmSaving} className="gap-2 h-9">
-            {bmSaving
-              ? <><Loader2 className="h-4 w-4 animate-spin" />Saving…</>
-              : <><Bookmark className="h-4 w-4" />Save Bookmark</>}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Already Bookmarked Alert
-// ─────────────────────────────────────────────────────────────────────────────
-
-export function AlreadyBookmarkedAlert({
-  open, onOpenChange,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}) {
-  return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle className="flex items-center gap-2">
-            <Bookmark className="h-4 w-4 text-amber-400 fill-amber-400" />
-            Already Bookmarked
-          </AlertDialogTitle>
-          <AlertDialogDescription>
-            This URL is already saved in your bookmarks. You can view and manage it from the Bookmarks page.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Close</AlertDialogCancel>
-          <AlertDialogAction onClick={() => { onOpenChange(false); window.location.href = "/bookmarks"; }}>
-            Go to Bookmarks
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
   );
 }
 

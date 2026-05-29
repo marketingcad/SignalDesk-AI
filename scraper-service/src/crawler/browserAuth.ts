@@ -30,21 +30,52 @@ export function getProfileDir(): string {
 
 /**
  * Get storageState for use with browser.newContext().
- * Priority: env var > storage-state.json file > undefined (no auth).
+ *
+ * The on-disk storage-state.json file is the single source of truth. It is the
+ * "rolling session": every authenticated scrape re-exports the (rotated, freshly
+ * extended) cookies back to it via {@link saveStorageState}, so the session stays
+ * alive indefinitely as long as the scraper keeps running — no re-login needed.
+ *
+ * The BROWSER_STORAGE_STATE env var (Render / production) is only a BOOTSTRAP
+ * seed: it is written to the file once, on first use, and from then on the
+ * refreshed file takes priority. (On a fresh deploy the ephemeral file is gone,
+ * so the env var seeds it again — and if the env var is ever stale, re-pasting a
+ * fresh value + restart re-seeds cleanly.)
  */
 export function getStorageState(): string | undefined {
-  // 1. Env var (for Render / production)
-  if (process.env.BROWSER_STORAGE_STATE) {
-    const tmpPath = path.resolve(__dirname, "../../auth/.tmp-storage-state.json");
-    fs.mkdirSync(path.dirname(tmpPath), { recursive: true });
-    fs.writeFileSync(tmpPath, process.env.BROWSER_STORAGE_STATE, "utf-8");
-    return tmpPath;
-  }
-  // 2. Exported file (from local login)
+  // Rolling session file — the freshest cookies live here once it exists.
   if (fs.existsSync(STORAGE_STATE_PATH)) {
     return STORAGE_STATE_PATH;
   }
+  // Bootstrap: seed the rolling file from the env var (first run / fresh deploy).
+  if (process.env.BROWSER_STORAGE_STATE) {
+    fs.mkdirSync(path.dirname(STORAGE_STATE_PATH), { recursive: true });
+    fs.writeFileSync(STORAGE_STATE_PATH, process.env.BROWSER_STORAGE_STATE, "utf-8");
+    return STORAGE_STATE_PATH;
+  }
   return undefined;
+}
+
+/**
+ * Persist the current browser cookies/localStorage back to the rolling session
+ * file. Call this after a scrape where we CONFIRMED the session is still logged
+ * in — it captures the cookies Facebook/LinkedIn just rotated and re-extended,
+ * which is what keeps the login from expiring over time.
+ *
+ * Never call this on a logged-out context: it would overwrite good saved cookies
+ * with an empty session.
+ */
+export async function saveStorageState(
+  context: import("playwright").BrowserContext
+): Promise<void> {
+  try {
+    fs.mkdirSync(path.dirname(STORAGE_STATE_PATH), { recursive: true });
+    await context.storageState({ path: STORAGE_STATE_PATH });
+    console.log(`[auth] Rolling session refreshed → cookies re-saved (no expiry while scraping runs)`);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`[auth] Could not refresh rolling session: ${msg}`);
+  }
 }
 
 /**

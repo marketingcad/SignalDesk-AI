@@ -5,6 +5,7 @@ import { inferLocationFromText } from "@/lib/geo-fallback";
 import { supabase } from "@/lib/supabase";
 import { alertEngine } from "@/lib/alert-engine";
 import { HIRING_KEYWORDS } from "@/lib/keywords";
+import { resolveDateWindow, classifyPostDate, type DateRangeFilter } from "@/lib/date-window";
 import type { DynamicScoringConfig, WeightedKeyword, NegativeSignal } from "@/lib/intent-scoring";
 import type { Platform, AIQualificationResult } from "@/lib/types";
 
@@ -130,10 +131,21 @@ export async function POST(request: NextRequest) {
   let skippedRedditNotVA = 0;
   let skippedTooOld = 0;
 
-  // Rolling 7-day window: reject posts older than 7 days regardless of score or keywords
-  const cutoffDate = new Date();
-  cutoffDate.setUTCDate(cutoffDate.getUTCDate() - 7);
-  cutoffDate.setUTCHours(0, 0, 0, 0);
+  // --- Date window ---
+  // If the user has enabled a custom Date Range in Settings, only posts whose
+  // timestamp falls inside [rangeStart, rangeEnd] become leads (and trigger alerts).
+  // Otherwise, fall back to the default rolling 7-day window.
+  const { data: dateRangeRow } = await supabase
+    .from("settings")
+    .select("value")
+    .eq("id", "date_range_filter")
+    .maybeSingle();
+
+  const dateRangeFilter = dateRangeRow?.value as DateRangeFilter | undefined;
+  const { rangeStart, rangeEnd } = resolveDateWindow(dateRangeFilter);
+  console.log(
+    `[leads/batch] Date window: ${rangeStart ? rangeStart.toISOString().slice(0, 10) : "any"} → ${rangeEnd ? rangeEnd.toISOString().slice(0, 10) : "any"} (mode: ${dateRangeFilter?.enabled ? dateRangeFilter.mode ?? "range" : "default-7d"})`
+  );
 
   for (const post of posts) {
     if (!post.platform || !post.text || !post.username || !post.url) {
@@ -141,14 +153,17 @@ export async function POST(request: NextRequest) {
       continue;
     }
 
-    // --- Date gate: skip posts older than 7 days ---
-    if (post.timestamp) {
-      const postDate = new Date(post.timestamp);
-      if (!isNaN(postDate.getTime()) && postDate < cutoffDate) {
-        skippedTooOld++;
-        results.push({ url: post.url, error: `Post too old (${post.timestamp}) — only last 7 days accepted` });
-        continue;
-      }
+    // --- Date gate: skip posts outside the active date window ---
+    const dateVerdict = classifyPostDate(post.timestamp, { rangeStart, rangeEnd });
+    if (dateVerdict === "too_old") {
+      skippedTooOld++;
+      results.push({ url: post.url, error: `Post too old (${post.timestamp}) — before ${rangeStart!.toISOString().slice(0, 10)}` });
+      continue;
+    }
+    if (dateVerdict === "too_new") {
+      skippedTooOld++;
+      results.push({ url: post.url, error: `Post too new (${post.timestamp}) — after ${rangeEnd!.toISOString().slice(0, 10)}` });
+      continue;
     }
 
     const existingId = existingUrlMap.get(post.url);
@@ -182,7 +197,7 @@ export async function POST(request: NextRequest) {
   }
 
   if (skippedTooOld > 0) {
-    console.log(`[leads/batch] Skipped ${skippedTooOld} posts — older than 7 days`);
+    console.log(`[leads/batch] Skipped ${skippedTooOld} posts — outside active date window`);
   }
   if (skippedNoKeyword > 0) {
     console.log(`[leads/batch] Skipped ${skippedNoKeyword} posts — no keyword match`);

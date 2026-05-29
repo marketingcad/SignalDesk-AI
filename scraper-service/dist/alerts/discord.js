@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.sendRunSummary = sendRunSummary;
 exports.sendNewLeadsAlert = sendNewLeadsAlert;
 exports.sendSessionHealthAlert = sendSessionHealthAlert;
+exports.sendAuthExpiredAlert = sendAuthExpiredAlert;
 exports.sendErrorAlert = sendErrorAlert;
 const axios_1 = __importDefault(require("axios"));
 const config_1 = require("../config");
@@ -213,6 +214,49 @@ async function sendSessionHealthAlert(scheduleName, scheduleUrl, platform, conse
             ],
         });
         console.log(`[discord] Session health alert sent for "${scheduleName}"`);
+    }
+    catch {
+        // Swallow — don't let Discord errors crash the scraper
+    }
+}
+// ---------------------------------------------------------------------------
+// sendAuthExpiredAlert — HIGH PRIORITY alert when cookies are likely expired
+// Triggered by: consecutive zero-post runs OR cookie validation failure
+// ---------------------------------------------------------------------------
+async function sendAuthExpiredAlert(platform, reason) {
+    if (!config_1.config.discordWebhookUrl)
+        return;
+    const reasonText = {
+        zero_posts: `**${PLATFORM_LABEL[platform]}** has returned **0 posts** for multiple consecutive scheduled runs. This strongly suggests the login session has expired.`,
+        cookie_validation: `A cookie validation check confirmed that **${PLATFORM_LABEL[platform]}** session cookies are **expired or invalid**.`,
+        no_cookies: `**No saved cookies found** for ${PLATFORM_LABEL[platform]}. The scraper cannot access authenticated content without logging in first.`,
+    };
+    try {
+        await axios_1.default.post(config_1.config.discordWebhookUrl, {
+            username: "SignalDesk Scraper",
+            content: "@here", // Ping — this is high priority
+            embeds: [
+                {
+                    author: platformAuthor(platform),
+                    title: "\u{1F6A8} Authentication Expired — Action Required",
+                    description: [
+                        reasonText[reason],
+                        "",
+                        "**The scraper will continue running but will not find any leads until re-authenticated.**",
+                        "",
+                        "**To fix:**",
+                        "1. Open the scraper dashboard",
+                        "2. Go to **Settings \u2192 Browser Login**",
+                        "3. Log in to your accounts and close the browser",
+                        "4. Leads will resume on the next scheduled run",
+                    ].join("\n"),
+                    color: 0xdc2626, // Red — high priority
+                    footer: { text: "SignalDesk AI \u00b7 Auth Health Monitor" },
+                    timestamp: new Date().toISOString(),
+                },
+            ],
+        });
+        console.log(`[discord] Auth expired alert sent for ${platform} (reason: ${reason})`);
     }
     catch {
         // Swallow — don't let Discord errors crash the scraper

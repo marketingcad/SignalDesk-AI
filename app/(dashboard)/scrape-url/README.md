@@ -287,12 +287,11 @@ Without these env vars, the system falls back to local JSON files.
 
 ```
 app/(dashboard)/scrape-url/
-├── page.tsx                          # Main page with 3 tabs
+├── page.tsx                          # Main page with 2 tabs (Schedules, Run)
 ├── _components/
-│   ├── scrape-now-tab.tsx            # Manual scrape UI
 │   ├── schedules-tab.tsx             # Schedule CRUD UI
 │   ├── run-history-tab.tsx           # Run history + progress tracking + post list + error alerts
-│   ├── url-result-row.tsx            # Expandable URL result row (used in Scrape Now)
+│   ├── modals.tsx                    # Edit schedule + bookmark picker modals
 │   └── shared.ts                     # Types (ScheduleRun, RunScrapedPost), cron builder, utilities
 
 app/api/

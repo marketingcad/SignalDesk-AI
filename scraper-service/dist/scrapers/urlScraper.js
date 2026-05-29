@@ -4,6 +4,9 @@ exports.isFacebookSearchUrl = isFacebookSearchUrl;
 exports.buildFacebookSearchUrl = buildFacebookSearchUrl;
 exports.matchKeywords = matchKeywords;
 exports.scrapeUrl = scrapeUrl;
+exports.scrapeUrlsBatch = scrapeUrlsBatch;
+exports.createBrowserContext = createBrowserContext;
+exports.scrapeOneUrl = scrapeOneUrl;
 const playwright_1 = require("playwright");
 const config_1 = require("../config");
 const backendClient_1 = require("../api/backendClient");
@@ -25,6 +28,23 @@ function getSearchKeywords(platform) {
         case "linkedin": return config_1.config.targets.linkedinSearchQueries;
         case "x": return config_1.config.targets.xSearchQueries;
     }
+}
+/**
+ * Get all positive keywords (high + medium intent) from DB for post matching.
+ * Uses scoringConfig from cached keywords so we match against the exact
+ * keywords the user configured in Settings. Falls back to search queries
+ * or platform-specific env defaults.
+ */
+function getMatchingKeywords(platform) {
+    const cached = (0, backendClient_1.getCachedKeywords)();
+    if (cached?.scoringConfig) {
+        const { high_intent, medium_intent } = cached.scoringConfig;
+        const combined = [...(high_intent || []), ...(medium_intent || [])];
+        if (combined.length > 0)
+            return combined;
+    }
+    // Fall back to searchQueries (combined high+medium) or env defaults
+    return getSearchKeywords(platform);
 }
 // ---------------------------------------------------------------------------
 // Detect platform from a URL
@@ -205,7 +225,6 @@ function parseGraphQLResponseBody(body, baseUrl) {
 // ---------------------------------------------------------------------------
 // Facebook: keyword / NLP matching
 // ---------------------------------------------------------------------------
-const DEFAULT_KEYWORDS = getSearchKeywords("facebook");
 /**
  * Check if a post's text matches any of the given keywords.
  * Uses case-insensitive substring + word-boundary matching for accuracy.
@@ -315,7 +334,7 @@ async function extractFacebook(page, groupUrl) {
         const oldCount = withTs.filter((p) => (0, dateHelpers_1.isOlderThanCurrentWeek)(p.resolvedTs)).length;
         console.log(`[url-scraper] Facebook GraphQL: ${deduped.length} unique posts, ${currentWeek.length} current week, ${oldCount} older (skipped)`);
         // ── Step 4: Keyword/NLP filtering ──
-        const keywords = DEFAULT_KEYWORDS;
+        const keywords = getMatchingKeywords("facebook");
         const keywordFiltered = currentWeek.map((p) => ({
             ...p,
             matchedKeywords: matchKeywords(p.text, keywords),
@@ -960,7 +979,7 @@ async function extractLinkedin(page) {
         const oldCount = withTs.filter((p) => (0, dateHelpers_1.isOlderThanCurrentWeek)(p.resolvedTs)).length;
         console.log(`[url-scraper] LinkedIn API: ${deduped.length} unique posts, ${currentWeek.length} current week, ${oldCount} older (skipped)`);
         // ── Step 4: Keyword/NLP filtering ──
-        const keywords = getSearchKeywords("linkedin");
+        const keywords = getMatchingKeywords("linkedin");
         const keywordFiltered = currentWeek.map((p) => ({
             ...p,
             matchedKeywords: matchKeywords(p.text, keywords),
@@ -1236,7 +1255,7 @@ async function extractX(page) {
         const oldCount = withTs.filter((t) => (0, dateHelpers_1.isOlderThanCurrentWeek)(t.resolvedTs)).length;
         console.log(`[url-scraper] X GraphQL: ${deduped.length} unique tweets, ${currentWeek.length} current week, ${oldCount} older (skipped)`);
         // ── Step 4: Keyword/NLP filtering ──
-        const keywords = getSearchKeywords("x");
+        const keywords = getMatchingKeywords("x");
         const keywordFiltered = currentWeek.map((t) => ({
             ...t,
             matchedKeywords: matchKeywords(t.text, keywords),
@@ -1426,6 +1445,9 @@ async function scrapeUrl(targetUrl) {
     }
     let context = null;
     let browser = null;
+    // Set true once we confirm the saved session is still logged in, so we can
+    // safely refresh the rolling cookie file (and never overwrite it when logged out).
+    let authConfirmed = false;
     try {
         let page;
         if (cookiesExist && (0, browserAuth_1.shouldUseStorageState)()) {
@@ -1528,6 +1550,8 @@ async function scrapeUrl(targetUrl) {
                     };
                 });
                 const loggedIn = fbLoginCheck.hasProfileLink || fbLoginCheck.hasLogoutLink || fbLoginCheck.articleCount > 0;
+                if (loggedIn)
+                    authConfirmed = true;
                 console.log(`[url-scraper] Facebook login check:`);
                 console.log(`[url-scraper]   Logged in:       ${loggedIn ? "YES" : "NO (likely not authenticated)"}`);
                 console.log(`[url-scraper]   Profile link:    ${fbLoginCheck.hasProfileLink}`);
@@ -1546,6 +1570,8 @@ async function scrapeUrl(targetUrl) {
                     return { feedCards, hasNavProfile: !!navProfile };
                 });
                 const loggedIn = liLoginCheck.hasNavProfile || liLoginCheck.feedCards > 0;
+                if (loggedIn)
+                    authConfirmed = true;
                 console.log(`[url-scraper] LinkedIn login check:`);
                 console.log(`[url-scraper]   Logged in:    ${loggedIn ? "YES" : "NO (likely not authenticated)"}`);
                 console.log(`[url-scraper]   Nav profile:  ${liLoginCheck.hasNavProfile}`);
@@ -1561,6 +1587,8 @@ async function scrapeUrl(targetUrl) {
                     return { tweets, hasNavProfile: !!navProfile };
                 });
                 const loggedIn = xLoginCheck.hasNavProfile || xLoginCheck.tweets > 0;
+                if (loggedIn)
+                    authConfirmed = true;
                 console.log(`[url-scraper] X/Twitter login check:`);
                 console.log(`[url-scraper]   Logged in:    ${loggedIn ? "YES" : "NO (likely not authenticated)"}`);
                 console.log(`[url-scraper]   Nav profile:  ${xLoginCheck.hasNavProfile}`);
@@ -1602,6 +1630,12 @@ async function scrapeUrl(targetUrl) {
                 });
             }
         }
+        // Rolling session: re-save the freshly-rotated cookies so the login never
+        // ages out while the scraper keeps running. Only when we confirmed we're
+        // still logged in (never overwrite good cookies with a logged-out state).
+        if (authConfirmed && (0, browserAuth_1.shouldUseStorageState)()) {
+            await (0, browserAuth_1.saveStorageState)(context);
+        }
         await context.close();
     }
     catch (err) {
@@ -1634,6 +1668,264 @@ async function scrapeUrl(targetUrl) {
         posts: posts.slice(0, config_1.config.maxResultsPerRun),
         duration: Date.now() - start,
         errors,
+    };
+}
+// ---------------------------------------------------------------------------
+// Batch scrape — single browser context, multiple URLs, combined results.
+// Failed URLs are skipped (not stopped) and automatically retried at the end.
+// ---------------------------------------------------------------------------
+const BATCH_INTER_URL_DELAY_MS = 3000; // delay between URLs to avoid rate limits
+/**
+ * Scrape multiple URLs in a single browser session.
+ * - Opens ONE browser + context, reuses across all URLs.
+ * - Processes URLs sequentially with a short delay between each.
+ * - If a URL fails, skips it and continues to the next.
+ * - After all URLs are done, retries failed URLs once.
+ * - Returns all collected posts in a single combined array.
+ */
+async function scrapeUrlsBatch(urls, sourceName) {
+    const start = Date.now();
+    const allPosts = [];
+    const urlResults = [];
+    const tag = `[batch-scraper]`;
+    const source = sourceName || "batch";
+    console.log(`\n${tag} ════════════════════════════════════════════════`);
+    console.log(`${tag} Batch scrape started — ${urls.length} URL(s)`);
+    console.log(`${tag} Source: ${source}`);
+    console.log(`${tag} ════════════════════════════════════════════════\n`);
+    // ── Launch ONE browser + context ──────────────────────────────────────
+    let context = null;
+    let browser = null;
+    try {
+        const browserCtx = await createBrowserContext();
+        context = browserCtx.context;
+        browser = browserCtx.browser;
+        // ── First pass: scrape all URLs, collect failures ──────────────────
+        const failedUrls = [];
+        for (let i = 0; i < urls.length; i++) {
+            const targetUrl = urls[i];
+            const label = `[${i + 1}/${urls.length}]`;
+            // Delay between URLs (skip for the first one)
+            if (i > 0) {
+                console.log(`${tag} ${label} Waiting ${BATCH_INTER_URL_DELAY_MS / 1000}s before next URL...`);
+                await new Promise((r) => setTimeout(r, BATCH_INTER_URL_DELAY_MS));
+            }
+            const result = await scrapeOneUrl(context, targetUrl, tag, label, source);
+            urlResults.push(result.urlResult);
+            if (result.urlResult.success) {
+                allPosts.push(...result.posts);
+                console.log(`${tag} ${label} ✅ ${result.posts.length} posts from ${targetUrl}`);
+            }
+            else {
+                failedUrls.push(targetUrl);
+                console.log(`${tag} ${label} ❌ Failed: ${targetUrl} — ${result.urlResult.errors.join("; ")}`);
+            }
+        }
+        // ── Retry pass: retry failed URLs once ─────────────────────────────
+        if (failedUrls.length > 0) {
+            console.log(`\n${tag} ── Retrying ${failedUrls.length} failed URL(s) ──`);
+            for (let i = 0; i < failedUrls.length; i++) {
+                const targetUrl = failedUrls[i];
+                const label = `[retry ${i + 1}/${failedUrls.length}]`;
+                if (i > 0) {
+                    await new Promise((r) => setTimeout(r, BATCH_INTER_URL_DELAY_MS));
+                }
+                console.log(`${tag} ${label} Retrying: ${targetUrl}`);
+                const result = await scrapeOneUrl(context, targetUrl, tag, label, source);
+                // Find and update the original urlResult entry
+                const origIdx = urlResults.findIndex((r) => r.url === targetUrl && !r.success);
+                if (origIdx !== -1) {
+                    urlResults[origIdx] = { ...result.urlResult, retried: true };
+                }
+                if (result.urlResult.success) {
+                    allPosts.push(...result.posts);
+                    console.log(`${tag} ${label} ✅ Retry success — ${result.posts.length} posts`);
+                }
+                else {
+                    console.log(`${tag} ${label} ❌ Retry failed — giving up on ${targetUrl}`);
+                }
+            }
+        }
+        // Rolling session: any successful scrape proves the saved login is still
+        // alive, so re-save the freshly-rotated cookies. This keeps the session from
+        // expiring between scheduled runs — log in once, no re-auth needed.
+        if ((0, browserAuth_1.shouldUseStorageState)() && urlResults.some((r) => r.success)) {
+            await (0, browserAuth_1.saveStorageState)(context);
+        }
+    }
+    catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`${tag} Browser-level error: ${msg}`);
+    }
+    finally {
+        if (context)
+            await context.close().catch(() => { });
+        if (browser)
+            await browser.close().catch(() => { });
+    }
+    // ── Summary ──────────────────────────────────────────────────────────
+    const successCount = urlResults.filter((r) => r.success).length;
+    const failedCount = urlResults.filter((r) => !r.success).length;
+    const retriedCount = urlResults.filter((r) => r.retried).length;
+    const duration = Date.now() - start;
+    console.log(`\n${tag} ══════════ BATCH RESULT ══════════`);
+    console.log(`${tag} Total URLs:     ${urls.length}`);
+    console.log(`${tag} Success:        ${successCount}`);
+    console.log(`${tag} Failed:         ${failedCount}`);
+    console.log(`${tag} Retried:        ${retriedCount}`);
+    console.log(`${tag} Total posts:    ${allPosts.length}`);
+    console.log(`${tag} Duration:       ${(duration / 1000).toFixed(1)}s`);
+    if (failedCount > 0) {
+        console.log(`${tag} Failed URLs:`);
+        urlResults.filter((r) => !r.success).forEach((r) => {
+            console.log(`${tag}   - ${r.url}: ${r.errors.join("; ")}`);
+        });
+    }
+    console.log(`${tag} ══════════════════════════════════\n`);
+    return {
+        posts: allPosts,
+        urlResults,
+        totalUrls: urls.length,
+        successCount,
+        failedCount,
+        retriedCount,
+        duration,
+    };
+}
+// ---------------------------------------------------------------------------
+// Create a reusable browser context for batch operations.
+// Caller is responsible for closing context and browser when done.
+// ---------------------------------------------------------------------------
+async function createBrowserContext() {
+    const cookiesExist = (0, browserAuth_1.hasSavedCookies)();
+    let context;
+    let browser = null;
+    if (cookiesExist && (0, browserAuth_1.shouldUseStorageState)()) {
+        const statePath = (0, browserAuth_1.getStorageState)();
+        browser = await playwright_1.chromium.launch({ headless: config_1.config.headless, args: browserArgs_1.BROWSER_ARGS });
+        context = await browser.newContext({
+            storageState: statePath,
+            userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        });
+    }
+    else if (cookiesExist) {
+        context = await playwright_1.chromium.launchPersistentContext((0, browserAuth_1.getProfileDir)(), {
+            headless: config_1.config.headless,
+            args: browserArgs_1.BROWSER_ARGS,
+            userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        });
+    }
+    else {
+        browser = await playwright_1.chromium.launch({ headless: config_1.config.headless, args: browserArgs_1.BROWSER_ARGS });
+        context = await browser.newContext({
+            userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        });
+    }
+    context.setDefaultNavigationTimeout(90000);
+    context.setDefaultTimeout(60000);
+    return { context, browser };
+}
+// ---------------------------------------------------------------------------
+// Scrape a single URL within an existing browser context.
+// Creates a new page (tab) per URL, closes it when done.
+// Exported for use by urlScheduler's progressive batch mode.
+// ---------------------------------------------------------------------------
+async function scrapeOneUrl(context, targetUrl, tag, label, source) {
+    const platform = detectPlatform(targetUrl) ?? "Other";
+    const posts = [];
+    const errors = [];
+    let page = null;
+    try {
+        page = await context.newPage();
+        // Reddit URL normalization
+        let navigateUrl = targetUrl;
+        if (platform === "Reddit") {
+            navigateUrl = navigateUrl.replace(/old\.reddit\.com/i, "www.reddit.com");
+            if (/\/r\/[^/]+\/?$/.test(navigateUrl)) {
+                navigateUrl = navigateUrl.replace(/\/+$/, "") + "/new/";
+            }
+        }
+        // Navigate with retry
+        console.log(`${tag} ${label} Navigating: ${navigateUrl}`);
+        const MAX_NAV_ATTEMPTS = 2;
+        for (let attempt = 1; attempt <= MAX_NAV_ATTEMPTS; attempt++) {
+            try {
+                await page.goto(navigateUrl, { waitUntil: "domcontentloaded", timeout: 90000 });
+                break;
+            }
+            catch (navErr) {
+                const errMsg = navErr instanceof Error ? navErr.message : String(navErr);
+                const isRetryable = errMsg.includes("Timeout") || errMsg.includes("ERR_ABORTED");
+                if (isRetryable && attempt < MAX_NAV_ATTEMPTS) {
+                    console.warn(`${tag} ${label} Nav attempt ${attempt} failed, retrying in 5s...`);
+                    await page.waitForTimeout(5000);
+                    continue;
+                }
+                throw navErr;
+            }
+        }
+        await page.waitForTimeout(3000);
+        // Check for login redirect
+        const finalUrl = page.url();
+        const isLoginPage = finalUrl.includes("/login") ||
+            finalUrl.includes("/checkpoint") ||
+            finalUrl.includes("/signin") ||
+            (await page.title()).toLowerCase().includes("log in");
+        if (isLoginPage) {
+            errors.push(`${platform} redirected to login — requires saved cookies`);
+        }
+        else {
+            // Extract posts (same platform dispatch as scrapeUrl)
+            let extracted = [];
+            switch (platform) {
+                case "Facebook":
+                    if (isFacebookSearchUrl(targetUrl)) {
+                        extracted = await extractFacebookSearch(page, targetUrl);
+                    }
+                    else {
+                        extracted = await extractFacebook(page, targetUrl);
+                    }
+                    break;
+                case "Reddit":
+                    extracted = await extractReddit(page, targetUrl);
+                    break;
+                case "LinkedIn":
+                    extracted = await extractLinkedin(page);
+                    break;
+                case "X":
+                    extracted = await extractX(page);
+                    break;
+                case "Other":
+                    extracted = await extractGeneric(page);
+                    break;
+            }
+            for (const item of extracted) {
+                posts.push({
+                    ...item,
+                    platform,
+                    source,
+                    url: item.url || targetUrl,
+                });
+            }
+        }
+    }
+    catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        errors.push(msg);
+    }
+    finally {
+        if (page)
+            await page.close().catch(() => { });
+    }
+    return {
+        posts,
+        urlResult: {
+            url: targetUrl,
+            platform,
+            success: errors.length === 0,
+            postsFound: posts.length,
+            errors,
+        },
     };
 }
 //# sourceMappingURL=urlScraper.js.map

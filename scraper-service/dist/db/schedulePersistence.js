@@ -104,6 +104,7 @@ function rowToRun(r) {
         postsFound: r.posts_found,
         leadsInserted: r.leads_inserted,
         errorMessage: r.error_message,
+        scrapedPosts: Array.isArray(r.scraped_posts) ? r.scraped_posts : undefined,
     };
 }
 // ═══════════════════════════════════════════════════════════════════════════
@@ -282,6 +283,7 @@ async function insertRun(run) {
         posts_found: run.postsFound,
         leads_inserted: run.leadsInserted,
         error_message: run.errorMessage,
+        scraped_posts: run.scrapedPosts ?? null,
     });
     if (error) {
         console.error("[persistence] Failed to insert run:", error.message);
@@ -309,6 +311,8 @@ async function patchRun(runId, patch) {
         dbPatch.leads_inserted = patch.leadsInserted;
     if (patch.errorMessage !== undefined)
         dbPatch.error_message = patch.errorMessage;
+    if (patch.scrapedPosts !== undefined)
+        dbPatch.scraped_posts = patch.scrapedPosts;
     const { error } = await sb.from("url_schedule_runs").update(dbPatch).eq("id", runId);
     if (error) {
         console.error("[persistence] Failed to patch run:", error.message);

@@ -156,6 +156,8 @@ async function runSchedule(id) {
     runningSchedules.add(id);
     (0, rateLimiter_1.recordScrapeStart)(platform);
     console.log(`[url-scheduler] Running "${schedule.name}" → ${schedule.url}`);
+    // Refresh keywords from /settings before scraping
+    await (0, backendClient_1.fetchKeywords)(true).catch(() => console.warn(`[url-scheduler] Keyword refresh failed for "${schedule.name}", using cached`));
     // Create run record
     const runId = (0, crypto_1.randomUUID)();
     const run = {
@@ -174,6 +176,7 @@ async function runSchedule(id) {
     let postsFound = 0;
     let leadsInserted = 0;
     let errorMessage = null;
+    let runScrapedPosts = [];
     try {
         const result = await scrapeWithRetry(schedule.url, `[url-scheduler] "${schedule.name}"`);
         const filtered = (0, postFilter_1.filterPosts)(result.posts, "[url-scheduler]");
@@ -184,6 +187,30 @@ async function runSchedule(id) {
             if (batchResult) {
                 leadsInserted = batchResult.inserted;
                 await (0, discord_1.sendNewLeadsAlert)(schedule.url, result.platform, filtered, batchResult);
+                // Build per-post data with matched keywords from batch results
+                const kwMap = new Map();
+                for (const r of batchResult.results) {
+                    if (r.url && r.matchedKeywords?.length)
+                        kwMap.set(r.url, r.matchedKeywords);
+                }
+                runScrapedPosts = filtered.map((p) => ({
+                    author: p.author,
+                    text: p.text.slice(0, 200),
+                    url: p.url,
+                    platform: p.platform,
+                    timestamp: p.timestamp,
+                    matchedKeywords: kwMap.get(p.url) ?? [],
+                }));
+            }
+            else {
+                runScrapedPosts = filtered.map((p) => ({
+                    author: p.author,
+                    text: p.text.slice(0, 200),
+                    url: p.url,
+                    platform: p.platform,
+                    timestamp: p.timestamp,
+                    matchedKeywords: [],
+                }));
             }
         }
         if (result.errors.length > 0) {
@@ -223,6 +250,7 @@ async function runSchedule(id) {
         postsFound,
         leadsInserted,
         errorMessage,
+        scrapedPosts: runScrapedPosts.length > 0 ? runScrapedPosts : undefined,
     });
     // Persist run stats on schedule
     const now = new Date().toISOString();
@@ -237,6 +265,11 @@ async function runSchedule(id) {
 // Group queue runner — processes all members of a group sequentially,
 // waiting for per-platform rate limits between each URL.
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Progressive batch constants
+// ---------------------------------------------------------------------------
+const BATCH_INTER_URL_DELAY_MS = 3000; // delay between URLs in same pass
+const BATCH_MAX_PASSES = 3; // max retry passes for failed URLs
 async function runGroup(groupKey) {
     if (runningGroups.has(groupKey)) {
         console.log(`[url-scheduler] Group "${groupKey.split("||")[0]}" — skipped (already running)`);
@@ -247,38 +280,210 @@ async function runGroup(groupKey) {
         return;
     const groupName = groupKey.split("||")[0];
     runningGroups.add(groupKey);
-    console.log(`\n[url-scheduler] ═══ Group "${groupName}" triggered — ${memberIds.length} URL(s) to process ═══`);
+    console.log(`\n[url-scheduler] ═══ Group "${groupName}" triggered — ${memberIds.length} URL(s) via progressive batch ═══`);
+    // ── Collect active schedules ────────────────────────────────────────
+    const activeSchedules = [];
+    for (const id of memberIds) {
+        const schedule = await (0, schedulePersistence_1.getScheduleById)(id);
+        if (schedule && schedule.status === "active") {
+            activeSchedules.push({ id, schedule });
+        }
+    }
+    if (activeSchedules.length === 0) {
+        runningGroups.delete(groupKey);
+        console.log(`[url-scheduler] ═══ Group "${groupName}" — no active members ═══\n`);
+        return;
+    }
+    // Refresh keywords before batch scraping
+    await (0, backendClient_1.fetchKeywords)(true).catch(() => console.warn(`[url-scheduler] Keyword refresh failed for group "${groupName}", using cached`));
+    // ── Create per-URL run records (all start as "running") ─────────────
+    const runMap = new Map();
+    for (const { id, schedule } of activeSchedules) {
+        const runId = (0, crypto_1.randomUUID)();
+        const run = {
+            id: runId,
+            scheduleId: id,
+            scheduleName: schedule.name,
+            startedAt: new Date().toISOString(),
+            finishedAt: null,
+            status: "running",
+            postsFound: 0,
+            leadsInserted: 0,
+            errorMessage: null,
+        };
+        await (0, schedulePersistence_1.insertRun)(run);
+        runMap.set(schedule.url, { runId, scheduleId: id, schedule });
+    }
+    // ── Open ONE browser for the entire group ───────────────────────────
+    const allPosts = [];
+    let context = null;
+    let browser = null;
     try {
-        for (let i = 0; i < memberIds.length; i++) {
-            const id = memberIds[i];
-            const schedule = await (0, schedulePersistence_1.getScheduleById)(id);
-            if (!schedule || schedule.status !== "active") {
-                console.log(`[url-scheduler] Group [${i + 1}/${memberIds.length}] — skipped (inactive or deleted)`);
-                continue;
+        const browserCtx = await (0, scrapers_1.createBrowserContext)();
+        context = browserCtx.context;
+        browser = browserCtx.browser;
+        console.log(`[url-scheduler] Browser launched — scraping ${activeSchedules.length} URLs`);
+        // URLs still pending (starts with all, shrinks each pass)
+        let pendingUrls = activeSchedules.map((s) => s.schedule.url);
+        // ── Loop: scrape all pending → collect failures → retry ───────────
+        for (let pass = 1; pass <= BATCH_MAX_PASSES; pass++) {
+            if (pendingUrls.length === 0)
+                break;
+            const isRetryPass = pass > 1;
+            const passLabel = isRetryPass
+                ? `RETRY PASS ${pass}/${BATCH_MAX_PASSES}`
+                : `PASS ${pass}/${BATCH_MAX_PASSES}`;
+            console.log(`\n[url-scheduler] ── ${passLabel}: ${pendingUrls.length} URL(s) ──`);
+            const failedThisPass = [];
+            for (let i = 0; i < pendingUrls.length; i++) {
+                const targetUrl = pendingUrls[i];
+                const entry = runMap.get(targetUrl);
+                if (!entry)
+                    continue;
+                const label = `[${i + 1}/${pendingUrls.length}]`;
+                // Delay between URLs (skip first in each pass)
+                if (i > 0) {
+                    await new Promise((r) => setTimeout(r, BATCH_INTER_URL_DELAY_MS));
+                }
+                // Mark run as "running" (for retry passes, reset the status)
+                if (isRetryPass) {
+                    await (0, schedulePersistence_1.patchRun)(entry.runId, {
+                        status: "running",
+                        errorMessage: null,
+                    });
+                }
+                console.log(`[url-scheduler] ${passLabel} ${label} → "${entry.schedule.name}" (${targetUrl})`);
+                // Scrape using shared browser context
+                const result = await (0, scrapers_1.scrapeOneUrl)(context, targetUrl, `[url-scheduler]`, label, groupName);
+                if (result.urlResult.success) {
+                    // ── Success: collect posts, update run record ────────────
+                    allPosts.push(...result.posts);
+                    await (0, schedulePersistence_1.patchRun)(entry.runId, {
+                        finishedAt: new Date().toISOString(),
+                        status: "ok",
+                        postsFound: result.posts.length,
+                        errorMessage: null,
+                        scrapedPosts: result.posts.slice(0, 50).map((p) => ({
+                            author: p.author,
+                            text: p.text.slice(0, 200),
+                            url: p.url,
+                            platform: p.platform,
+                            timestamp: p.timestamp,
+                            matchedKeywords: [],
+                        })),
+                    });
+                    console.log(`[url-scheduler] ${passLabel} ${label} ✅ ${result.posts.length} posts`);
+                }
+                else {
+                    // ── Failed: mark error, add to retry queue ──────────────
+                    const errMsg = result.urlResult.errors.join("; ");
+                    const retriesLeft = BATCH_MAX_PASSES - pass;
+                    await (0, schedulePersistence_1.patchRun)(entry.runId, {
+                        status: "error",
+                        errorMessage: retriesLeft > 0
+                            ? `${errMsg} (will retry — ${retriesLeft} pass(es) left)`
+                            : errMsg,
+                        postsFound: 0,
+                    });
+                    failedThisPass.push(targetUrl);
+                    console.log(`[url-scheduler] ${passLabel} ${label} ❌ Failed: ${errMsg}${retriesLeft > 0 ? ` — will retry` : ` — giving up`}`);
+                }
             }
-            // Wait for the platform rate limit to clear before running
-            const platform = detectPlatform(schedule.url);
-            const waitMs = (0, rateLimiter_1.getWaitTimeMs)(platform);
-            if (waitMs > 0) {
-                const waitSec = Math.ceil((waitMs + 1000) / 1000); // +1s buffer
-                console.log(`[url-scheduler] Group [${i + 1}/${memberIds.length}] waiting ${waitSec}s for ${platform} rate limit before "${schedule.name}"`);
-                await new Promise((resolve) => setTimeout(resolve, waitMs + 1000));
-            }
-            // Run the schedule — runSchedule handles its own error catching
-            try {
-                console.log(`[url-scheduler] Group [${i + 1}/${memberIds.length}] → "${schedule.name}"`);
-                await runSchedule(id);
-            }
-            catch (err) {
-                console.error(`[url-scheduler] Group member "${schedule.name}" failed:`, err);
-                // Continue to next member — don't abort the group
+            // Next pass only processes the failures from this pass
+            pendingUrls = failedThisPass;
+            if (failedThisPass.length > 0 && pass < BATCH_MAX_PASSES) {
+                console.log(`[url-scheduler] ${failedThisPass.length} URL(s) failed — retrying in next pass...`);
+                // Brief pause before retry pass
+                await new Promise((r) => setTimeout(r, 5000));
             }
         }
     }
-    finally {
-        runningGroups.delete(groupKey);
-        console.log(`[url-scheduler] ═══ Group "${groupName}" finished ═══\n`);
+    catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`[url-scheduler] Group "${groupName}" browser error: ${msg}`);
+        // Mark any still-running records as error
+        for (const [, entry] of runMap) {
+            await (0, schedulePersistence_1.patchRun)(entry.runId, {
+                finishedAt: new Date().toISOString(),
+                status: "error",
+                errorMessage: `Browser crashed: ${msg}`,
+            }).catch(() => { });
+        }
     }
+    finally {
+        if (context)
+            await context.close().catch(() => { });
+        if (browser)
+            await browser.close().catch(() => { });
+    }
+    // ── Send ONE combined batch of all posts to backend ─────────────────
+    const filtered = (0, postFilter_1.filterPosts)(allPosts, `[url-scheduler] "${groupName}"`);
+    console.log(`[url-scheduler] Group "${groupName}": ${filtered.length} posts after filtering (${allPosts.length - filtered.length} rejected)`);
+    let leadsInserted = 0;
+    if (filtered.length > 0) {
+        const batchResponse = await (0, backendClient_1.sendLeadsBatch)(filtered);
+        if (batchResponse) {
+            leadsInserted = batchResponse.inserted;
+            // Get the dominant platform for the alert
+            const platformCounts = new Map();
+            for (const p of filtered) {
+                platformCounts.set(p.platform, (platformCounts.get(p.platform) || 0) + 1);
+            }
+            let alertPlatform = "Other";
+            let maxCount = 0;
+            for (const [plat, count] of platformCounts) {
+                if (count > maxCount) {
+                    alertPlatform = plat;
+                    maxCount = count;
+                }
+            }
+            await (0, discord_1.sendNewLeadsAlert)(`${groupName} (${activeSchedules.length} URLs)`, alertPlatform, filtered, batchResponse);
+            // Update per-URL run records with matched keywords from batch results
+            const kwMap = new Map();
+            for (const r of batchResponse.results) {
+                if (r.url && r.matchedKeywords?.length)
+                    kwMap.set(r.url, r.matchedKeywords);
+            }
+            // Update scrapedPosts on successful runs with keyword data
+            for (const [url, entry] of runMap) {
+                const postsForUrl = filtered.filter((p) => p.source === groupName && (p.url === url || p.url.includes(url.replace(/https?:\/\//, ""))));
+                if (postsForUrl.length > 0) {
+                    await (0, schedulePersistence_1.patchRun)(entry.runId, {
+                        scrapedPosts: postsForUrl.slice(0, 50).map((p) => ({
+                            author: p.author,
+                            text: p.text.slice(0, 200),
+                            url: p.url,
+                            platform: p.platform,
+                            timestamp: p.timestamp,
+                            matchedKeywords: kwMap.get(p.url) ?? [],
+                        })),
+                    });
+                }
+            }
+        }
+    }
+    // ── Update each schedule's metadata ─────────────────────────────────
+    const now = new Date().toISOString();
+    for (const { scheduleId } of runMap.values()) {
+        const schedule = await (0, schedulePersistence_1.getScheduleById)(scheduleId);
+        if (schedule) {
+            await (0, schedulePersistence_1.patchSchedule)(scheduleId, {
+                lastRunAt: now,
+                lastRunStatus: "ok",
+                totalRuns: (schedule.totalRuns ?? 0) + 1,
+                updatedAt: now,
+            });
+        }
+    }
+    // Mark any still-running records as finished (safety net)
+    for (const [, entry] of runMap) {
+        await (0, schedulePersistence_1.patchRun)(entry.runId, {
+            finishedAt: new Date().toISOString(),
+        }).catch(() => { });
+    }
+    runningGroups.delete(groupKey);
+    const successCount = [...runMap.values()].length;
+    console.log(`[url-scheduler] ═══ Group "${groupName}" finished — ${filtered.length} posts, ${leadsInserted} leads, ${successCount} URLs ═══\n`);
 }
 // ---------------------------------------------------------------------------
 // Task lifecycle — group-aware registration

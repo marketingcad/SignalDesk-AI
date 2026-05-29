@@ -18,6 +18,24 @@ export interface ScraperModule {
     name: Platform;
     scrape(): Promise<ScrapeResult>;
 }
+export interface BatchUrlResult {
+    url: string;
+    platform: Platform;
+    success: boolean;
+    postsFound: number;
+    errors: string[];
+    /** true if this URL was retried after initial failure */
+    retried?: boolean;
+}
+export interface BatchScrapeResult {
+    posts: ScrapedPost[];
+    urlResults: BatchUrlResult[];
+    totalUrls: number;
+    successCount: number;
+    failedCount: number;
+    retriedCount: number;
+    duration: number;
+}
 export interface UrlScrapeItemResult {
     url: string;
     success: boolean;
@@ -72,6 +90,14 @@ export interface UpdateScheduleInput {
     cron?: string;
     status?: ScheduleStatus;
 }
+export interface RunScrapedPost {
+    author: string;
+    text: string;
+    url: string;
+    platform: Platform;
+    timestamp: string;
+    matchedKeywords: string[];
+}
 export interface ScheduleRun {
     id: string;
     scheduleId: string;
@@ -82,4 +108,5 @@ export interface ScheduleRun {
     postsFound: number;
     leadsInserted: number;
     errorMessage: string | null;
+    scrapedPosts?: RunScrapedPost[];
 }

@@ -48,6 +48,8 @@ const discord_1 = require("./alerts/discord");
 const browserAuth_1 = require("./crawler/browserAuth");
 const postFilter_1 = require("./utils/postFilter");
 const rateLimiter_1 = require("./utils/rateLimiter");
+const sessionHealth_1 = require("./utils/sessionHealth");
+const discord_2 = require("./alerts/discord");
 const app = (0, express_1.default)();
 app.use(express_1.default.json());
 // ---------------------------------------------------------------------------
@@ -188,27 +190,42 @@ app.post("/api/scrape-url", async (req, res) => {
     // Refresh keywords from /settings before scraping
     await (0, backendClient_1.fetchKeywords)(true).catch(() => { });
     const items = [];
+    // Rate limit once per platform per batch — not per URL.
+    // This prevents the 2nd+ URL of the same platform from being blocked
+    // within a single "Scrape Now" request, while still protecting against
+    // rapid repeated requests.
+    const rateLimitedPlatforms = new Set();
+    const batchCheckedPlatforms = new Set();
     for (const targetUrl of rawUrls) {
         try {
-            // Rate limit check per platform
             const urlPlatform = detectPlatformFromUrl(targetUrl);
-            const rateCheck = (0, rateLimiter_1.checkRateLimit)(urlPlatform);
-            if (!rateCheck.allowed) {
-                const waitSec = Math.ceil(rateCheck.retryAfterMs / 1000);
-                console.log(`[api] Rate limited (${urlPlatform}) for ${targetUrl} — retry in ${waitSec}s`);
+            // Only check rate limit once per platform per batch
+            if (!batchCheckedPlatforms.has(urlPlatform)) {
+                batchCheckedPlatforms.add(urlPlatform);
+                const rateCheck = (0, rateLimiter_1.checkRateLimit)(urlPlatform);
+                if (!rateCheck.allowed) {
+                    rateLimitedPlatforms.add(urlPlatform);
+                    const waitSec = Math.ceil(rateCheck.retryAfterMs / 1000);
+                    console.log(`[api] Rate limited (${urlPlatform}) — retry in ${waitSec}s`);
+                }
+                else {
+                    (0, rateLimiter_1.recordScrapeStart)(urlPlatform);
+                }
+            }
+            if (rateLimitedPlatforms.has(urlPlatform)) {
+                const waitSec = Math.ceil((config_1.config.platformRateLimitMs[urlPlatform] ?? 0) / 1000);
                 items.push({
                     url: targetUrl,
                     success: false,
                     platform: urlPlatform,
                     postsFound: 0,
                     duration: 0,
-                    errors: [`Rate limited: ${urlPlatform} scrapes must be at least ${Math.ceil((config_1.config.platformRateLimitMs[urlPlatform] ?? 0) / 1000)}s apart. Retry in ${waitSec}s.`],
+                    errors: [`Rate limited: ${urlPlatform} scrapes must be at least ${waitSec}s apart. Try again later.`],
                     batch: null,
                     scrapedPosts: [],
                 });
                 continue;
             }
-            (0, rateLimiter_1.recordScrapeStart)(urlPlatform);
             const result = await scrapeUrlWithRetry(targetUrl, `[url-scraper]`);
             const discordErrors = result.errors.filter((e) => !e.includes("requires login") && !e.includes("page.goto: Timeout") && !e.includes("ERR_ABORTED"));
             if (discordErrors.length > 0) {
@@ -282,6 +299,81 @@ app.post("/api/scrape-url", async (req, res) => {
         totalInserted: items.reduce((s, i) => s + (i.batch?.inserted ?? 0), 0),
         totalDuplicates: items.reduce((s, i) => s + (i.batch?.duplicates ?? 0), 0),
         items,
+    });
+});
+// ---------------------------------------------------------------------------
+// Batch scrape — single browser, multiple URLs, one combined lead submission
+// Accepts: { urls: string[], source?: string }
+// ---------------------------------------------------------------------------
+app.post("/api/scrape-url/batch", async (req, res) => {
+    if (!checkAuth(req, res))
+        return;
+    const body = req.body;
+    const urls = Array.isArray(body.urls) ? body.urls.filter((u) => typeof u === "string" && u.trim()) : [];
+    if (urls.length === 0) {
+        return res.status(400).json({ error: "Provide 'urls' (non-empty string array)" });
+    }
+    // Validate all URLs
+    const badUrls = [];
+    for (const u of urls) {
+        try {
+            new URL(u);
+        }
+        catch {
+            badUrls.push(u);
+        }
+    }
+    if (badUrls.length > 0) {
+        return res.status(400).json({ error: "Invalid URL format", invalid: badUrls });
+    }
+    const sourceName = typeof body.source === "string" ? body.source.trim() : undefined;
+    console.log(`[api] Batch scrape triggered: ${urls.length} URL(s)${sourceName ? ` (source: ${sourceName})` : ""}`);
+    // Refresh keywords before scraping
+    await (0, backendClient_1.fetchKeywords)(true).catch(() => { });
+    // Scrape all URLs with single browser
+    const batchResult = await (0, scrapers_1.scrapeUrlsBatch)(urls, sourceName);
+    // Filter posts (remove job seekers, unknown authors, short posts)
+    const filtered = (0, postFilter_1.filterPosts)(batchResult.posts, "[batch-scraper]").filter((p) => {
+        if (!p.author || p.author.toLowerCase() === "unknown" || p.author.startsWith("urn:li:"))
+            return false;
+        return true;
+    });
+    console.log(`[api] Batch: ${filtered.length} posts after filtering (${batchResult.posts.length - filtered.length} rejected)`);
+    // Send ONE combined batch to the backend
+    let leadsBatchResult = null;
+    if (filtered.length > 0) {
+        leadsBatchResult = await (0, backendClient_1.sendLeadsBatch)(filtered);
+        if (leadsBatchResult) {
+            // Send alert for the whole batch
+            const firstPlatform = batchResult.urlResults.find((r) => r.success)?.platform || "Other";
+            await (0, discord_1.sendNewLeadsAlert)(`Batch (${urls.length} URLs)`, firstPlatform, filtered, leadsBatchResult);
+        }
+    }
+    // Build per-URL keyword mapping from batch results
+    const kwMap = new Map();
+    for (const r of leadsBatchResult?.results ?? []) {
+        if (r.url && r.matchedKeywords)
+            kwMap.set(r.url, r.matchedKeywords);
+    }
+    res.json({
+        success: true,
+        totalUrls: batchResult.totalUrls,
+        successUrls: batchResult.successCount,
+        failedUrls: batchResult.failedCount,
+        retriedUrls: batchResult.retriedCount,
+        totalPostsFound: filtered.length,
+        totalInserted: leadsBatchResult?.inserted ?? 0,
+        totalDuplicates: leadsBatchResult?.duplicates ?? 0,
+        duration: batchResult.duration,
+        urlResults: batchResult.urlResults,
+        scrapedPosts: filtered.slice(0, 100).map((p) => ({
+            author: p.author,
+            text: p.text.slice(0, 200),
+            url: p.url,
+            platform: p.platform,
+            timestamp: p.timestamp,
+            matchedKeywords: kwMap.get(p.url) ?? [],
+        })),
     });
 });
 // ---------------------------------------------------------------------------
@@ -455,6 +547,87 @@ app.post("/api/auth/setup", async (req, res) => {
 });
 app.get("/api/auth/status", (_req, res) => {
     res.json({ cookiesSaved: (0, browserAuth_1.hasSavedCookies)() });
+});
+// ---------------------------------------------------------------------------
+// Auth health — session health status + on-demand cookie validation
+// ---------------------------------------------------------------------------
+/** GET /api/auth/health — current session health for all platforms */
+app.get("/api/auth/health", (req, res) => {
+    if (!checkAuth(req, res))
+        return;
+    const health = (0, sessionHealth_1.getAllHealth)();
+    const hasExpired = health.some((h) => h.status === "expired");
+    const hasWarning = health.some((h) => h.status === "warning");
+    res.json({
+        overall: hasExpired ? "expired" : hasWarning ? "warning" : "healthy",
+        platforms: health,
+        cookiesSaved: (0, browserAuth_1.hasSavedCookies)(),
+    });
+});
+/** POST /api/auth/validate — trigger on-demand cookie validation for a platform */
+app.post("/api/auth/validate", async (req, res) => {
+    if (!checkAuth(req, res))
+        return;
+    const { platform } = req.body;
+    const validPlatforms = ["facebook", "linkedin"];
+    if (platform && !validPlatforms.includes(platform.toLowerCase())) {
+        return res.status(400).json({
+            error: `Invalid platform. Must be one of: ${validPlatforms.join(", ")}`,
+        });
+    }
+    console.log(`[api] Cookie validation triggered${platform ? ` for ${platform}` : " for all platforms"}`);
+    const platformMap = { facebook: "Facebook", linkedin: "LinkedIn" };
+    if (platform) {
+        const result = await (0, browserAuth_1.validateCookies)(platform.toLowerCase());
+        const platformKey = platformMap[platform.toLowerCase()];
+        if (!platformKey)
+            return res.status(400).json({ error: "Invalid platform" });
+        if (result !== "error") {
+            (0, sessionHealth_1.reportValidationResult)(platformKey, result);
+            if (result === "expired" || result === "no_cookies") {
+                await (0, discord_2.sendAuthExpiredAlert)(platformKey, result === "no_cookies" ? "no_cookies" : "cookie_validation");
+            }
+        }
+        res.json({ success: true, platform, result });
+    }
+    else {
+        const results = await (0, browserAuth_1.validateAllCookies)();
+        for (const [key, result] of Object.entries(results)) {
+            const p = platformMap[key];
+            if (!p || result === "error")
+                continue;
+            (0, sessionHealth_1.reportValidationResult)(p, result);
+            if (result === "expired" || result === "no_cookies") {
+                await (0, discord_2.sendAuthExpiredAlert)(p, result === "no_cookies" ? "no_cookies" : "cookie_validation");
+            }
+        }
+        res.json({ success: true, results });
+    }
+});
+/** POST /api/auth/health/reset — reset health tracking after re-login */
+app.post("/api/auth/health/reset", (req, res) => {
+    if (!checkAuth(req, res))
+        return;
+    const { platform } = req.body;
+    const platformMap = {
+        facebook: "Facebook",
+        linkedin: "LinkedIn",
+        reddit: "Reddit",
+        x: "X",
+    };
+    if (platform) {
+        const p = platformMap[platform.toLowerCase()];
+        if (!p)
+            return res.status(400).json({ error: "Invalid platform" });
+        (0, sessionHealth_1.resetHealth)(p);
+        console.log(`[api] Health state reset for ${p}`);
+        res.json({ success: true, reset: p });
+    }
+    else {
+        Object.values(platformMap).forEach(sessionHealth_1.resetHealth);
+        console.log("[api] Health state reset for all platforms");
+        res.json({ success: true, reset: "all" });
+    }
 });
 // ---------------------------------------------------------------------------
 // Status endpoint

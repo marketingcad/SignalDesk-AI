@@ -6,8 +6,11 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.hasSavedCookies = hasSavedCookies;
 exports.getProfileDir = getProfileDir;
 exports.getStorageState = getStorageState;
+exports.saveStorageState = saveStorageState;
 exports.shouldUseStorageState = shouldUseStorageState;
 exports.loginAndSave = loginAndSave;
+exports.validateCookies = validateCookies;
+exports.validateAllCookies = validateAllCookies;
 const playwright_1 = require("playwright");
 const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
@@ -37,21 +40,50 @@ function getProfileDir() {
 }
 /**
  * Get storageState for use with browser.newContext().
- * Priority: env var > storage-state.json file > undefined (no auth).
+ *
+ * The on-disk storage-state.json file is the single source of truth. It is the
+ * "rolling session": every authenticated scrape re-exports the (rotated, freshly
+ * extended) cookies back to it via {@link saveStorageState}, so the session stays
+ * alive indefinitely as long as the scraper keeps running — no re-login needed.
+ *
+ * The BROWSER_STORAGE_STATE env var (Render / production) is only a BOOTSTRAP
+ * seed: it is written to the file once, on first use, and from then on the
+ * refreshed file takes priority. (On a fresh deploy the ephemeral file is gone,
+ * so the env var seeds it again — and if the env var is ever stale, re-pasting a
+ * fresh value + restart re-seeds cleanly.)
  */
 function getStorageState() {
-    // 1. Env var (for Render / production)
-    if (process.env.BROWSER_STORAGE_STATE) {
-        const tmpPath = path_1.default.resolve(__dirname, "../../auth/.tmp-storage-state.json");
-        fs_1.default.mkdirSync(path_1.default.dirname(tmpPath), { recursive: true });
-        fs_1.default.writeFileSync(tmpPath, process.env.BROWSER_STORAGE_STATE, "utf-8");
-        return tmpPath;
-    }
-    // 2. Exported file (from local login)
+    // Rolling session file — the freshest cookies live here once it exists.
     if (fs_1.default.existsSync(STORAGE_STATE_PATH)) {
         return STORAGE_STATE_PATH;
     }
+    // Bootstrap: seed the rolling file from the env var (first run / fresh deploy).
+    if (process.env.BROWSER_STORAGE_STATE) {
+        fs_1.default.mkdirSync(path_1.default.dirname(STORAGE_STATE_PATH), { recursive: true });
+        fs_1.default.writeFileSync(STORAGE_STATE_PATH, process.env.BROWSER_STORAGE_STATE, "utf-8");
+        return STORAGE_STATE_PATH;
+    }
     return undefined;
+}
+/**
+ * Persist the current browser cookies/localStorage back to the rolling session
+ * file. Call this after a scrape where we CONFIRMED the session is still logged
+ * in — it captures the cookies Facebook/LinkedIn just rotated and re-extended,
+ * which is what keeps the login from expiring over time.
+ *
+ * Never call this on a logged-out context: it would overwrite good saved cookies
+ * with an empty session.
+ */
+async function saveStorageState(context) {
+    try {
+        fs_1.default.mkdirSync(path_1.default.dirname(STORAGE_STATE_PATH), { recursive: true });
+        await context.storageState({ path: STORAGE_STATE_PATH });
+        console.log(`[auth] Rolling session refreshed → cookies re-saved (no expiry while scraping runs)`);
+    }
+    catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`[auth] Could not refresh rolling session: ${msg}`);
+    }
 }
 /**
  * Check if we should use storageState (server mode) vs persistent profile (local mode).
@@ -140,6 +172,110 @@ async function loginAndSave(platform) {
     console.log(`  cat "${STORAGE_STATE_PATH}"`);
     console.log("===================================================\n");
 }
+// ---------------------------------------------------------------------------
+// Cookie validation — lightweight check to detect expired sessions
+// ---------------------------------------------------------------------------
+/** Test URLs that require login. If we land on a login page, cookies are stale. */
+const VALIDATION_TARGETS = {
+    facebook: {
+        url: "https://www.facebook.com/me",
+        // If redirected to login page or see login form, cookies are expired
+        loginIndicators: [
+            /\/login/i,
+            /\/checkpoint/i,
+            /id="loginform"/i,
+            /id="email"/i,
+        ],
+    },
+    linkedin: {
+        url: "https://www.linkedin.com/feed/",
+        loginIndicators: [
+            /\/login/i,
+            /\/uas\/login/i,
+            /\/authwall/i,
+            /class="sign-in-form"/i,
+        ],
+    },
+};
+/**
+ * Validate cookies for a specific platform by loading a page that requires auth
+ * and checking if we get redirected to a login page.
+ *
+ * Returns: "valid" | "expired" | "no_cookies" | "error"
+ */
+async function validateCookies(platform) {
+    const target = VALIDATION_TARGETS[platform];
+    if (!target)
+        return "error";
+    // Check if we even have cookies to validate
+    if (!hasSavedCookies())
+        return "no_cookies";
+    const storageState = getStorageState();
+    if (!storageState)
+        return "no_cookies";
+    let browser;
+    try {
+        browser = await playwright_1.chromium.launch({
+            headless: true,
+            args: [
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+            ],
+        });
+        const context = await browser.newContext({
+            storageState,
+            userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        });
+        const page = await context.newPage();
+        try {
+            await page.goto(target.url, { waitUntil: "domcontentloaded", timeout: 20000 });
+        }
+        catch {
+            // Timeout or navigation error — could be network issue, not auth
+            await context.close();
+            return "error";
+        }
+        const finalUrl = page.url();
+        const bodyHtml = await page.content().catch(() => "");
+        await context.close();
+        // Check if the final URL or page content indicates a login wall
+        for (const indicator of target.loginIndicators) {
+            if (indicator.test(finalUrl) || indicator.test(bodyHtml)) {
+                console.log(`[auth] ${platform} cookie validation: EXPIRED (matched: ${indicator.source})`);
+                return "expired";
+            }
+        }
+        console.log(`[auth] ${platform} cookie validation: VALID`);
+        return "valid";
+    }
+    catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`[auth] ${platform} cookie validation error: ${msg}`);
+        return "error";
+    }
+    finally {
+        if (browser)
+            await browser.close().catch(() => { });
+    }
+}
+/**
+ * Validate cookies for all auth-requiring platforms.
+ * Returns a map of platform → validation result.
+ */
+async function validateAllCookies() {
+    const results = {};
+    for (const platform of Object.keys(VALIDATION_TARGETS)) {
+        results[platform] = await validateCookies(platform);
+        // Small delay between checks to avoid looking like a bot
+        await new Promise((r) => setTimeout(r, 2000));
+    }
+    return results;
+}
+// ---------------------------------------------------------------------------
+// CLI entry point
+// ---------------------------------------------------------------------------
 // Allow running directly: npm run auth:login -- linkedin
 if (require.main === module) {
     const platform = process.argv[2]?.toLowerCase();

@@ -4,41 +4,26 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Header } from "@/components/header";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { Search, Calendar, Activity } from "lucide-react";
+import { Calendar, Activity } from "lucide-react";
 
 import type {
-  UrlItemResult, HistoryEntry, UrlSchedule, ScheduleRun,
+  UrlSchedule, ScheduleRun,
   BookmarkEntry, NewSchedState, EditSchedState,
 } from "./_components/shared";
 import {
-  detectPlatform, buildCustomCron, CRON_PRESETS, DEFAULT_NEW_SCHED,
+  buildCustomCron, CRON_PRESETS, DEFAULT_NEW_SCHED,
 } from "./_components/shared";
 
-import { ScrapeNowTab } from "./_components/scrape-now-tab";
 import { SchedulesTab } from "./_components/schedules-tab";
 import { RunHistoryTab } from "./_components/run-history-tab";
-import {
-  EditScheduleModal, SaveBookmarkModal,
-  AlreadyBookmarkedAlert, BookmarkPickerModal,
-} from "./_components/modals";
+import { EditScheduleModal, BookmarkPickerModal } from "./_components/modals";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Main page
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function ScrapeUrlPage() {
-  const [activeTab, setActiveTab] = useState<"scrape" | "schedules" | "runs">("scrape");
-
-  // ── Scrape Now ───────────────────────────────────────────
-  const [urls, setUrls] = useState<string[]>([""]);
-  const [loading, setLoading] = useState(false);
-  const [results, setResults] = useState<UrlItemResult[]>([]);
-  const [totals, setTotals] = useState<{ inserted: number; found: number; dupes: number } | null>(null);
-  const [scrapeError, setScrapeError] = useState<string | null>(null);
-  const [history, setHistory] = useState<HistoryEntry[]>([]);
-  const [historyLoading, setHistoryLoading] = useState(true);
-  const [clearingHistory, setClearingHistory] = useState(false);
-  const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"schedules" | "runs">("schedules");
 
   // ── Schedules ────────────────────────────────────────────
   const [schedules, setSchedules] = useState<UrlSchedule[]>([]);
@@ -53,14 +38,8 @@ export default function ScrapeUrlPage() {
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
 
-  // ── Bookmark modal ──────────────────────────────────────
+  // ── Bookmarks (picker for schedule URLs) ────────────────
   const [savedBookmarks, setSavedBookmarks] = useState<BookmarkEntry[]>([]);
-  const bookmarkedUrls = new Set(savedBookmarks.map((b) => b.url));
-  const [bookmarkModal, setBookmarkModal] = useState<{ url: string; platform: string | null } | null>(null);
-  const [bmName, setBmName] = useState("");
-  const [bmNotes, setBmNotes] = useState("");
-  const [bmSaving, setBmSaving] = useState(false);
-  const [bmAlreadyExists, setBmAlreadyExists] = useState(false);
 
   // Bookmark picker state
   const [bmPickerOpen, setBmPickerOpen] = useState<"create" | "edit" | null>(null);
@@ -110,77 +89,6 @@ export default function ScrapeUrlPage() {
     }
     setBmPickerOpen(null);
   };
-
-  const openBookmarkModal = (url: string) => {
-    if (bookmarkedUrls.has(url)) {
-      setBmAlreadyExists(true);
-      return;
-    }
-    setBookmarkModal({ url, platform: detectPlatform(url) });
-    setBmName(url);
-    setBmNotes("");
-  };
-
-  const handleSaveBookmark = async () => {
-    if (!bookmarkModal) return;
-    setBmSaving(true);
-    try {
-      await fetch("/api/bookmarks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          url: bookmarkModal.url,
-          name: bmName.trim() || bookmarkModal.url,
-          platform: bookmarkModal.platform,
-          notes: bmNotes,
-        }),
-      });
-      setSavedBookmarks((prev) => [{ id: "", url: bookmarkModal.url, name: bmName, platform: bookmarkModal.platform }, ...prev]);
-      setBookmarkModal(null);
-    } catch {} finally { setBmSaving(false); }
-  };
-
-  // ── Load history ─────────────────────────────────────────
-  useEffect(() => {
-    fetch("/api/leads/scrape-url")
-      .then((r) => r.json())
-      .then((data: {
-        sessions?: Array<{
-          id: string; scraped_url: string; platform: string | null;
-          posts_found: number; posts_inserted: number; duplicates: number;
-          success: boolean; error_message: string | null; scraped_at: string;
-        }>;
-      }) => {
-        if (data.sessions) {
-          setHistory(data.sessions.map((s) => ({
-            id: s.id, url: s.scraped_url, platform: s.platform ?? undefined,
-            postsFound: s.posts_found, inserted: s.posts_inserted,
-            duplicates: s.duplicates, timestamp: new Date(s.scraped_at),
-            error: s.error_message ?? undefined,
-          })));
-        }
-      })
-      .catch(() => {})
-      .finally(() => setHistoryLoading(false));
-  }, []);
-
-  const clearAllHistory = useCallback(async () => {
-    setClearingHistory(true);
-    try {
-      const res = await fetch("/api/leads/scrape-url", { method: "DELETE" });
-      if (res.ok) setHistory([]);
-    } catch {}
-    finally { setClearingHistory(false); }
-  }, []);
-
-  const deleteSession = useCallback(async (sessionId: string) => {
-    setDeletingSessionId(sessionId);
-    try {
-      const res = await fetch(`/api/leads/scrape-url?id=${sessionId}`, { method: "DELETE" });
-      if (res.ok) setHistory((prev) => prev.filter((e) => e.id !== sessionId));
-    } catch {}
-    finally { setDeletingSessionId(null); }
-  }, []);
 
   // ── Run history ──────────────────────────────────────
   const loadRunHistory = useCallback(async (scheduleId?: string) => {
@@ -449,7 +357,7 @@ export default function ScrapeUrlPage() {
 
       {/* Tabs */}
       <div className="flex items-center gap-1 border-b border-border">
-        {(["scrape", "schedules", "runs"] as const).map((tab) => (
+        {(["schedules", "runs"] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -460,10 +368,9 @@ export default function ScrapeUrlPage() {
                 : "border-transparent text-muted-foreground hover:text-foreground"
             )}
           >
-            {tab === "scrape" && <Search className="h-3.5 w-3.5" />}
             {tab === "schedules" && <Calendar className="h-3.5 w-3.5" />}
             {tab === "runs" && <Activity className="h-3.5 w-3.5" />}
-            {tab === "scrape" ? "Scrape Now" : tab === "schedules" ? "Schedules" : "Run"}
+            {tab === "schedules" ? "Schedules" : "Run"}
             {tab === "schedules" && schedules.length > 0 && (
               <Badge variant="secondary" className="ml-0.5 h-4 px-1.5 text-[10px]">
                 {schedules.length}
@@ -477,26 +384,6 @@ export default function ScrapeUrlPage() {
           </button>
         ))}
       </div>
-
-      {/* ═══ TAB: SCRAPE NOW ═══ */}
-      {activeTab === "scrape" && (
-        <ScrapeNowTab
-          urls={urls} setUrls={setUrls}
-          loading={loading} setLoading={setLoading}
-          results={results} setResults={setResults}
-          totals={totals} setTotals={setTotals}
-          scrapeError={scrapeError} setScrapeError={setScrapeError}
-          history={history} setHistory={setHistory}
-          historyLoading={historyLoading}
-          deletingSessionId={deletingSessionId}
-          savedBookmarks={savedBookmarks}
-          bookmarkedUrls={bookmarkedUrls}
-          openBookmarkModal={openBookmarkModal}
-          clearAllHistory={clearAllHistory}
-          clearingHistory={clearingHistory}
-          deleteSession={deleteSession}
-        />
-      )}
 
       {/* ═══ TAB: SCHEDULES ═══ */}
       {activeTab === "schedules" && (
@@ -548,19 +435,6 @@ export default function ScrapeUrlPage() {
         savedBookmarks={savedBookmarks}
         onSave={handleUpdateSchedule}
         onOpenBmPicker={openBmPicker}
-      />
-
-      <SaveBookmarkModal
-        bookmarkModal={bookmarkModal} setBookmarkModal={setBookmarkModal}
-        bmName={bmName} setBmName={setBmName}
-        bmNotes={bmNotes} setBmNotes={setBmNotes}
-        bmSaving={bmSaving}
-        onSave={handleSaveBookmark}
-      />
-
-      <AlreadyBookmarkedAlert
-        open={bmAlreadyExists}
-        onOpenChange={setBmAlreadyExists}
       />
 
       <BookmarkPickerModal

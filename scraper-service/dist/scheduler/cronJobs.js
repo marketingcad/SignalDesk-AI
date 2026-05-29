@@ -39,6 +39,9 @@ const cron = __importStar(require("node-cron"));
 const config_1 = require("../config");
 const crawlerManager_1 = require("../crawler/crawlerManager");
 const backendClient_1 = require("../api/backendClient");
+const browserAuth_1 = require("../crawler/browserAuth");
+const discord_1 = require("../alerts/discord");
+const sessionHealth_1 = require("../utils/sessionHealth");
 const activeTasks = [];
 function scheduleJob(platform, expression, label) {
     if (!cron.validate(expression)) {
@@ -88,7 +91,41 @@ function startScheduler() {
         }
     });
     activeTasks.push(fullRunTask);
-    console.log("[scheduler] ✅ Full run scheduled: every 6 hours\n");
+    console.log("[scheduler] ✅ Full run scheduled: every 6 hours");
+    // Cookie health check — validates Facebook/LinkedIn sessions every 4 hours
+    const cookieCheckTask = cron.schedule("0 */4 * * *", async () => {
+        console.log("[scheduler] Cookie health check — validating auth sessions...");
+        try {
+            const results = await (0, browserAuth_1.validateAllCookies)();
+            const platformMap = {
+                facebook: "Facebook",
+                linkedin: "LinkedIn",
+            };
+            for (const [key, result] of Object.entries(results)) {
+                const platform = platformMap[key];
+                if (!platform)
+                    continue;
+                if (result === "error") {
+                    // Transient error (network timeout, browser crash) — don't poison health state
+                    console.warn(`[scheduler] ${platform} cookies: validation error (skipping health update)`);
+                    continue;
+                }
+                (0, sessionHealth_1.reportValidationResult)(platform, result);
+                if (result === "expired" || result === "no_cookies") {
+                    console.warn(`[scheduler] ${platform} cookies: ${result} — sending alert`);
+                    await (0, discord_1.sendAuthExpiredAlert)(platform, result === "no_cookies" ? "no_cookies" : "cookie_validation");
+                }
+                else {
+                    console.log(`[scheduler] ${platform} cookies: ${result}`);
+                }
+            }
+        }
+        catch (err) {
+            console.error("[scheduler] Cookie health check failed:", err);
+        }
+    });
+    activeTasks.push(cookieCheckTask);
+    console.log("[scheduler] ✅ Cookie health check scheduled: every 4 hours\n");
 }
 function stopScheduler() {
     for (const task of activeTasks) {
