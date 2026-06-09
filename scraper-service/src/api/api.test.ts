@@ -32,9 +32,7 @@ vi.mock("../api/backendClient", () => ({
 
 vi.mock("../alerts/discord", () => ({
   sendRunSummary: vi.fn(),
-  sendErrorAlert: vi.fn(),
   sendNewLeadsAlert: vi.fn(),
-  sendAuthExpiredAlert: vi.fn(),
   sendSessionHealthAlert: vi.fn(),
 }));
 

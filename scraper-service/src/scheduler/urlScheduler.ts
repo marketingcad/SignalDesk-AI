@@ -2,7 +2,7 @@ import * as cron from "node-cron";
 import { randomUUID } from "crypto";
 import { scrapeUrl, scrapeOneUrl, createBrowserContext } from "../scrapers";
 import { sendLeadsBatch, fetchKeywords } from "../api/backendClient";
-import { sendNewLeadsAlert, sendErrorAlert, sendSessionHealthAlert } from "../alerts/discord";
+import { sendNewLeadsAlert, sendSessionHealthAlert } from "../alerts/discord";
 import { filterPosts } from "../utils/postFilter";
 import { checkRateLimit, recordScrapeStart } from "../utils/rateLimiter";
 import { isRunning } from "../crawler/crawlerManager";
@@ -217,10 +217,6 @@ async function runSchedule(id: string): Promise<void> {
     if (result.errors.length > 0) {
       runStatus = "error";
       errorMessage = result.errors.join("; ");
-      const discordErrors = result.errors.filter((e) => !e.includes("requires login") && !e.includes("page.goto: Timeout") && !e.includes("ERR_ABORTED"));
-      if (discordErrors.length > 0) {
-        await sendErrorAlert(result.platform, discordErrors.join("\n"));
-      }
     }
 
     // ── Session health monitoring ──────────────────────────────────────
