@@ -24,12 +24,11 @@ import {
 } from "./crawler/crawlerManager";
 import { scrapeUrl, scrapeUrlsBatch } from "./scrapers";
 import { sendLeadsBatch, fetchKeywords } from "./api/backendClient";
-import { sendErrorAlert, sendNewLeadsAlert } from "./alerts/discord";
+import { sendNewLeadsAlert } from "./alerts/discord";
 import { loginAndSave, hasSavedCookies, validateCookies, validateAllCookies } from "./crawler/browserAuth";
 import { filterPosts } from "./utils/postFilter";
 import { checkRateLimit, recordScrapeStart } from "./utils/rateLimiter";
 import { getAllHealth, resetHealth, reportValidationResult } from "./utils/sessionHealth";
-import { sendAuthExpiredAlert } from "./alerts/discord";
 import type { Platform, UrlScrapeItemResult } from "./types";
 
 const app = express();
@@ -229,11 +228,6 @@ app.post("/api/scrape-url", async (req, res) => {
       }
 
       const result = await scrapeUrlWithRetry(targetUrl, `[url-scraper]`);
-
-      const discordErrors = result.errors.filter((e) => !e.includes("requires login") && !e.includes("page.goto: Timeout") && !e.includes("ERR_ABORTED"));
-      if (discordErrors.length > 0) {
-        await sendErrorAlert(result.platform, discordErrors.join("\n"));
-      }
 
       // Pre-filter: reject job seekers, too-short posts, and unknown authors
       const preFiltered = filterPosts(result.posts, "[url-scraper]");
@@ -621,12 +615,6 @@ app.post("/api/auth/validate", async (req, res) => {
 
     if (result !== "error") {
       reportValidationResult(platformKey, result);
-      if (result === "expired" || result === "no_cookies") {
-        await sendAuthExpiredAlert(
-          platformKey,
-          result === "no_cookies" ? "no_cookies" : "cookie_validation"
-        );
-      }
     }
 
     res.json({ success: true, platform, result });
@@ -638,9 +626,6 @@ app.post("/api/auth/validate", async (req, res) => {
       if (!p || result === "error") continue;
 
       reportValidationResult(p, result);
-      if (result === "expired" || result === "no_cookies") {
-        await sendAuthExpiredAlert(p, result === "no_cookies" ? "no_cookies" : "cookie_validation");
-      }
     }
 
     res.json({ success: true, results });

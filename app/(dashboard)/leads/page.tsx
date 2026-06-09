@@ -951,6 +951,7 @@ export default function LeadsPage() {
               </div>
               <button
                 onClick={() => setConfirmModal(null)}
+                aria-label="Close dialog"
                 className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
               >
                 <X className="h-4 w-4" />
@@ -1102,6 +1103,7 @@ const [isShowActions, setIsShowActions] = useState(false);
           </div>
           <button
             onClick={onClose}
+            aria-label="Close lead details"
             className="flex items-center justify-center rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
           >
             <X className="h-4 w-4" />
@@ -1287,6 +1289,7 @@ function FilterSelect({
         <select
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          aria-label={label}
           className="h-8 rounded-md border border-border bg-secondary/50 pl-2.5 pr-7 text-xs font-medium text-foreground outline-none transition-colors hover:bg-secondary focus:border-primary focus:ring-1 focus:ring-primary/30 cursor-pointer appearance-none"
         >
           {options.map((opt) => (

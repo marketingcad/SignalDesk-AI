@@ -4,6 +4,16 @@ export type IntentLevel = "High" | "Medium" | "Low";
 
 export type LeadStatus = "New" | "Contacted" | "Qualified" | "Dismissed";
 
+export type PipelineStage = "New Leads" | "Engaged" | "Proposal Sent" | "Won" | "Lost";
+
+export const PIPELINE_STAGES: PipelineStage[] = [
+  "New Leads",
+  "Engaged",
+  "Proposal Sent",
+  "Won",
+  "Lost",
+];
+
 export type IntentCategory =
   | "Direct Hiring"
   | "Recommendation Request"
@@ -27,6 +37,8 @@ export interface Lead {
   matchedKeywords: string[];
   createdAt: Date;
   assignedTo?: string;
+  pipelineStage?: PipelineStage;
+  stagePosition?: number;
 }
 
 export interface Alert {

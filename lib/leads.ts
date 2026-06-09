@@ -4,6 +4,7 @@ import type {
   Platform,
   IntentLevel,
   LeadStatus,
+  PipelineStage,
   DashboardStats,
   ChartDataPoint,
   DailyReport,
@@ -30,7 +31,20 @@ function mapRow(row: Record<string, unknown>): Lead {
     matchedKeywords: (row.matched_keywords as string[]) || [],
     createdAt: new Date(row.created_at as string),
     assignedTo: (row.assigned_to as string) || undefined,
+    pipelineStage: (row.pipeline_stage as PipelineStage) || "New Leads",
+    stagePosition: (row.stage_position as number) ?? 0,
   };
+}
+
+/**
+ * Strip PostgREST filter-structural characters from a user-supplied search term
+ * before interpolating it into a `.or(...ilike...)` string. Commas separate
+ * filter conditions and parentheses group them, so an unsanitized term could
+ * inject additional OR conditions (filter-DSL injection). Backslash and double
+ * quotes are removed for the same reason.
+ */
+function sanitizeSearch(term: string): string {
+  return term.replace(/[,()"\\]/g, "").trim();
 }
 
 // ---------------------------------------------------------------------------
@@ -58,9 +72,12 @@ export async function getLeads(filters?: {
   if (filters?.from) query = query.gte("created_at", filters.from);
   if (filters?.to) query = query.lte("created_at", `${filters.to}T23:59:59.999Z`);
   if (filters?.search) {
-    query = query.or(
-      `username.ilike.%${filters.search}%,text.ilike.%${filters.search}%,source.ilike.%${filters.search}%`
-    );
+    const s = sanitizeSearch(filters.search);
+    if (s) {
+      query = query.or(
+        `username.ilike.%${s}%,text.ilike.%${s}%,source.ilike.%${s}%`
+      );
+    }
   }
 
   const limit = filters?.limit ?? 50;
@@ -252,6 +269,34 @@ export async function deleteArchivedAlerts(): Promise<number> {
   return data?.length || 0;
 }
 
+export async function getPipelineLeads(): Promise<Lead[]> {
+  const { data, error } = await supabase
+    .from("leads")
+    .select("*")
+    .order("stage_position", { ascending: true })
+    .order("created_at", { ascending: false })
+    .limit(2000);
+
+  if (error) throw error;
+  return (data || []).map(mapRow);
+}
+
+export async function updateLeadStage(
+  id: string,
+  pipelineStage: PipelineStage,
+  stagePosition: number
+): Promise<Lead | null> {
+  const { data, error } = await supabase
+    .from("leads")
+    .update({ pipeline_stage: pipelineStage, stage_position: stagePosition })
+    .eq("id", id)
+    .select("*")
+    .maybeSingle();
+
+  if (error) throw error;
+  return data ? mapRow(data) : null;
+}
+
 export async function updateLeadStatus(
   id: string,
   status: LeadStatus
@@ -261,7 +306,7 @@ export async function updateLeadStatus(
     .update({ status })
     .eq("id", id)
     .select("*")
-    .single();
+    .maybeSingle();
 
   if (error) throw error;
   return data ? mapRow(data) : null;

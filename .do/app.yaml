@@ -1,0 +1,78 @@
+# DigitalOcean App Platform spec for SignalDesk AI
+# Deploy:  doctl apps create --spec .do/app.yaml
+# Update:  doctl apps update <APP_ID> --spec .do/app.yaml
+#
+# Two components from one repo:
+#   1. web     — Next.js app (light RAM)        -> public HTTPS URL
+#   2. scraper — Playwright/Chromium service    -> 2 GB, internal-only
+#
+# Set all secret env vars in the DO dashboard (App -> Settings -> Env Vars),
+# NOT here. Values marked type: SECRET are placeholders you fill in the UI.
+
+name: signaldesk-ai
+region: nyc
+
+services:
+  # ---------------------------------------------------------------------------
+  # 1) Next.js web app  — public-facing, light memory
+  # ---------------------------------------------------------------------------
+  - name: web
+    source_dir: /
+    github:
+      repo: marketingcad/signal-desk-ai   # <-- confirm owner/repo
+      branch: main
+      deploy_on_push: true
+    build_command: npm run build
+    run_command: npm run start
+    environment_slug: node-js
+    http_port: 3000
+    instance_size_slug: basic-xs          # 1 GB / 1 vCPU  (plenty for Next.js)
+    instance_count: 1
+    routes:
+      - path: /
+    envs:
+      - key: NODE_ENV
+        value: production
+      # Point the web app at the scraper over the App Platform private network.
+      # ${scraper.PRIVATE_URL} is injected by DO at deploy time.
+      - key: SCRAPER_SERVICE_URL
+        value: ${scraper.PRIVATE_URL}
+      - { key: NEXT_PUBLIC_SUPABASE_URL,      scope: RUN_AND_BUILD_TIME, type: SECRET }
+      - { key: NEXT_PUBLIC_SUPABASE_ANON_KEY, scope: RUN_AND_BUILD_TIME, type: SECRET }
+      - { key: SUPABASE_SERVICE_ROLE_KEY,     scope: RUN_TIME,           type: SECRET }
+      - { key: JWT_SECRET,                    scope: RUN_TIME,           type: SECRET }
+      - { key: GOOGLE_AI_API_KEY,             scope: RUN_TIME,           type: SECRET }
+      - { key: APIFY_API_TOKEN,               scope: RUN_TIME,           type: SECRET }
+      - { key: APIFY_WEBHOOK_SECRET,          scope: RUN_TIME,           type: SECRET }
+      - { key: DISCORD_WEBHOOK_URL,           scope: RUN_TIME,           type: SECRET }
+      - { key: FB_VERIFY_TOKEN,               scope: RUN_TIME,           type: SECRET }
+      - { key: FB_APP_SECRET,                 scope: RUN_TIME,           type: SECRET }
+      - { key: CRON_SECRET,                   scope: RUN_TIME,           type: SECRET }
+
+  # ---------------------------------------------------------------------------
+  # 2) Scraper service — Playwright/Chromium, RAM-heavy, internal only
+  # ---------------------------------------------------------------------------
+  - name: scraper
+    source_dir: /scraper-service
+    github:
+      repo: marketingcad/signal-desk-ai   # <-- confirm owner/repo
+      branch: main
+      deploy_on_push: true
+    dockerfile_path: scraper-service/Dockerfile
+    http_port: 4000
+    internal_ports: [4000]                # private network only — no public route
+    instance_size_slug: basic-s           # 2 GB / 1 vCPU  (Chromium headroom)
+    instance_count: 1
+    envs:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "4000"
+      - key: HEADLESS
+        value: "true"
+      - { key: NEXT_PUBLIC_SUPABASE_URL,  type: SECRET }
+      - { key: SUPABASE_SERVICE_ROLE_KEY, type: SECRET }
+      - { key: GOOGLE_AI_API_KEY,         type: SECRET }
+      - { key: DISCORD_WEBHOOK_URL,       type: SECRET }
+      - { key: REDDIT_CLIENT_ID,          type: SECRET }
+      - { key: REDDIT_CLIENT_SECRET,      type: SECRET }

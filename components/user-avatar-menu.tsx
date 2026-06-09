@@ -304,6 +304,7 @@ function ProfileModal({
             <h2 className="text-lg font-semibold text-foreground">Profile</h2>
             <button
               onClick={onClose}
+              aria-label="Close profile"
               className="rounded-lg p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
             >
               <X className="h-4 w-4" />
@@ -348,10 +349,11 @@ function ProfileModal({
 
             {/* Full Name */}
             <div className="space-y-1.5">
-              <label className="text-sm font-medium text-foreground">
+              <label htmlFor="profile-full-name" className="text-sm font-medium text-foreground">
                 Full Name
               </label>
               <Input
+                id="profile-full-name"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 placeholder="Enter your full name"
@@ -360,10 +362,11 @@ function ProfileModal({
 
             {/* Email */}
             <div className="space-y-1.5">
-              <label className="text-sm font-medium text-foreground">
+              <label htmlFor="profile-email" className="text-sm font-medium text-foreground">
                 Email
               </label>
               <Input
+                id="profile-email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -381,11 +384,12 @@ function ProfileModal({
 
               {/* Current Password */}
               <div className="space-y-1.5">
-                <label className="text-xs text-muted-foreground">
+                <label htmlFor="profile-current-password" className="text-xs text-muted-foreground">
                   Current Password
                 </label>
                 <div className="relative">
                   <Input
+                    id="profile-current-password"
                     type={showCurrentPassword ? "text" : "password"}
                     value={currentPassword}
                     onChange={(e) => setCurrentPassword(e.target.value)}
@@ -407,11 +411,12 @@ function ProfileModal({
 
               {/* New Password */}
               <div className="space-y-1.5">
-                <label className="text-xs text-muted-foreground">
+                <label htmlFor="profile-new-password" className="text-xs text-muted-foreground">
                   New Password
                 </label>
                 <div className="relative">
                   <Input
+                    id="profile-new-password"
                     type={showNewPassword ? "text" : "password"}
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
@@ -433,10 +438,11 @@ function ProfileModal({
 
               {/* Confirm Password */}
               <div className="space-y-1.5">
-                <label className="text-xs text-muted-foreground">
+                <label htmlFor="profile-confirm-password" className="text-xs text-muted-foreground">
                   Confirm New Password
                 </label>
                 <Input
+                  id="profile-confirm-password"
                   type="password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}

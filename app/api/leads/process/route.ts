@@ -67,6 +67,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Missing required fields: platform, text, username, url" }, { status: 400 });
   }
 
+  try {
   // --- Date gate: reject posts older than 7 days (all platforms) ---
   if (timestamp) {
     const postDate = new Date(timestamp);
@@ -235,4 +236,8 @@ export async function POST(request: NextRequest) {
     },
     { status: 201 }
   );
+  } catch (err) {
+    console.error("[leads/process] Unhandled error:", err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
 }

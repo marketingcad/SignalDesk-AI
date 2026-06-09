@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextRequest, NextResponse } from "next/server";
+import { verifySession, SESSION_COOKIE_NAME } from "@/lib/auth";
 
 const SYSTEM_PROMPT = `You are an AI assistant for "SignalDesk AI", a lead intelligence platform focused on Virtual Assistants.
 
@@ -54,6 +55,11 @@ function getGenAI(): GoogleGenerativeAI | null {
 }
 
 export async function POST(req: NextRequest) {
+  const token = req.cookies.get(SESSION_COOKIE_NAME)?.value;
+  if (!token || !(await verifySession(token))) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
     const { message } = await req.json();
 

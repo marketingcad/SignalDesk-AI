@@ -3,7 +3,6 @@ import { config } from "../config";
 import { runPlatform, runAllPlatforms, isRunning } from "../crawler/crawlerManager";
 import { fetchKeywords } from "../api/backendClient";
 import { validateAllCookies } from "../crawler/browserAuth";
-import { sendAuthExpiredAlert } from "../alerts/discord";
 import { reportValidationResult } from "../utils/sessionHealth";
 import type { Platform } from "../types";
 
@@ -92,16 +91,7 @@ export function startScheduler(): void {
         }
 
         reportValidationResult(platform, result);
-
-        if (result === "expired" || result === "no_cookies") {
-          console.warn(`[scheduler] ${platform} cookies: ${result} — sending alert`);
-          await sendAuthExpiredAlert(
-            platform,
-            result === "no_cookies" ? "no_cookies" : "cookie_validation"
-          );
-        } else {
-          console.log(`[scheduler] ${platform} cookies: ${result}`);
-        }
+        console.log(`[scheduler] ${platform} cookies: ${result}`);
       }
     } catch (err) {
       console.error("[scheduler] Cookie health check failed:", err);
