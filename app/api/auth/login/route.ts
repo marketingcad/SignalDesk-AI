@@ -39,9 +39,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Look up the authorization role. Resilient to the role column not yet
+    // existing (pre-migration): on error we default to "member" rather than
+    // failing the login.
+    let role = "member";
+    const { data: roleRow } = await supabase
+      .from("users")
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle();
+    if (roleRow?.role) role = roleRow.role;
+
     const token = await createSession({
       userId: user.id,
       email: user.email,
+      role,
     });
 
     const response = NextResponse.json({ success: true, token });

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { verifySession, SESSION_COOKIE_NAME } from "@/lib/auth";
+import { isAdmin } from "@/lib/authz";
 import { supabase } from "@/lib/supabase";
 
 export async function DELETE(
@@ -18,6 +19,10 @@ export async function DELETE(
     const session = await verifySession(token);
     if (!session) {
       return NextResponse.json({ error: "Invalid session" }, { status: 401 });
+    }
+
+    if (!(await isAdmin(session))) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const { id } = await params;

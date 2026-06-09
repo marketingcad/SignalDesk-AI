@@ -38,7 +38,11 @@ export async function GET(request: NextRequest) {
     query = query.eq("is_duplicate", false);
   }
   if (search) {
-    query = query.or(`author.ilike.%${search}%,description.ilike.%${search}%`);
+    // Strip PostgREST filter-structural chars to prevent filter-DSL injection.
+    const s = search.replace(/[,()"\\]/g, "").trim();
+    if (s) {
+      query = query.or(`author.ilike.%${s}%,description.ilike.%${s}%`);
+    }
   }
 
   const { data, error, count } = await query;

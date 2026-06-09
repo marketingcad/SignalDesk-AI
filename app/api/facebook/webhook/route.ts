@@ -50,7 +50,13 @@ export async function POST(request: NextRequest) {
 
   // Return 200 immediately — Meta requires fast acknowledgement
   // Process events asynchronously after responding
-  const body = JSON.parse(rawBody) as Record<string, unknown>;
+  let body: Record<string, unknown>;
+  try {
+    body = JSON.parse(rawBody) as Record<string, unknown>;
+  } catch {
+    // Malformed/empty delivery or probe — acknowledge so Meta doesn't retry.
+    return NextResponse.json({ received: true }, { status: 200 });
+  }
 
   if (body.object !== "group") {
     return NextResponse.json({ received: true }, { status: 200 });

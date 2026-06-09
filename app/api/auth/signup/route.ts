@@ -6,10 +6,11 @@ import {
   verifySession,
   SESSION_COOKIE_NAME,
 } from "@/lib/auth";
+import { isAdmin } from "@/lib/authz";
 
 export async function POST(request: NextRequest) {
   try {
-    // Require authenticated session (admin only)
+    // Require an authenticated ADMIN session (account creation is admin-only)
     const cookieStore = await cookies();
     const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
 
@@ -26,6 +27,10 @@ export async function POST(request: NextRequest) {
         { error: "Invalid session" },
         { status: 401 }
       );
+    }
+
+    if (!(await isAdmin(session))) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const { email, password, full_name } = await request.json();

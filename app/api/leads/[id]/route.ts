@@ -15,8 +15,14 @@ export async function PATCH(
   }
 
   const { id } = await params;
-  const body = await request.json();
-  const { status } = body as { status?: string };
+
+  let body: { status?: string };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+  const { status } = body;
 
   if (!status || !VALID_STATUSES.includes(status as LeadStatus)) {
     return NextResponse.json(

@@ -711,8 +711,9 @@ export default function SettingsPage() {
               {dateRange.mode === "range" && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 animate-fade-in">
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-muted-foreground">Start date</label>
+                    <label htmlFor="date-range-start" className="text-xs font-medium text-muted-foreground">Start date</label>
                     <Input
+                      id="date-range-start"
                       type="date"
                       value={dateRange.startDate}
                       max={dateRange.endDate || undefined}
@@ -721,8 +722,9 @@ export default function SettingsPage() {
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-muted-foreground">End date</label>
+                    <label htmlFor="date-range-end" className="text-xs font-medium text-muted-foreground">End date</label>
                     <Input
+                      id="date-range-end"
                       type="date"
                       value={dateRange.endDate}
                       min={dateRange.startDate || undefined}

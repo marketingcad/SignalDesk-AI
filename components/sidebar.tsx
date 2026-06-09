@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   Users,
+  KanbanSquare,
   UserCog,
   Bell,
   FileBarChart,
@@ -33,6 +34,7 @@ const ALL_PLATFORMS: Platform[] = ["Facebook", "LinkedIn", "Reddit", "X", "Other
 const baseNavItems = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Overview" },
   { href: "/leads", icon: Users, label: "Leads" },
+  { href: "/pipeline", icon: KanbanSquare, label: "Pipeline" },
   { href: "/scrape-url", icon: Globe, label: "Scrape URL" },
   { href: "/alerts", icon: Bell, label: "Alerts" },
   { href: "/bookmarks", icon: Bookmark, label: "Bookmarks" },

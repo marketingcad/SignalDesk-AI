@@ -5,6 +5,12 @@ const secret = new TextEncoder().encode(process.env.JWT_SECRET!);
 export interface SessionPayload {
   userId: string;
   email: string;
+  /**
+   * Authorization role. Populated at login from users.role. Optional because
+   * sessions issued before the role column existed will not carry it — server
+   * authorization checks (see lib/authz.ts) fall back to a DB lookup in that case.
+   */
+  role?: string;
 }
 
 export async function createSession(payload: SessionPayload): Promise<string> {

@@ -59,6 +59,7 @@ export async function POST(request: NextRequest) {
 
   console.log(`[leads/batch] Processing ${posts.length} posts for user ${session.userId}`);
 
+  try {
   // --- Bulk dedup: by URL and by post content ---
   const urls = posts.map((p) => p.url).filter(Boolean);
   const texts = posts.map((p) => p.text?.slice(0, 5000)).filter(Boolean);
@@ -363,4 +364,8 @@ export async function POST(request: NextRequest) {
     },
     { status: 201 }
   );
+  } catch (err) {
+    console.error("[leads/batch] Unhandled error:", err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
 }
