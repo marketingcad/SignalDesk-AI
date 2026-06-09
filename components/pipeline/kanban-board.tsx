@@ -138,6 +138,32 @@ export function KanbanBoard() {
     [fetchLeads]
   );
 
+  // Recommended-action quick buttons: move a lead to a stage, appending to the
+  // bottom of the target column. Reuses the same optimistic + persistence path.
+  const moveToStage = useCallback(
+    (id: string, toStage: PipelineStage) => {
+      const current = leadsRef.current;
+      const lead = current.find((l) => l.id === id);
+      if (!lead || normalizeStage(lead.pipelineStage) === toStage) return;
+
+      const targetColumn = current
+        .filter((l) => normalizeStage(l.pipelineStage) === toStage && l.id !== id)
+        .sort((a, b) => (a.stagePosition ?? 0) - (b.stagePosition ?? 0));
+      const lastPos = targetColumn.length
+        ? targetColumn[targetColumn.length - 1].stagePosition ?? 0
+        : -1;
+      const newPos = lastPos + 1;
+
+      setLeads((prev) =>
+        prev.map((l) =>
+          l.id === id ? { ...l, pipelineStage: toStage, stagePosition: newPos } : l
+        )
+      );
+      persistStage(id, toStage, newPos);
+    },
+    [persistStage]
+  );
+
   const handleDragStart = (event: DragStartEvent) => {
     const lead = leadsRef.current.find((l) => l.id === event.active.id);
     setActiveLead(lead ?? null);
@@ -271,7 +297,12 @@ export function KanbanBoard() {
           >
             <div className="flex h-full gap-4 overflow-x-auto pb-2">
               {PIPELINE_STAGES.map((stage) => (
-                <KanbanColumn key={stage} stage={stage} leads={columns[stage]} />
+                <KanbanColumn
+                  key={stage}
+                  stage={stage}
+                  leads={columns[stage]}
+                  onAdvance={moveToStage}
+                />
               ))}
             </div>
             <DragOverlay>

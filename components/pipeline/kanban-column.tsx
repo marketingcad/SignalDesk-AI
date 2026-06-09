@@ -52,9 +52,12 @@ const stageAccents: Record<
 export function KanbanColumn({
   stage,
   leads,
+  onAdvance,
 }: {
   stage: PipelineStage;
   leads: Lead[];
+  /** Advance a lead to another stage (recommended-action quick buttons). */
+  onAdvance?: (id: string, toStage: PipelineStage) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({
     id: stage,
@@ -97,7 +100,11 @@ export function KanbanColumn({
       >
         <SortableContext items={ids} strategy={verticalListSortingStrategy}>
           {leads.map((lead) => (
-            <KanbanCard key={lead.id} lead={lead} />
+            <KanbanCard
+              key={lead.id}
+              lead={lead}
+              onAdvance={onAdvance ? (toStage) => onAdvance(lead.id, toStage) : undefined}
+            />
           ))}
         </SortableContext>
 
