@@ -11,8 +11,9 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import { Loader2, LayoutGrid } from "lucide-react";
+import { Loader2, LayoutGrid, AlertTriangle, Trash2, X } from "lucide-react";
 import { Header } from "@/components/header";
+import { Button } from "@/components/ui/button";
 import { KanbanColumn } from "@/components/pipeline/kanban-column";
 import { KanbanCard } from "@/components/pipeline/kanban-card";
 import { useRealtime } from "@/hooks/use-realtime";
@@ -54,6 +55,8 @@ export function KanbanBoard() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeLead, setActiveLead] = useState<Lead | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Lead | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   // Keep a ref to the latest leads for the realtime UPDATE handler and rollback.
   const leadsRef = useRef<Lead[]>([]);
@@ -163,6 +166,30 @@ export function KanbanBoard() {
     },
     [persistStage]
   );
+
+  // 3-dots "Delete lead" — open the confirmation for the chosen card.
+  const requestDelete = useCallback((id: string) => {
+    const lead = leadsRef.current.find((l) => l.id === id);
+    if (lead) setDeleteTarget(lead);
+  }, []);
+
+  const confirmDelete = useCallback(async () => {
+    if (!deleteTarget) return;
+    const id = deleteTarget.id;
+    setDeleting(true);
+    // Optimistic removal; realtime DELETE will also reconcile.
+    setLeads((prev) => prev.filter((l) => l.id !== id));
+    try {
+      const res = await fetch(`/api/leads/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error(`DELETE failed: ${res.status}`);
+    } catch (err) {
+      console.error("[pipeline] Failed to delete lead, refetching:", err);
+      fetchLeads();
+    } finally {
+      setDeleting(false);
+      setDeleteTarget(null);
+    }
+  }, [deleteTarget, fetchLeads]);
 
   const handleDragStart = (event: DragStartEvent) => {
     const lead = leadsRef.current.find((l) => l.id === event.active.id);
@@ -302,6 +329,7 @@ export function KanbanBoard() {
                   stage={stage}
                   leads={columns[stage]}
                   onAdvance={moveToStage}
+                  onDelete={requestDelete}
                 />
               ))}
             </div>
@@ -315,6 +343,63 @@ export function KanbanBoard() {
           </DndContext>
         )}
       </div>
+
+      {/* Delete confirmation */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => !deleting && setDeleteTarget(null)}
+          />
+          <div className="relative w-full max-w-sm rounded-lg border border-border bg-card p-0 shadow-xl animate-fade-in">
+            <div className="flex items-center justify-between border-b border-border px-5 py-4">
+              <div className="flex items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-rose-500/10">
+                  <AlertTriangle className="h-4 w-4 text-rose-400" />
+                </div>
+                <h3 className="text-sm font-semibold text-foreground">Delete Lead</h3>
+              </div>
+              <button
+                onClick={() => !deleting && setDeleteTarget(null)}
+                aria-label="Close dialog"
+                className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="px-5 py-4">
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                Are you sure you want to delete{" "}
+                <span className="font-medium text-foreground">{deleteTarget.username}</span>
+                {"'s lead? This action cannot be undone."}
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setDeleteTarget(null)}
+                disabled={deleting}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                className="bg-rose-500 hover:bg-rose-600 text-white shadow-sm"
+                onClick={confirmDelete}
+                disabled={deleting}
+              >
+                {deleting ? (
+                  <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                ) : (
+                  <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                )}
+                Confirm Delete
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

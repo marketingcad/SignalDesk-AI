@@ -53,11 +53,14 @@ export function KanbanColumn({
   stage,
   leads,
   onAdvance,
+  onDelete,
 }: {
   stage: PipelineStage;
   leads: Lead[];
   /** Advance a lead to another stage (recommended-action quick buttons). */
   onAdvance?: (id: string, toStage: PipelineStage) => void;
+  /** Request deletion of a lead (board shows a confirmation). */
+  onDelete?: (id: string) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({
     id: stage,
@@ -104,6 +107,7 @@ export function KanbanColumn({
               key={lead.id}
               lead={lead}
               onAdvance={onAdvance ? (toStage) => onAdvance(lead.id, toStage) : undefined}
+              onDelete={onDelete ? () => onDelete(lead.id) : undefined}
             />
           ))}
         </SortableContext>

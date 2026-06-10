@@ -3,7 +3,6 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
-  GripVertical,
   MapPin,
   Sparkles,
   MessageCircle,
@@ -12,13 +11,36 @@ import {
   XCircle,
   RotateCcw,
   ExternalLink,
+  MoreHorizontal,
+  Check,
+  Copy,
+  Trash2,
   type LucideIcon,
 } from "lucide-react";
 import { IntentBadge } from "@/components/intent-badge";
 import { PlatformBadge } from "@/components/platform-badge";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuGroup,
+} from "@/components/ui/dropdown-menu";
 import { openUrl } from "@/lib/open-url";
 import { cn, timeAgo } from "@/lib/utils";
+import { PIPELINE_STAGES } from "@/lib/types";
 import type { Lead, PipelineStage } from "@/lib/types";
+
+// Small colored dot per stage for the "Move to" menu items.
+const STAGE_DOT: Record<PipelineStage, string> = {
+  "New Leads": "bg-blue-500",
+  Engaged: "bg-amber-500",
+  "Proposal Sent": "bg-violet-500",
+  Won: "bg-emerald-500",
+  Lost: "bg-rose-500",
+};
 
 function getInitials(name: string): string {
   return (name || "")
@@ -72,10 +94,13 @@ const STAGE_ACTIONS: Record<PipelineStage, CardAction[]> = {
 export function KanbanCard({
   lead,
   onAdvance,
+  onDelete,
 }: {
   lead: Lead;
   /** Move this lead to another stage (wired by the board to the persistence path). */
   onAdvance?: (toStage: PipelineStage) => void;
+  /** Request deletion of this lead (board shows a confirmation). */
+  onDelete?: () => void;
 }) {
   const {
     attributes,
@@ -103,12 +128,14 @@ export function KanbanCard({
       ref={setNodeRef}
       style={style}
       className={cn(
-        "group rounded-lg border border-border bg-card p-3 shadow-sm transition-colors",
-        "hover:border-primary/30",
+        "group cursor-grab touch-none rounded-lg border border-border bg-card p-3 shadow-sm transition-colors",
+        "hover:border-primary/30 active:cursor-grabbing",
         isDragging && "opacity-50 ring-1 ring-primary/40"
       )}
+      {...attributes}
+      {...listeners}
     >
-      {/* Header: avatar + username + drag handle */}
+      {/* Header: avatar + username + actions menu */}
       <div className="flex items-start gap-2.5">
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-bold text-primary">
           {getInitials(lead.username)}
@@ -117,15 +144,68 @@ export function KanbanCard({
           <p className="truncate text-sm font-semibold text-foreground">{lead.username}</p>
           <p className="truncate text-[11px] text-muted-foreground">{lead.source}</p>
         </div>
-        <button
-          type="button"
-          className="-mr-1 -mt-1 cursor-grab touch-none rounded p-1 text-muted-foreground/50 transition-colors hover:bg-muted hover:text-foreground active:cursor-grabbing"
-          aria-label="Drag lead"
-          {...attributes}
-          {...listeners}
-        >
-          <GripVertical className="h-4 w-4" />
-        </button>
+        <div className="-mr-1 -mt-1">
+          {/* 3-dots actions menu */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                aria-label="Card actions"
+                onPointerDown={(e) => e.stopPropagation()}
+                className="cursor-pointer rounded p-1 text-muted-foreground/50 transition-colors hover:bg-muted hover:text-foreground data-[state=open]:bg-muted data-[state=open]:text-foreground"
+              >
+                <MoreHorizontal className="h-4 w-4" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuLabel>Move to stage</DropdownMenuLabel>
+              <DropdownMenuGroup>
+                {PIPELINE_STAGES.map((s) => {
+                  const isCurrent = s === stage;
+                  return (
+                    <DropdownMenuItem
+                      key={s}
+                      disabled={isCurrent}
+                      onSelect={() => onAdvance?.(s)}
+                    >
+                      <span className={cn("h-2 w-2 rounded-full", STAGE_DOT[s])} />
+                      <span className="flex-1">{s}</span>
+                      {isCurrent && <Check className="h-3.5 w-3.5 text-muted-foreground" />}
+                    </DropdownMenuItem>
+                  );
+                })}
+              </DropdownMenuGroup>
+
+              {lead.url && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onSelect={() => openUrl(lead.url)}>
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    View post
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      navigator.clipboard?.writeText(lead.url);
+                    }}
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                    Copy link
+                  </DropdownMenuItem>
+                </>
+              )}
+
+              {onDelete && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem variant="destructive" onSelect={() => onDelete()}>
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Delete lead
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
 
       {/* Text snippet */}
@@ -186,11 +266,12 @@ export function KanbanCard({
                     type="button"
                     aria-label="View original post"
                     title="View original post"
+                    onPointerDown={(e) => e.stopPropagation()}
                     onClick={(e) => {
                       e.stopPropagation();
                       if (lead.url) openUrl(lead.url);
                     }}
-                    className="flex items-center justify-center rounded-md border border-border bg-card p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    className="flex cursor-pointer items-center justify-center rounded-md border border-border bg-card p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                   >
                     <Icon className="h-3.5 w-3.5" />
                   </button>
@@ -200,12 +281,13 @@ export function KanbanCard({
                 <button
                   key={i}
                   type="button"
+                  onPointerDown={(e) => e.stopPropagation()}
                   onClick={(e) => {
                     e.stopPropagation();
                     onAdvance?.(action.to);
                   }}
                   className={cn(
-                    "flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-semibold transition-colors",
+                    "flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-semibold transition-colors",
                     action.tone === "primary" && "bg-primary/10 text-primary hover:bg-primary/20",
                     action.tone === "danger" && "bg-rose-500/10 text-rose-400 hover:bg-rose-500/20",
                     action.tone === "neutral" && "bg-muted text-foreground/80 hover:bg-muted/70"
