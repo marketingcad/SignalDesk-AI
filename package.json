@@ -18,6 +18,7 @@
     "verify:web": "node scripts/verify-deploy.mjs web",
     "verify:scraper": "node scripts/verify-deploy.mjs scraper",
     "check:env": "node scripts/check-credentials.mjs",
+    "live-login": "node scripts/live-login-url.mjs",
     "scraper:build": "cd scraper-service && npm run build",
     "scraper:dev": "cd scraper-service && npm run dev",
     "scraper:auth": "cd scraper-service && npm run auth:login",

@@ -68,6 +68,9 @@ export async function POST(request: NextRequest) {
           { status: 503 }
         );
       }
+      // Clear any leftover/stuck session first so the button never fails with
+      // "a session is already active" (mirrors the npm run live-login fallback).
+      await proxyToScraper("POST", "/api/auth/live/cancel").catch(() => {});
       // Starting the session boots a real browser on a virtual display, which on
       // a cold scraper (binaries not yet warm) can take well over 30s — give it
       // headroom so the dashboard doesn't report a false "Scraper unreachable".
