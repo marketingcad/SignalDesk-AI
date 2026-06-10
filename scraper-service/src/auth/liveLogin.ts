@@ -18,10 +18,10 @@ import { spawn, ChildProcess } from "child_process";
 import crypto from "crypto";
 import type { Browser, BrowserContext, Page } from "playwright";
 import { chromium } from "playwright";
-import { STORAGE_STATE_PATH } from "../crawler/browserAuth";
+import { STORAGE_STATE_PATH, saveSessionToSupabase } from "../crawler/browserAuth";
 
 const DISPLAY = ":99";
-const SCREEN = "1366x900x24";
+const SCREEN = "1280x720x24"; // smaller virtual display = less Chromium/Xvfb memory
 const VNC_PORT = 5900;
 export const WEBSOCKIFY_PORT = 6080;
 const NOVNC_WEB = "/usr/share/novnc";
@@ -124,6 +124,14 @@ export async function startLiveLogin(
         "--disable-blink-features=AutomationControlled",
         "--no-sandbox",
         "--disable-dev-shm-usage",
+        // Memory-reduction flags so the non-headless browser is less likely to
+        // OOM the container (a 4 GB instance is still recommended for headroom).
+        "--disable-gpu",
+        "--disable-software-rasterizer",
+        "--disable-extensions",
+        "--disable-background-networking",
+        "--disable-renderer-backgrounding",
+        "--js-flags=--max-old-space-size=512",
         "--start-maximized",
       ],
     });
@@ -188,6 +196,8 @@ export async function saveLiveLogin(): Promise<{ cookiesSaved: boolean }> {
   if (!current) throw new Error("No active login session");
   await current.context.storageState({ path: STORAGE_STATE_PATH });
   console.log("[live-login] session saved → storage-state.json");
+  // Persist durably so it survives redeploys (no manual BROWSER_STORAGE_STATE paste).
+  await saveSessionToSupabase();
   await teardown();
   return { cookiesSaved: true };
 }

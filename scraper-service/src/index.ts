@@ -34,7 +34,7 @@ import {
 import { scrapeUrl, scrapeUrlsBatch } from "./scrapers";
 import { sendLeadsBatch, fetchKeywords } from "./api/backendClient";
 import { sendNewLeadsAlert } from "./alerts/discord";
-import { loginAndSave, hasSavedCookies, validateCookies, validateAllCookies } from "./crawler/browserAuth";
+import { loginAndSave, hasSavedCookies, validateCookies, validateAllCookies, initSession } from "./crawler/browserAuth";
 import { filterPosts } from "./utils/postFilter";
 import { checkRateLimit, recordScrapeStart } from "./utils/rateLimiter";
 import { getAllHealth, resetHealth, reportValidationResult } from "./utils/sessionHealth";
@@ -871,6 +871,12 @@ const server = app.listen(config.port, () => {
   Backend:   ${config.backendApiUrl}
   Headless:  ${config.headless}
   `);
+
+  // Restore the durable login session (Supabase → rolling file) before scrapers
+  // run, so a fresh container picks up the latest cookies without a manual paste.
+  initSession()
+    .then(() => console.log(`  Auth:      session ${hasSavedCookies() ? "loaded" : "not found — login required"}`))
+    .catch((err) => console.warn("  Auth:      session init failed:", err));
 
   // Fetch user-configured keywords from /settings page before starting scrapers
   fetchKeywords().then((kw) => {
