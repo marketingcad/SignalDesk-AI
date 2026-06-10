@@ -91,6 +91,16 @@ export default function SettingsPage() {
   const [loginTriggered, setLoginTriggered] = useState(false);
   const [validating, setValidating] = useState<string | null>(null);
 
+  // --- Live Login (cloud remote browser) state ---
+  const [liveSession, setLiveSession] = useState<{
+    platform: string;
+    expiresAt: number;
+    viewerUrl: string;
+  } | null>(null);
+  const [liveStarting, setLiveStarting] = useState<string | null>(null);
+  const [liveSaving, setLiveSaving] = useState(false);
+  const [liveError, setLiveError] = useState<string | null>(null);
+
   // --- Keyword Discovery state ---
   const [discovering, setDiscovering] = useState(false);
   const [suggestions, setSuggestions] = useState<Array<{ keyword: string; category: string; reason: string }>>([]);
@@ -152,6 +162,69 @@ export default function SettingsPage() {
       await loadAuthStatus();
     } catch {
       // scraper unreachable
+    }
+  };
+
+  // --- Live Login actions (cloud remote browser) ---
+  const startLiveLogin = async (platform: string) => {
+    setLiveStarting(platform);
+    setLiveError(null);
+    try {
+      const res = await fetch("/api/auth/live", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "start", platform: platform.toLowerCase() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setLiveError(data.error || "Could not start the login browser.");
+        return;
+      }
+      setLiveSession({ platform, expiresAt: data.expiresAt, viewerUrl: data.viewerUrl });
+      // Open the streamed browser in a new tab so the user can log in.
+      window.open(data.viewerUrl, "_blank", "noopener,noreferrer");
+    } catch {
+      setLiveError("Scraper service unreachable.");
+    } finally {
+      setLiveStarting(null);
+    }
+  };
+
+  const saveLiveLogin = async () => {
+    setLiveSaving(true);
+    setLiveError(null);
+    try {
+      const res = await fetch("/api/auth/live", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "save" }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setLiveError(data.error || "Could not save the session.");
+        return;
+      }
+      setLiveSession(null);
+      await loadAuthStatus();
+    } catch {
+      setLiveError("Scraper service unreachable.");
+    } finally {
+      setLiveSaving(false);
+    }
+  };
+
+  const cancelLiveLogin = async () => {
+    setLiveError(null);
+    try {
+      await fetch("/api/auth/live", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "cancel" }),
+      });
+    } catch {
+      // best effort
+    } finally {
+      setLiveSession(null);
     }
   };
 
@@ -573,6 +646,90 @@ export default function SettingsPage() {
                 <span className="text-xs text-muted-foreground animate-fade-in">
                   A browser window has opened. Log in to Facebook and LinkedIn, then close it.
                 </span>
+              )}
+            </div>
+
+            {/* Live Login (cloud) — remote viewable browser */}
+            <div className="rounded-lg border border-border bg-secondary/40 p-4 space-y-3">
+              <div className="flex items-start gap-2.5">
+                <Globe className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium text-foreground">Live Login (Cloud)</p>
+                  <p className="text-xs text-muted-foreground">
+                    Opens the scraper&apos;s browser in a new tab so you can log in here —
+                    no local setup. Solve any 2FA/CAPTCHA, then click Save Session.
+                  </p>
+                </div>
+              </div>
+
+              {liveError && (
+                <div className="rounded-md border border-rose-500/20 bg-rose-500/5 px-3 py-2">
+                  <p className="text-xs text-rose-400">{liveError}</p>
+                </div>
+              )}
+
+              {!liveSession ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  {["Facebook", "LinkedIn", "X"].map((p) => (
+                    <Button
+                      key={p}
+                      size="sm"
+                      variant="outline"
+                      className="gap-1.5"
+                      onClick={() => startLiveLogin(p)}
+                      disabled={liveStarting !== null}
+                    >
+                      {liveStarting === p ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Globe className="h-3.5 w-3.5" />
+                      )}
+                      Log in to {p}
+                    </Button>
+                  ))}
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  <div className="rounded-md border border-amber-500/20 bg-amber-500/5 px-3 py-2">
+                    <p className="text-xs text-amber-300">
+                      Login browser open for <strong>{liveSession.platform}</strong> in a new tab.
+                      Finish logging in there, then Save Session. (Auto-closes ~15 min.)
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      className="gap-1.5"
+                      onClick={saveLiveLogin}
+                      disabled={liveSaving}
+                    >
+                      {liveSaving ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Check className="h-3.5 w-3.5" />
+                      )}
+                      Save Session
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="gap-1.5"
+                      onClick={() => window.open(liveSession.viewerUrl, "_blank", "noopener,noreferrer")}
+                    >
+                      Reopen Tab
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="gap-1.5 text-rose-400"
+                      onClick={cancelLiveLogin}
+                      disabled={liveSaving}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
               )}
             </div>
           </div>

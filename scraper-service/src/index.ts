@@ -1,6 +1,15 @@
 import express from "express";
+import httpProxy from "http-proxy";
 import * as nodeCron from "node-cron";
 import { config } from "./config";
+import {
+  startLiveLogin,
+  saveLiveLogin,
+  cancelLiveLogin,
+  getLiveStatus,
+  verifyViewToken,
+  WEBSOCKIFY_PORT,
+} from "./auth/liveLogin";
 import { startScheduler, stopScheduler } from "./scheduler/cronJobs";
 import {
   initUrlScheduler,
@@ -767,7 +776,72 @@ app.post("/api/test/discord", async (req, res) => {
 // Start server
 // ---------------------------------------------------------------------------
 
-app.listen(config.port, () => {
+// ---------------------------------------------------------------------------
+// Live Login — remote viewable browser for interactive social login
+// ---------------------------------------------------------------------------
+
+/** GET /api/auth/live/status — is a login session active? */
+app.get("/api/auth/live/status", (req, res) => {
+  if (!checkAuth(req, res)) return;
+  res.json(getLiveStatus());
+});
+
+/** POST /api/auth/live/start — boot the remote browser; returns viewer path. */
+app.post("/api/auth/live/start", async (req, res) => {
+  if (!checkAuth(req, res)) return;
+  const { platform } = req.body as { platform?: string };
+  try {
+    const { viewToken, platform: p, expiresAt } = await startLiveLogin(
+      platform || "facebook"
+    );
+    // The outer token gates the noVNC HTML fetch; the token embedded in `path`
+    // gates the WebSocket upgrade (noVNC forwards the path verbatim).
+    const wsPath = encodeURIComponent(`vnc/websockify?token=${viewToken}`);
+    const viewerPath = `/vnc/vnc.html?autoconnect=true&resize=remote&path=${wsPath}&token=${viewToken}`;
+    res.json({ ok: true, platform: p, expiresAt, viewToken, viewerPath });
+  } catch (err) {
+    res.status(409).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+/** POST /api/auth/live/save — persist cookies, tear the browser down. */
+app.post("/api/auth/live/save", async (req, res) => {
+  if (!checkAuth(req, res)) return;
+  try {
+    const result = await saveLiveLogin();
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+/** POST /api/auth/live/cancel — tear down without saving. */
+app.post("/api/auth/live/cancel", async (req, res) => {
+  if (!checkAuth(req, res)) return;
+  await cancelLiveLogin();
+  res.json({ ok: true });
+});
+
+// noVNC stream proxy. Reachable only with a valid one-time view token; the
+// websockify/x11vnc backends bind to localhost, so this is the only way in.
+const vncProxy = httpProxy.createProxyServer({
+  target: `http://127.0.0.1:${WEBSOCKIFY_PORT}`,
+  ws: true,
+});
+vncProxy.on("error", (err: Error) => console.error("[vnc-proxy]", err.message));
+
+// app.use("/vnc", …) strips the "/vnc" prefix from req.url, so requests reach
+// websockify at the path it expects (/vnc.html, /websockify, static assets).
+//
+// Only the static noVNC client (public open-source JS/CSS) is served here — it
+// carries no screen data, so it is intentionally ungated (its sub-resource
+// requests can't forward the token query anyway). The ACTUAL screen stream is
+// the WebSocket, which is strictly token-gated in the `upgrade` handler below.
+app.use("/vnc", (req, res) => {
+  vncProxy.web(req, res);
+});
+
+const server = app.listen(config.port, () => {
   console.log(`
 ╔══════════════════════════════════════════════════╗
 ║        SignalDesk AI — Scraper Service           ║
@@ -797,6 +871,22 @@ app.listen(config.port, () => {
   initUrlScheduler().catch((err) =>
     console.error("[server] Failed to init URL scheduler:", err)
   );
+});
+
+// Bridge the noVNC WebSocket upgrade to websockify. Gated by the same one-time
+// view token (carried in the query, which noVNC forwards via its `path` param).
+server.on("upgrade", (req, socket, head) => {
+  try {
+    const url = new URL(req.url || "", "http://localhost");
+    if (!url.pathname.startsWith("/vnc/") || !verifyViewToken(url.searchParams.get("token"))) {
+      socket.destroy();
+      return;
+    }
+    req.url = url.pathname.replace(/^\/vnc/, "") + url.search; // strip prefix
+    vncProxy.ws(req, socket, head);
+  } catch {
+    socket.destroy();
+  }
 });
 
 // Graceful shutdown

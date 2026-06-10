@@ -9,8 +9,10 @@ const PROFILE_DIR = path.resolve(__dirname, "../../auth/browser-profile");
 
 /**
  * Exported storageState JSON file (portable — works on Render).
+ * Exported so the Live Login engine writes the session to the same file the
+ * scrapers read from via {@link getStorageState}.
  */
-const STORAGE_STATE_PATH = path.resolve(__dirname, "../../auth/storage-state.json");
+export const STORAGE_STATE_PATH = path.resolve(__dirname, "../../auth/storage-state.json");
 
 /**
  * Check if auth is available — either local profile, storage-state file, or env var.
