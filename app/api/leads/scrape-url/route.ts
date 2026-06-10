@@ -182,7 +182,20 @@ export async function DELETE(request: NextRequest) {
   const sessionId = searchParams.get("id");
 
   if (sessionId) {
-    // Delete a single session and its posts
+    // Verify the session belongs to the caller BEFORE touching its child rows —
+    // otherwise an arbitrary ?id= would delete another user's scraped_posts
+    // (the child delete was previously scoped only by session_id).
+    const { data: owned } = await supabase
+      .from("scrape_url_sessions")
+      .select("id")
+      .eq("id", sessionId)
+      .eq("user_id", session.userId)
+      .maybeSingle();
+
+    if (!owned) {
+      return NextResponse.json({ error: "Session not found" }, { status: 404 });
+    }
+
     const { error: postsErr } = await supabase
       .from("scraped_posts")
       .delete()
@@ -241,7 +254,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = await request.json();
+  let body: { url?: string; urls?: string[] };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
 
   // Normalize: accept { url } (legacy) or { urls } (multi)
   const rawUrls: string[] =

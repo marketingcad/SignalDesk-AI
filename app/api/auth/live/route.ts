@@ -4,7 +4,12 @@ import { verifySession, SESSION_COOKIE_NAME } from "@/lib/auth";
 const SCRAPER_URL = process.env.SCRAPER_SERVICE_URL || "http://localhost:4000";
 const SCRAPER_TOKEN = process.env.BACKEND_AUTH_TOKEN || "";
 
-async function proxyToScraper(method: string, path: string, body?: unknown) {
+async function proxyToScraper(
+  method: string,
+  path: string,
+  body?: unknown,
+  timeoutMs = 30_000
+) {
   const resp = await fetch(`${SCRAPER_URL}${path}`, {
     method,
     headers: {
@@ -12,7 +17,7 @@ async function proxyToScraper(method: string, path: string, body?: unknown) {
       Authorization: `Bearer ${SCRAPER_TOKEN}`,
     },
     ...(body !== undefined && { body: JSON.stringify(body) }),
-    signal: AbortSignal.timeout(30_000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   const data = await resp.json().catch(() => ({}));
   return { data, status: resp.status };
@@ -53,7 +58,20 @@ export async function POST(request: NextRequest) {
 
   try {
     if (action === "start") {
-      const { data, status } = await proxyToScraper("POST", "/api/auth/live/start", { platform });
+      // The viewer opens in the user's browser, so SCRAPER_URL must be a public
+      // URL — and HTTPS in production (an http:// or localhost target would be
+      // unreachable or mixed-content-blocked from the HTTPS dashboard).
+      const isProd = process.env.NODE_ENV === "production";
+      if (isProd && !/^https:\/\//i.test(SCRAPER_URL)) {
+        return NextResponse.json(
+          { error: "Live Login is unavailable: SCRAPER_SERVICE_URL must be a public https:// URL in production." },
+          { status: 503 }
+        );
+      }
+      // Starting the session boots a real browser on a virtual display, which on
+      // a cold scraper (binaries not yet warm) can take well over 30s — give it
+      // headroom so the dashboard doesn't report a false "Scraper unreachable".
+      const { data, status } = await proxyToScraper("POST", "/api/auth/live/start", { platform }, 75_000);
       if (status >= 200 && status < 300 && data?.viewerPath) {
         return NextResponse.json(
           { ...data, viewerUrl: `${SCRAPER_URL}${data.viewerPath}` },
@@ -72,7 +90,16 @@ export async function POST(request: NextRequest) {
     }
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });
   } catch (err) {
+    const name = err instanceof Error ? err.name : "";
     const msg = err instanceof Error ? err.message : String(err);
+    // AbortSignal.timeout fires a TimeoutError — that's a slow start, not an
+    // outage, so tell the user to retry rather than implying the scraper is down.
+    if (name === "TimeoutError" || name === "AbortError") {
+      return NextResponse.json(
+        { error: "The login browser took too long to start. Please try again." },
+        { status: 504 }
+      );
+    }
     return NextResponse.json({ error: "Scraper unreachable", detail: msg }, { status: 502 });
   }
 }

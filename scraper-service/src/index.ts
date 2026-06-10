@@ -828,7 +828,17 @@ const vncProxy = httpProxy.createProxyServer({
   target: `http://127.0.0.1:${WEBSOCKIFY_PORT}`,
   ws: true,
 });
-vncProxy.on("error", (err: Error) => console.error("[vnc-proxy]", err.message));
+// Fail fast instead of hanging when websockify isn't running (no session).
+vncProxy.on("error", (err: Error, _req, res) => {
+  console.error("[vnc-proxy]", err.message);
+  const r = res as import("http").ServerResponse | undefined;
+  if (r && !r.headersSent) {
+    r.writeHead(503, { "Content-Type": "text/plain" });
+    r.end("Live Login session is not active. Start it from Settings and try again.");
+  } else if (r) {
+    r.end();
+  }
+});
 
 // app.use("/vnc", …) strips the "/vnc" prefix from req.url, so requests reach
 // websockify at the path it expects (/vnc.html, /websockify, static assets).
@@ -838,6 +848,12 @@ vncProxy.on("error", (err: Error) => console.error("[vnc-proxy]", err.message));
 // requests can't forward the token query anyway). The ACTUAL screen stream is
 // the WebSocket, which is strictly token-gated in the `upgrade` handler below.
 app.use("/vnc", (req, res) => {
+  // No active session → websockify is down; return a readable error instead of
+  // proxying into a connection-refused hang (the old "loading forever" bug).
+  if (!getLiveStatus().active) {
+    res.status(503).send("Live Login session is not active. Start it from Settings and try again.");
+    return;
+  }
   vncProxy.web(req, res);
 });
 

@@ -1,13 +1,16 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { Header } from "@/components/header";
 import { StatsCard } from "@/components/stats-card";
 import { IntentBadge } from "@/components/intent-badge";
 import { PlatformBadge } from "@/components/platform-badge";
 import { StatusBadge } from "@/components/status-badge";
-import { LeadChart } from "@/components/lead-chart";
-import { PlatformChart } from "@/components/platform-chart";
-import { GeographyChart } from "@/components/geography-chart";
+// recharts is heavy and the charts render nothing until their data resolves, so
+// code-split them out of the dashboard route's initial bundle.
+const LeadChart = dynamic(() => import("@/components/lead-chart").then((m) => m.LeadChart), { ssr: false });
+const PlatformChart = dynamic(() => import("@/components/platform-chart").then((m) => m.PlatformChart), { ssr: false });
+const GeographyChart = dynamic(() => import("@/components/geography-chart").then((m) => m.GeographyChart), { ssr: false });
 import { Card } from "@/components/ui/card";
 import { useApi } from "@/lib/use-api";
 import { timeAgo } from "@/lib/utils";

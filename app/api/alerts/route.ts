@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifySession, SESSION_COOKIE_NAME } from "@/lib/auth";
+import { isAdmin } from "@/lib/authz";
 import { getAlerts, getArchivedAlerts, deleteArchivedAlerts } from "@/lib/leads";
 
 export async function GET(request: NextRequest) {
@@ -26,8 +27,12 @@ export async function GET(request: NextRequest) {
 /** DELETE /api/alerts — bulk delete all archived (Dismissed) alerts */
 export async function DELETE(request: NextRequest) {
   const token = request.cookies.get(SESSION_COOKIE_NAME)?.value;
-  if (!token || !(await verifySession(token))) {
+  const session = token ? await verifySession(token) : null;
+  if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!(await isAdmin(session))) {
+    return NextResponse.json({ error: "Only an admin can delete archived alerts." }, { status: 403 });
   }
 
   try {

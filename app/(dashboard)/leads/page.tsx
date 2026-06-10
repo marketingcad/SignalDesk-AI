@@ -1243,7 +1243,7 @@ const [isShowActions, setIsShowActions] = useState(false);
             onClick={() => onUpdateStatus(lead.id, "Qualified")}
           >
             <UserPlus className="h-3.5 w-3.5" />
-            Assign
+            Qualify
           </Button>
           <Button
             variant="outline"

@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Bell, Search, Sparkles, X } from "lucide-react";
 import { cn, timeAgo } from "@/lib/utils";
+import { ALERT_MIN_SCORE } from "@/lib/alerts-config";
 import { useRealtime } from "@/hooks/use-realtime";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -130,7 +131,7 @@ export function Header({ title, subtitle, actions }: HeaderProps) {
     table: "leads",
     event: "INSERT",
     onInsert: (row) => {
-      if (row.intent_score >= 70) setAlertCount((prev) => prev + 1);
+      if (row.intent_score >= ALERT_MIN_SCORE) setAlertCount((prev) => prev + 1);
     },
   });
 
@@ -138,7 +139,7 @@ export function Header({ title, subtitle, actions }: HeaderProps) {
     table: "leads",
     event: "DELETE",
     onDelete: (row) => {
-      if (row.intent_score >= 70) setAlertCount((prev) => Math.max(0, prev - 1));
+      if (row.intent_score >= ALERT_MIN_SCORE) setAlertCount((prev) => Math.max(0, prev - 1));
     },
   });
 
@@ -271,7 +272,7 @@ export function Header({ title, subtitle, actions }: HeaderProps) {
         </div>
         {/* Notifications */}
         <Link href="/alerts">
-         <Button variant="outline" size="icon" className="relative h-9 w-9">
+         <Button variant="outline" size="icon" className="relative h-9 w-9" aria-label={alertCount > 0 ? `Notifications, ${alertCount} unread` : "Notifications"}>
           <Bell className="h-4 w-4" />
           {alertCount > 0 && (
             <Badge className="absolute -right-1 -top-1 h-4 min-w-4 justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground border-0">

@@ -31,18 +31,18 @@ export function PlatformChart() {
   useEffect(() => setMounted(true), []);
 
   useEffect(() => {
-    fetch("/api/leads?limit=500")
+    // Use the server-side aggregate instead of pulling up to 500 full lead rows
+    // just to count by platform.
+    fetch("/api/dashboard/platform-counts")
       .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (!data?.leads?.length) return;
-        const counts: Record<string, number> = { Facebook: 0, LinkedIn: 0, Reddit: 0, X: 0 };
-        for (const lead of data.leads) {
-          if (counts[lead.platform] !== undefined) counts[lead.platform]++;
-        }
-        const total = Object.values(counts).reduce((a, b) => a + b, 0);
+      .then((data: Record<string, { total?: number }> | null) => {
+        if (!data) return;
+        const platforms = ["Facebook", "LinkedIn", "Reddit", "X"];
+        const counts = platforms.map((p) => ({ platform: p, count: data[p]?.total ?? 0 }));
+        const total = counts.reduce((a, b) => a + b.count, 0);
         if (total > 0) {
           setPlatformBreakdown(
-            Object.entries(counts).map(([platform, count]) => ({
+            counts.map(({ platform, count }) => ({
               platform,
               count,
               percentage: Math.round((count / total) * 100),

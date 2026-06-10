@@ -1,12 +1,17 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import dynamic from "next/dynamic";
 import { useTheme } from "next-themes";
 import Link from "next/link";
 import { ArrowRight, Zap, Shield, BarChart3, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
-import FloatingLines from "@/components/FloatingLines";
+
+// three.js is ~150KB+ gzipped and the animation is purely decorative + only
+// shown after `mounted`. Code-split it so it never bloats the landing page's
+// initial bundle (the first page unauthenticated visitors hit).
+const FloatingLines = dynamic(() => import("@/components/FloatingLines"), { ssr: false });
 
 export default function LandingPage() {
   const [mounted, setMounted] = useState(false);

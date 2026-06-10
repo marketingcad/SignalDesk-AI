@@ -105,7 +105,7 @@ export function UserAvatarMenu() {
         >
           <Avatar size="default" className="cursor-pointer ring-2 ring-border hover:ring-primary/50 transition-all">
             {user?.avatar_url ? (
-              <AvatarImage src={user.avatar_url} alt="Profile" />
+              <AvatarImage src={user.avatar_url} alt={user?.full_name ? `${user.full_name} avatar` : "User avatar"} />
             ) : null}
             <AvatarFallback className="bg-primary/10 text-primary font-semibold text-xs">
               {user ? getInitials(user.email, user.full_name) : "?"}
@@ -125,7 +125,7 @@ export function UserAvatarMenu() {
                   <div className="relative">
                     <Avatar size="lg">
                       {user?.avatar_url ? (
-                        <AvatarImage src={user.avatar_url} alt="Profile" />
+                        <AvatarImage src={user.avatar_url} alt={user?.full_name ? `${user.full_name} avatar` : "User avatar"} />
                       ) : null}
                       <AvatarFallback className="bg-primary/10 text-primary font-semibold text-sm">
                         {user ? getInitials(user.email, user.full_name) : "?"}
@@ -321,7 +321,7 @@ function ProfileModal({
                   className="h-20 w-20 ring-4 ring-border"
                 >
                   {avatarPreview ? (
-                    <AvatarImage src={avatarPreview} alt="Profile" />
+                    <AvatarImage src={avatarPreview} alt={user?.full_name ? `${user.full_name} avatar` : "User avatar"} />
                   ) : null}
                   <AvatarFallback className="bg-primary/10 text-primary font-semibold text-xl">
                     {user ? getInitials(user.email, fullName || user.full_name) : "?"}

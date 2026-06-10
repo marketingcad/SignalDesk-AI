@@ -752,6 +752,8 @@ export default function SettingsPage() {
                 max={100}
                 value={threshold}
                 onChange={(e) => setThreshold(Number(e.target.value))}
+                aria-label="Alert threshold (minimum intent score)"
+                aria-valuetext={`${threshold} intent score`}
                 className="flex-1 h-2 rounded-full appearance-none bg-muted accent-primary cursor-pointer"
               />
               <div className="flex h-10 w-16 items-center justify-center rounded-lg border border-border bg-secondary font-mono text-sm font-bold text-foreground">

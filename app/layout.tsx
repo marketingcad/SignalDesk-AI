@@ -15,9 +15,29 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://signaldesk-ai-i7mbo.ondigitalocean.app";
+
 export const metadata: Metadata = {
-  title: "SignalDesk AI — Lead Intelligence Dashboard",
-  description: "Chrome extension–based buying intent detection system for Virtual Assistant hiring signals",
+  metadataBase: new URL(siteUrl),
+  title: {
+    default: "SignalDesk AI — Lead Intelligence Dashboard",
+    template: "%s · SignalDesk AI",
+  },
+  description:
+    "Real-time buying-intent detection that surfaces high-intent Virtual Assistant hiring signals across social platforms.",
+  applicationName: "SignalDesk AI",
+  openGraph: {
+    type: "website",
+    siteName: "SignalDesk AI",
+    url: "/",
+    title: "SignalDesk AI — Real-Time Lead Intelligence",
+    description: "Surface high-intent hiring signals across social platforms and engage prospects at the right moment.",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "SignalDesk AI",
+    description: "Real-time lead intelligence and buying-intent detection.",
+  },
 };
 
 export default function RootLayout({

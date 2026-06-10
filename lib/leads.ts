@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { ALERT_MIN_SCORE } from "./alerts-config";
 import type {
   Lead,
   Platform,
@@ -97,7 +98,7 @@ export async function getAlerts(limit = 20, offset = 0): Promise<{ leads: Lead[]
   const { data, error, count } = await supabase
     .from("leads")
     .select("*", { count: "exact" })
-    .gte("intent_score", 60)
+    .gte("intent_score", ALERT_MIN_SCORE)
     .neq("status", "Dismissed")
     .order("created_at", { ascending: false })
     .range(offset, offset + limit - 1);

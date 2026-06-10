@@ -71,10 +71,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = await request.json();
-  const { keyword, category } = body as { keyword: string; category: KeywordCategory };
+  let body: { keyword?: string; category?: KeywordCategory };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+  const { keyword, category } = body;
 
-  if (!keyword?.trim() || !["high_intent", "medium_intent", "negative"].includes(category)) {
+  if (!keyword?.trim() || !["high_intent", "medium_intent", "negative"].includes(category as string)) {
     return NextResponse.json({ error: "Invalid keyword or category" }, { status: 400 });
   }
 
@@ -97,7 +102,13 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { keyword, category } = (await request.json()) as { keyword: string; category: KeywordCategory };
+  let delBody: { keyword?: string; category?: KeywordCategory };
+  try {
+    delBody = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+  const { keyword, category } = delBody;
 
   if (!keyword?.trim()) {
     return NextResponse.json({ error: "Missing keyword" }, { status: 400 });

@@ -22,6 +22,7 @@ import {
   Bookmark,
 } from "lucide-react";
 import { cn, timeAgo } from "@/lib/utils";
+import { ALERT_MIN_SCORE } from "@/lib/alerts-config";
 import type { Platform } from "@/lib/types";
 import { useRealtime } from "@/hooks/use-realtime";
 import { Button } from "@/components/ui/button";
@@ -90,7 +91,7 @@ export function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose, onMobi
     table: "leads",
     event: "INSERT",
     onInsert: (newLead) => {
-      if (newLead.intent_score >= 70) {
+      if (newLead.intent_score >= ALERT_MIN_SCORE) {
         setAlertCount((prev) => prev + 1);
       }
       // Update platform lastActive
@@ -110,7 +111,7 @@ export function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose, onMobi
     table: "leads",
     event: "DELETE",
     onDelete: (oldLead) => {
-      if (oldLead.intent_score >= 70) {
+      if (oldLead.intent_score >= ALERT_MIN_SCORE) {
         setAlertCount((prev) => Math.max(0, prev - 1));
       }
     },
@@ -271,6 +272,7 @@ export function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose, onMobi
           variant="ghost"
           size="sm"
           onClick={onToggle}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           className="w-full text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent"
         >
           {collapsed ? (
