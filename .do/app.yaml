@@ -47,7 +47,6 @@ services:
       - { key: DISCORD_WEBHOOK_URL,           scope: RUN_TIME,           type: SECRET }
       - { key: FB_VERIFY_TOKEN,               scope: RUN_TIME,           type: SECRET }
       - { key: FB_APP_SECRET,                 scope: RUN_TIME,           type: SECRET }
-      - { key: CRON_SECRET,                   scope: RUN_TIME,           type: SECRET }
 
   # ---------------------------------------------------------------------------
   # 2) Scraper service — Playwright/Chromium, RAM-heavy, internal only
