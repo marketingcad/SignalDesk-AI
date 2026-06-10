@@ -1,4 +1,6 @@
 node_modules/
 dist/
-auth/
+# Session storage dir at the scraper root only — anchored so it does NOT also
+# match source folders like src/auth/ (which holds committed code).
+/auth/
 .env

@@ -1,4 +1,10 @@
 /**
+ * Exported storageState JSON file (portable — works on Render).
+ * Exported so the Live Login engine writes the session to the same file the
+ * scrapers read from via {@link getStorageState}.
+ */
+export declare const STORAGE_STATE_PATH: string;
+/**
  * Check if auth is available — either local profile, storage-state file, or env var.
  */
 export declare function hasSavedCookies(): boolean;

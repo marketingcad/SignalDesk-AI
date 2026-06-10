@@ -37,8 +37,10 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
+const http_proxy_1 = __importDefault(require("http-proxy"));
 const nodeCron = __importStar(require("node-cron"));
 const config_1 = require("./config");
+const liveLogin_1 = require("./auth/liveLogin");
 const cronJobs_1 = require("./scheduler/cronJobs");
 const urlScheduler_1 = require("./scheduler/urlScheduler");
 const crawlerManager_1 = require("./crawler/crawlerManager");
@@ -49,7 +51,6 @@ const browserAuth_1 = require("./crawler/browserAuth");
 const postFilter_1 = require("./utils/postFilter");
 const rateLimiter_1 = require("./utils/rateLimiter");
 const sessionHealth_1 = require("./utils/sessionHealth");
-const discord_2 = require("./alerts/discord");
 const app = (0, express_1.default)();
 app.use(express_1.default.json());
 // ---------------------------------------------------------------------------
@@ -227,10 +228,6 @@ app.post("/api/scrape-url", async (req, res) => {
                 continue;
             }
             const result = await scrapeUrlWithRetry(targetUrl, `[url-scraper]`);
-            const discordErrors = result.errors.filter((e) => !e.includes("requires login") && !e.includes("page.goto: Timeout") && !e.includes("ERR_ABORTED"));
-            if (discordErrors.length > 0) {
-                await (0, discord_1.sendErrorAlert)(result.platform, discordErrors.join("\n"));
-            }
             // Pre-filter: reject job seekers, too-short posts, and unknown authors
             const preFiltered = (0, postFilter_1.filterPosts)(result.posts, "[url-scraper]");
             const filtered = preFiltered.filter((p) => {
@@ -584,9 +581,6 @@ app.post("/api/auth/validate", async (req, res) => {
             return res.status(400).json({ error: "Invalid platform" });
         if (result !== "error") {
             (0, sessionHealth_1.reportValidationResult)(platformKey, result);
-            if (result === "expired" || result === "no_cookies") {
-                await (0, discord_2.sendAuthExpiredAlert)(platformKey, result === "no_cookies" ? "no_cookies" : "cookie_validation");
-            }
         }
         res.json({ success: true, platform, result });
     }
@@ -597,9 +591,6 @@ app.post("/api/auth/validate", async (req, res) => {
             if (!p || result === "error")
                 continue;
             (0, sessionHealth_1.reportValidationResult)(p, result);
-            if (result === "expired" || result === "no_cookies") {
-                await (0, discord_2.sendAuthExpiredAlert)(p, result === "no_cookies" ? "no_cookies" : "cookie_validation");
-            }
         }
         res.json({ success: true, results });
     }
@@ -728,7 +719,69 @@ app.post("/api/test/discord", async (req, res) => {
 // ---------------------------------------------------------------------------
 // Start server
 // ---------------------------------------------------------------------------
-app.listen(config_1.config.port, () => {
+// ---------------------------------------------------------------------------
+// Live Login — remote viewable browser for interactive social login
+// ---------------------------------------------------------------------------
+/** GET /api/auth/live/status — is a login session active? */
+app.get("/api/auth/live/status", (req, res) => {
+    if (!checkAuth(req, res))
+        return;
+    res.json((0, liveLogin_1.getLiveStatus)());
+});
+/** POST /api/auth/live/start — boot the remote browser; returns viewer path. */
+app.post("/api/auth/live/start", async (req, res) => {
+    if (!checkAuth(req, res))
+        return;
+    const { platform } = req.body;
+    try {
+        const { viewToken, platform: p, expiresAt } = await (0, liveLogin_1.startLiveLogin)(platform || "facebook");
+        // The outer token gates the noVNC HTML fetch; the token embedded in `path`
+        // gates the WebSocket upgrade (noVNC forwards the path verbatim).
+        const wsPath = encodeURIComponent(`vnc/websockify?token=${viewToken}`);
+        const viewerPath = `/vnc/vnc.html?autoconnect=true&resize=remote&path=${wsPath}&token=${viewToken}`;
+        res.json({ ok: true, platform: p, expiresAt, viewToken, viewerPath });
+    }
+    catch (err) {
+        res.status(409).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+});
+/** POST /api/auth/live/save — persist cookies, tear the browser down. */
+app.post("/api/auth/live/save", async (req, res) => {
+    if (!checkAuth(req, res))
+        return;
+    try {
+        const result = await (0, liveLogin_1.saveLiveLogin)();
+        res.json({ ok: true, ...result });
+    }
+    catch (err) {
+        res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+});
+/** POST /api/auth/live/cancel — tear down without saving. */
+app.post("/api/auth/live/cancel", async (req, res) => {
+    if (!checkAuth(req, res))
+        return;
+    await (0, liveLogin_1.cancelLiveLogin)();
+    res.json({ ok: true });
+});
+// noVNC stream proxy. Reachable only with a valid one-time view token; the
+// websockify/x11vnc backends bind to localhost, so this is the only way in.
+const vncProxy = http_proxy_1.default.createProxyServer({
+    target: `http://127.0.0.1:${liveLogin_1.WEBSOCKIFY_PORT}`,
+    ws: true,
+});
+vncProxy.on("error", (err) => console.error("[vnc-proxy]", err.message));
+// app.use("/vnc", …) strips the "/vnc" prefix from req.url, so requests reach
+// websockify at the path it expects (/vnc.html, /websockify, static assets).
+//
+// Only the static noVNC client (public open-source JS/CSS) is served here — it
+// carries no screen data, so it is intentionally ungated (its sub-resource
+// requests can't forward the token query anyway). The ACTUAL screen stream is
+// the WebSocket, which is strictly token-gated in the `upgrade` handler below.
+app.use("/vnc", (req, res) => {
+    vncProxy.web(req, res);
+});
+const server = app.listen(config_1.config.port, () => {
     console.log(`
 ╔══════════════════════════════════════════════════╗
 ║        SignalDesk AI — Scraper Service           ║
@@ -755,6 +808,22 @@ app.listen(config_1.config.port, () => {
     });
     (0, cronJobs_1.startScheduler)();
     (0, urlScheduler_1.initUrlScheduler)().catch((err) => console.error("[server] Failed to init URL scheduler:", err));
+});
+// Bridge the noVNC WebSocket upgrade to websockify. Gated by the same one-time
+// view token (carried in the query, which noVNC forwards via its `path` param).
+server.on("upgrade", (req, socket, head) => {
+    try {
+        const url = new URL(req.url || "", "http://localhost");
+        if (!url.pathname.startsWith("/vnc/") || !(0, liveLogin_1.verifyViewToken)(url.searchParams.get("token"))) {
+            socket.destroy();
+            return;
+        }
+        req.url = url.pathname.replace(/^\/vnc/, "") + url.search; // strip prefix
+        vncProxy.ws(req, socket, head);
+    }
+    catch {
+        socket.destroy();
+    }
 });
 // Graceful shutdown
 process.on("SIGINT", () => {

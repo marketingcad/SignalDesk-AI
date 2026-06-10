@@ -40,7 +40,6 @@ const config_1 = require("../config");
 const crawlerManager_1 = require("../crawler/crawlerManager");
 const backendClient_1 = require("../api/backendClient");
 const browserAuth_1 = require("../crawler/browserAuth");
-const discord_1 = require("../alerts/discord");
 const sessionHealth_1 = require("../utils/sessionHealth");
 const activeTasks = [];
 function scheduleJob(platform, expression, label) {
@@ -111,13 +110,7 @@ function startScheduler() {
                     continue;
                 }
                 (0, sessionHealth_1.reportValidationResult)(platform, result);
-                if (result === "expired" || result === "no_cookies") {
-                    console.warn(`[scheduler] ${platform} cookies: ${result} — sending alert`);
-                    await (0, discord_1.sendAuthExpiredAlert)(platform, result === "no_cookies" ? "no_cookies" : "cookie_validation");
-                }
-                else {
-                    console.log(`[scheduler] ${platform} cookies: ${result}`);
-                }
+                console.log(`[scheduler] ${platform} cookies: ${result}`);
             }
         }
         catch (err) {

@@ -39,16 +39,11 @@ async function runPlatform(platform) {
     }
     if (result.errors.length > 0) {
         console.warn(`[crawler] ${platform}: ${result.errors.length} errors`);
-        const discordErrors = result.errors.filter((e) => !e.includes("requires login") && !e.includes("page.goto: Timeout") && !e.includes("ERR_ABORTED"));
-        if (discordErrors.length > 0) {
-            await (0, discord_1.sendErrorAlert)(platform, discordErrors.join("\n"));
-        }
     }
-    // Track session health — alert if consecutive zero-post runs hit threshold
+    // Track session health — cookies may be expired after consecutive zero-post runs
     const justCrossedThreshold = (0, sessionHealth_1.reportRunResult)(platform, filtered.length);
     if (justCrossedThreshold) {
         console.warn(`[crawler] ${platform}: session health threshold reached — cookies may be expired`);
-        await (0, discord_1.sendAuthExpiredAlert)(platform, "zero_posts");
     }
     return { ...result, posts: filtered };
 }
@@ -81,7 +76,6 @@ async function runAllPlatforms() {
                     duration: 0,
                     errors: [msg],
                 });
-                await (0, discord_1.sendErrorAlert)(platform, msg);
             }
             // Pause between platforms to avoid detection
             console.log("[crawler] Pausing 5s between platforms...");

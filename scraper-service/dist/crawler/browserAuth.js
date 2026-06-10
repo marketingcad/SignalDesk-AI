@@ -3,6 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.STORAGE_STATE_PATH = void 0;
 exports.hasSavedCookies = hasSavedCookies;
 exports.getProfileDir = getProfileDir;
 exports.getStorageState = getStorageState;
@@ -20,15 +21,17 @@ const path_1 = __importDefault(require("path"));
 const PROFILE_DIR = path_1.default.resolve(__dirname, "../../auth/browser-profile");
 /**
  * Exported storageState JSON file (portable — works on Render).
+ * Exported so the Live Login engine writes the session to the same file the
+ * scrapers read from via {@link getStorageState}.
  */
-const STORAGE_STATE_PATH = path_1.default.resolve(__dirname, "../../auth/storage-state.json");
+exports.STORAGE_STATE_PATH = path_1.default.resolve(__dirname, "../../auth/storage-state.json");
 /**
  * Check if auth is available — either local profile, storage-state file, or env var.
  */
 function hasSavedCookies() {
     if (process.env.BROWSER_STORAGE_STATE)
         return true;
-    if (fs_1.default.existsSync(STORAGE_STATE_PATH))
+    if (fs_1.default.existsSync(exports.STORAGE_STATE_PATH))
         return true;
     return fs_1.default.existsSync(PROFILE_DIR) && fs_1.default.readdirSync(PROFILE_DIR).length > 0;
 }
@@ -54,14 +57,14 @@ function getProfileDir() {
  */
 function getStorageState() {
     // Rolling session file — the freshest cookies live here once it exists.
-    if (fs_1.default.existsSync(STORAGE_STATE_PATH)) {
-        return STORAGE_STATE_PATH;
+    if (fs_1.default.existsSync(exports.STORAGE_STATE_PATH)) {
+        return exports.STORAGE_STATE_PATH;
     }
     // Bootstrap: seed the rolling file from the env var (first run / fresh deploy).
     if (process.env.BROWSER_STORAGE_STATE) {
-        fs_1.default.mkdirSync(path_1.default.dirname(STORAGE_STATE_PATH), { recursive: true });
-        fs_1.default.writeFileSync(STORAGE_STATE_PATH, process.env.BROWSER_STORAGE_STATE, "utf-8");
-        return STORAGE_STATE_PATH;
+        fs_1.default.mkdirSync(path_1.default.dirname(exports.STORAGE_STATE_PATH), { recursive: true });
+        fs_1.default.writeFileSync(exports.STORAGE_STATE_PATH, process.env.BROWSER_STORAGE_STATE, "utf-8");
+        return exports.STORAGE_STATE_PATH;
     }
     return undefined;
 }
@@ -76,8 +79,8 @@ function getStorageState() {
  */
 async function saveStorageState(context) {
     try {
-        fs_1.default.mkdirSync(path_1.default.dirname(STORAGE_STATE_PATH), { recursive: true });
-        await context.storageState({ path: STORAGE_STATE_PATH });
+        fs_1.default.mkdirSync(path_1.default.dirname(exports.STORAGE_STATE_PATH), { recursive: true });
+        await context.storageState({ path: exports.STORAGE_STATE_PATH });
         console.log(`[auth] Rolling session refreshed → cookies re-saved (no expiry while scraping runs)`);
     }
     catch (err) {
@@ -92,7 +95,7 @@ async function saveStorageState(context) {
 function shouldUseStorageState() {
     if (process.env.BROWSER_STORAGE_STATE)
         return true;
-    if (fs_1.default.existsSync(STORAGE_STATE_PATH))
+    if (fs_1.default.existsSync(exports.STORAGE_STATE_PATH))
         return true;
     return false;
 }
@@ -154,11 +157,11 @@ async function loginAndSave(platform) {
         headless: true,
         args: ["--disable-blink-features=AutomationControlled"],
     });
-    await exportContext.storageState({ path: STORAGE_STATE_PATH });
+    await exportContext.storageState({ path: exports.STORAGE_STATE_PATH });
     await exportContext.close();
     console.log("[auth] Browser closed — session saved!");
     console.log(`[auth] Profile dir:    ${PROFILE_DIR}`);
-    console.log(`[auth] Storage state:  ${STORAGE_STATE_PATH}`);
+    console.log(`[auth] Storage state:  ${exports.STORAGE_STATE_PATH}`);
     // Verify
     const files = fs_1.default.readdirSync(PROFILE_DIR);
     console.log(`[auth] Profile files: ${files.length}`);
@@ -169,7 +172,7 @@ async function loginAndSave(platform) {
     console.log("a Render environment variable called BROWSER_STORAGE_STATE.");
     console.log("");
     console.log("Quick copy command:");
-    console.log(`  cat "${STORAGE_STATE_PATH}"`);
+    console.log(`  cat "${exports.STORAGE_STATE_PATH}"`);
     console.log("===================================================\n");
 }
 // ---------------------------------------------------------------------------
