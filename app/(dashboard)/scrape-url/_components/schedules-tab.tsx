@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 import {
   Link2, Loader2, AlertTriangle,
   Plus, Trash2, Play, Pause, Calendar, RefreshCw, Timer,
-  Zap, Activity, Layers, Pencil, Bookmark,
+  Zap, Activity, Layers, Pencil, Bookmark, Search, X, Globe,
 } from "lucide-react";
 import { PlatformBadge } from "./platform-badge";
 import type { UrlSchedule, NewSchedState, BookmarkEntry } from "./shared";
@@ -61,6 +61,11 @@ export function SchedulesTab({
   const updateSchedUrl = (i: number, v: string) =>
     setNewSched((s) => ({ ...s, urls: s.urls.map((u, j) => (j === i ? v : u)) }));
 
+  // ── List search / filter / sort ──────────────────────────
+  const [query, setQuery] = useState("");
+  const [platformFilter, setPlatformFilter] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "paused">("all");
+
   // Group schedules by base name
   const grouped: { baseName: string; items: UrlSchedule[] }[] = [];
   const map = new Map<string, UrlSchedule[]>();
@@ -70,14 +75,36 @@ export function SchedulesTab({
     map.get(base)!.push(s);
   }
 
+  // Platforms present across all schedules (for the filter chips)
+  const platformsPresent = Array.from(
+    new Set(schedules.map((s) => detectPlatform(s.url)).filter(Boolean) as string[])
+  );
+
+  // Apply search + platform + status filters to the grouped list
+  const q = query.trim().toLowerCase();
+  const filteredGroups = grouped.filter((group) => {
+    if (q) {
+      const hit = group.baseName.toLowerCase().includes(q)
+        || group.items.some((s) => s.url.toLowerCase().includes(q));
+      if (!hit) return false;
+    }
+    if (platformFilter && !group.items.some((s) => detectPlatform(s.url) === platformFilter)) return false;
+    if (statusFilter === "active" && !group.items.some((s) => s.status === "active")) return false;
+    if (statusFilter === "paused" && !group.items.some((s) => s.status === "paused")) return false;
+    return true;
+  });
+
+  const hasFilters = q.length > 0 || platformFilter !== null || statusFilter !== "all";
+  const clearFilters = () => { setQuery(""); setPlatformFilter(null); setStatusFilter("all"); };
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
       {/* ── Create form (left 2 cols) ─────────────────── */}
       <div className="lg:col-span-2">
         <Card className="border-border bg-card overflow-hidden">
-          <div className="border-b border-border px-5 py-4">
+          <div className="relative border-b border-border px-5 py-4 bg-linear-to-br from-primary/8 via-primary/2 to-transparent">
             <div className="flex items-center gap-2.5">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 shrink-0">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 ring-1 ring-inset ring-primary/20 shrink-0">
                 <Calendar className="h-4 w-4 text-primary" />
               </div>
               <div>
@@ -236,9 +263,15 @@ export function SchedulesTab({
                 <div>
                   <p className="text-sm font-semibold text-foreground">Schedules</p>
                   <p className="text-xs text-muted-foreground">
-                    {schedules.length} schedule{schedules.length !== 1 ? "s" : ""}
-                    {schedules.filter((s) => s.status === "active").length > 0 && (
-                      <> &middot; {schedules.filter((s) => s.status === "active").length} active</>
+                    {hasFilters ? (
+                      <>Showing {filteredGroups.length} of {grouped.length}</>
+                    ) : (
+                      <>
+                        {schedules.length} schedule{schedules.length !== 1 ? "s" : ""}
+                        {schedules.filter((s) => s.status === "active").length > 0 && (
+                          <> &middot; {schedules.filter((s) => s.status === "active").length} active</>
+                        )}
+                      </>
                     )}
                   </p>
                 </div>
@@ -255,6 +288,101 @@ export function SchedulesTab({
             </div>
           </div>
 
+          {/* Filter toolbar */}
+          {schedules.length > 0 && (
+            <div className="border-b border-border px-5 py-3 flex flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between">
+              <div className="relative w-full lg:max-w-[16rem]">
+                <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search by name or URL…"
+                  className="h-8 pl-9 pr-8 text-xs bg-secondary/50 border-border"
+                />
+                {query && (
+                  <button
+                    onClick={() => setQuery("")}
+                    aria-label="Clear search"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {/* Status segmented control */}
+                <div className="flex items-center gap-0.5 rounded-lg bg-muted/50 p-0.5 shrink-0">
+                  {([
+                    { value: "all",    label: "All" },
+                    { value: "active", label: "Active" },
+                    { value: "paused", label: "Paused" },
+                  ] as const).map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setStatusFilter(opt.value)}
+                      className={cn(
+                        "rounded-md px-2.5 py-1 text-[11px] font-medium transition-all whitespace-nowrap",
+                        statusFilter === opt.value
+                          ? "bg-background text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Platform filter chips */}
+                {platformsPresent.length > 1 && (
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      onClick={() => setPlatformFilter(null)}
+                      className={cn(
+                        "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-all whitespace-nowrap",
+                        platformFilter === null
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-border bg-muted/50 text-muted-foreground hover:text-foreground hover:bg-muted"
+                      )}
+                    >
+                      <Globe className="h-3 w-3" />
+                      All
+                    </button>
+                    {platformsPresent.map((p) => {
+                      const meta = PLATFORM_META[p];
+                      const selected = platformFilter === p;
+                      return (
+                        <button
+                          key={p}
+                          onClick={() => setPlatformFilter(selected ? null : p)}
+                          className={cn(
+                            "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-all whitespace-nowrap",
+                            selected
+                              ? cn(meta?.bg, meta?.border, meta?.color, "shadow-sm")
+                              : "border-border bg-muted/50 text-muted-foreground hover:text-foreground hover:bg-muted"
+                          )}
+                        >
+                          <span className={cn("h-1.5 w-1.5 rounded-full", meta?.dot)} />
+                          {p}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {hasFilters && (
+                  <button
+                    onClick={clearFilters}
+                    className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium text-muted-foreground hover:text-rose-400 transition-colors whitespace-nowrap shrink-0"
+                  >
+                    <X className="h-3 w-3" />
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
           {schedulesLoading && schedules.length === 0 ? (
             <div className="flex items-center justify-center py-16 text-muted-foreground">
               <Loader2 className="h-5 w-5 animate-spin mr-2" />
@@ -267,6 +395,18 @@ export function SchedulesTab({
               </div>
               <p className="text-sm font-medium text-muted-foreground">No schedules yet</p>
               <p className="text-xs text-muted-foreground/60 mt-1">Create one using the form on the left</p>
+            </div>
+          ) : filteredGroups.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-muted/50 mb-3">
+                <Search className="h-6 w-6 text-muted-foreground/50" />
+              </div>
+              <p className="text-sm font-medium text-muted-foreground">No matching schedules</p>
+              <p className="text-xs text-muted-foreground/60 mt-1">Try a different search or filter</p>
+              <Button variant="outline" size="sm" onClick={clearFilters} className="mt-3 h-7 gap-1.5 text-xs">
+                <X className="h-3 w-3" />
+                Clear filters
+              </Button>
             </div>
           ) : (
             <table className="w-full text-sm">
@@ -281,7 +421,7 @@ export function SchedulesTab({
                 </tr>
               </thead>
               <tbody>
-                {grouped.map((group) => {
+                {filteredGroups.map((group) => {
                   const first = group.items[0];
                   const allActive = group.items.every((s) => s.status === "active");
                   const someActive = group.items.some((s) => s.status === "active");
@@ -409,6 +549,17 @@ export function CronPicker({
   customCron: string;
   onChange: (updates: Partial<NewSchedState>) => void;
 }) {
+  // Resolve the effective cron string so we can preview how often it runs
+  const effectiveCron = cron !== "custom"
+    ? cron
+    : customMode === "raw"
+      ? customCron.trim()
+      : buildCustomCron(customMode, { minutes: customMinutes, hours: customHours, time: customTime, days: customDays });
+  const intervalMs = cronIntervalMs(effectiveCron);
+  const perDay = intervalMs > 0 ? Math.round((24 * 60 * 60 * 1000) / intervalMs) : 0;
+  const isFrequent = intervalMs > 0 && intervalMs < 24 * 60 * 60 * 1000;
+  const isHeavy = intervalMs > 0 && intervalMs < 30 * 60 * 1000; // < 30 min
+
   return (
     <div className="space-y-2.5">
       <div className="flex items-center justify-between">
@@ -561,6 +712,29 @@ export function CronPicker({
               </span>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Frequency preview — how often this schedule will fire */}
+      {isFrequent && (
+        <div className={cn(
+          "flex items-start gap-2 rounded-lg border px-3 py-2",
+          isHeavy
+            ? "border-amber-500/25 bg-amber-500/8"
+            : "border-primary/15 bg-primary/5"
+        )}>
+          {isHeavy
+            ? <AlertTriangle className="h-3.5 w-3.5 text-amber-400 shrink-0 mt-0.5" />
+            : <Timer className="h-3.5 w-3.5 text-primary shrink-0 mt-0.5" />}
+          <p className="text-[11px] leading-relaxed text-foreground">
+            Runs about every <span className="font-semibold">{formatMs(intervalMs)}</span>
+            {perDay > 0 && <span className="text-muted-foreground"> &middot; ~{perDay.toLocaleString()}× per day per URL</span>}
+            {isHeavy && (
+              <span className="block text-amber-400/90 mt-0.5">
+                High frequency may hit platform rate limits — every 30 min or slower is recommended.
+              </span>
+            )}
+          </p>
         </div>
       )}
     </div>

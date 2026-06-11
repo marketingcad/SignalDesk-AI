@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -113,27 +112,6 @@ export function RunHistoryTab({
 
   return (
     <div className="space-y-4">
-      {/* Summary stats */}
-      {!schedulesLoading && schedules.length > 0 && (
-        <div className="flex items-center gap-3 flex-nowrap max-sm:flex-wrap">
-          {[
-            { label: "Total",  value: schedules.length,                                      icon: Calendar, cls: "bg-primary/10 text-primary" },
-            { label: "Active", value: schedules.filter((s) => s.status === "active").length,  icon: Play,     cls: "bg-emerald-500/10 text-emerald-400" },
-            { label: "Paused", value: schedules.filter((s) => s.status === "paused").length,  icon: Pause,    cls: "bg-amber-500/10 text-amber-400" },
-          ].map((stat) => (
-            <Card key={stat.label} className="border-border bg-card p-3 px-4 flex items-center gap-3 flex-1 min-w-0">
-              <div className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg", stat.cls)}>
-                <stat.icon className="h-4 w-4" />
-              </div>
-              <div className="flex items-center gap-2">
-                <p className="text-xl font-bold text-foreground leading-tight">{stat.value}</p>
-                <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide">{stat.label}</p>
-              </div>
-            </Card>
-          ))}
-        </div>
-      )}
-
       {/* Active group run progress banners */}
       {groupProgress.map((gp) => (
         <div key={gp.baseName} className="rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 flex items-center gap-3">

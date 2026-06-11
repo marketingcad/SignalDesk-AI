@@ -41,18 +41,6 @@ export async function restartServices(): Promise<string> {
 }
 
 // ---------------------------------------------------------------------------
-// Cloudflare Tunnel
-// ---------------------------------------------------------------------------
-
-export async function startTunnel(): Promise<string> {
-  return invoke<string>("start_tunnel");
-}
-
-export async function stopTunnel(): Promise<string> {
-  return invoke<string>("stop_tunnel");
-}
-
-// ---------------------------------------------------------------------------
 // Browser Auth (Playwright login for scraping)
 // ---------------------------------------------------------------------------
 

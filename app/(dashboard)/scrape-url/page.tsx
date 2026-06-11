@@ -17,6 +17,7 @@ import {
 import { SchedulesTab } from "./_components/schedules-tab";
 import { RunHistoryTab } from "./_components/run-history-tab";
 import { EditScheduleModal, BookmarkPickerModal } from "./_components/modals";
+import { StatsOverview } from "./_components/stats-overview";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Main page
@@ -354,6 +355,9 @@ export default function ScrapeUrlPage() {
         title="Scrape URL"
         subtitle="Extract leads from any URL — social platforms, forums, blogs, job boards & more"
       />
+
+      {/* KPI overview */}
+      {schedules.length > 0 && <StatsOverview schedules={schedules} />}
 
       {/* Tabs */}
       <div className="flex items-center gap-1 border-b border-border">

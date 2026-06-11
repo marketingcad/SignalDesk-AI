@@ -42,8 +42,6 @@ services:
       - { key: SUPABASE_SERVICE_ROLE_KEY,     scope: RUN_TIME,           type: SECRET }
       - { key: JWT_SECRET,                    scope: RUN_TIME,           type: SECRET }
       - { key: GOOGLE_AI_API_KEY,             scope: RUN_TIME,           type: SECRET }
-      - { key: APIFY_API_TOKEN,               scope: RUN_TIME,           type: SECRET }
-      - { key: APIFY_WEBHOOK_SECRET,          scope: RUN_TIME,           type: SECRET }
       - { key: DISCORD_WEBHOOK_URL,           scope: RUN_TIME,           type: SECRET }
       - { key: FB_VERIFY_TOKEN,               scope: RUN_TIME,           type: SECRET }
       - { key: FB_APP_SECRET,                 scope: RUN_TIME,           type: SECRET }
@@ -73,5 +71,4 @@ services:
       - { key: SUPABASE_SERVICE_ROLE_KEY, type: SECRET }
       - { key: GOOGLE_AI_API_KEY,         type: SECRET }
       - { key: DISCORD_WEBHOOK_URL,       type: SECRET }
-      - { key: REDDIT_CLIENT_ID,          type: SECRET }
-      - { key: REDDIT_CLIENT_SECRET,      type: SECRET }
+      - { key: BACKEND_AUTH_TOKEN,        type: SECRET }   # shared token (must match web app)
