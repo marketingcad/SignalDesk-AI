@@ -6,7 +6,7 @@ import Link from "next/link";
 import {
   ArrowRight, Zap, Shield, BarChart3, Globe, Bell, Filter,
   CalendarClock, Sparkles, Bookmark, Radar, Send, ChevronDown,
-  ArrowUp, Lock,
+  ArrowUp, Lock, Menu, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -122,6 +122,7 @@ export default function LandingPage() {
   const [scrolled, setScrolled] = useState(false);
   const [showTop, setShowTop] = useState(false);
   const [openFaq, setOpenFaq] = useState<number | null>(0);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const [year, setYear] = useState(2026);
 
   useEffect(() => {
@@ -133,6 +134,7 @@ export default function LandingPage() {
     const onScroll = () => {
       setScrolled(window.scrollY > 16);
       setShowTop(window.scrollY > 600);
+      setMobileOpen(false);
     };
     window.addEventListener("scroll", onScroll, { passive: true });
 
@@ -184,14 +186,54 @@ export default function LandingPage() {
             ))}
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             <ThemeToggle />
-            <Link href="/login">
+            <Link href="/login" className="hidden sm:block">
               <Button size="sm" className="gap-1.5">
                 Sign In
                 <ArrowRight className="size-3.5" />
               </Button>
             </Link>
+
+            {/* Mobile menu toggle */}
+            <button
+              type="button"
+              onClick={() => setMobileOpen((v) => !v)}
+              aria-label={mobileOpen ? "Close menu" : "Open menu"}
+              aria-expanded={mobileOpen}
+              className="flex size-9 items-center justify-center rounded-lg border border-border/60 text-foreground transition-colors hover:border-primary/40 hover:text-primary md:hidden"
+            >
+              {mobileOpen ? <X className="size-5" /> : <Menu className="size-5" />}
+            </button>
+          </div>
+        </div>
+
+        {/* Mobile dropdown panel */}
+        <div
+          className={cn(
+            "grid overflow-hidden border-border/60 bg-background/95 backdrop-blur-xl transition-all duration-300 ease-out md:hidden",
+            mobileOpen ? "grid-rows-[1fr] border-b" : "grid-rows-[0fr]"
+          )}
+        >
+          <div className="min-h-0 overflow-hidden">
+            <div className="flex flex-col gap-1 px-6 py-4">
+              {NAV_LINKS.map((l) => (
+                <a
+                  key={l.href}
+                  href={l.href}
+                  onClick={() => setMobileOpen(false)}
+                  className="rounded-lg px-3 py-2.5 text-base font-medium text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+                >
+                  {l.label}
+                </a>
+              ))}
+              <Link href="/login" onClick={() => setMobileOpen(false)} className="mt-2">
+                <Button className="w-full gap-1.5">
+                  Sign In
+                  <ArrowRight className="size-3.5" />
+                </Button>
+              </Link>
+            </div>
           </div>
         </div>
       </nav>

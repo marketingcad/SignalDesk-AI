@@ -66,6 +66,15 @@ export default function SettingsPage() {
     endDate: "",
   });
 
+  // Scrapers only surface posts from the last 7 days, so a custom range older
+  // than that can never return results. Floor the date pickers accordingly.
+  const minRangeDate = (() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 7);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  })();
+
   // --- UI state ---
   const [savedSection, setSavedSection] = useState<string | null>(null);
   const [savingSection, setSavingSection] = useState<string | null>(null);
@@ -834,6 +843,7 @@ export default function SettingsPage() {
                       id="date-range-start"
                       type="date"
                       value={dateRange.startDate}
+                      min={minRangeDate}
                       max={dateRange.endDate || undefined}
                       onChange={(e) => setDateRange((prev) => ({ ...prev, startDate: e.target.value }))}
                       className="h-9 text-sm bg-secondary/50 border-border"
@@ -845,11 +855,15 @@ export default function SettingsPage() {
                       id="date-range-end"
                       type="date"
                       value={dateRange.endDate}
-                      min={dateRange.startDate || undefined}
+                      min={dateRange.startDate || minRangeDate}
                       onChange={(e) => setDateRange((prev) => ({ ...prev, endDate: e.target.value }))}
                       className="h-9 text-sm bg-secondary/50 border-border"
                     />
                   </div>
+                  <p className="sm:col-span-2 flex items-start gap-1.5 text-[11px] text-muted-foreground">
+                    <AlertTriangle className="h-3 w-3 shrink-0 mt-0.5 text-amber-400" />
+                    Scrapers only see posts from the last 7 days, so dates older than that won&apos;t return results.
+                  </p>
                 </div>
               )}
             </div>

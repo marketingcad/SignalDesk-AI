@@ -143,7 +143,10 @@ export async function POST(request: NextRequest) {
     .maybeSingle();
 
   const dateRangeFilter = dateRangeRow?.value as DateRangeFilter | undefined;
-  const { rangeStart, rangeEnd } = resolveDateWindow(dateRangeFilter);
+  // Interpret day boundaries in the user's local timezone (default PH, UTC+8) so
+  // "Today" means their local day, not UTC. Configurable via LEAD_TZ_OFFSET_HOURS.
+  const tzOffsetHours = Number(process.env.LEAD_TZ_OFFSET_HOURS ?? 8);
+  const { rangeStart, rangeEnd } = resolveDateWindow(dateRangeFilter, new Date(), tzOffsetHours);
   console.log(
     `[leads/batch] Date window: ${rangeStart ? rangeStart.toISOString().slice(0, 10) : "any"} → ${rangeEnd ? rangeEnd.toISOString().slice(0, 10) : "any"} (mode: ${dateRangeFilter?.enabled ? dateRangeFilter.mode ?? "range" : "default-7d"})`
   );

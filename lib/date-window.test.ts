@@ -125,6 +125,38 @@ describe("resolveDateWindow", () => {
       expect(rangeEnd?.toISOString()).toBe("2026-05-15T23:59:59.999Z");
     });
   });
+
+  describe("timezone offset (PH, UTC+8)", () => {
+    // NOW is 2026-05-30T14:30:00Z → 2026-05-30T22:30 in PH, so the PH "today"
+    // is still May 30, but its boundaries land on different UTC instants.
+    it("today mode uses PH-local day boundaries", () => {
+      const { rangeStart, rangeEnd } = resolveDateWindow({ enabled: true, mode: "today" }, NOW, 8);
+      expect(rangeStart?.toISOString()).toBe("2026-05-29T16:00:00.000Z");
+      expect(rangeEnd?.toISOString()).toBe("2026-05-30T15:59:59.999Z");
+    });
+
+    it("custom range uses PH-local day boundaries", () => {
+      const filter: DateRangeFilter = {
+        enabled: true, mode: "range", startDate: "2026-05-01", endDate: "2026-05-15",
+      };
+      const { rangeStart, rangeEnd } = resolveDateWindow(filter, NOW, 8);
+      expect(rangeStart?.toISOString()).toBe("2026-04-30T16:00:00.000Z");
+      expect(rangeEnd?.toISOString()).toBe("2026-05-15T15:59:59.999Z");
+    });
+
+    it("default rolling window floors to PH midnight 7 days back", () => {
+      const { rangeStart, rangeEnd } = resolveDateWindow(undefined, NOW, 8);
+      expect(rangeStart?.toISOString()).toBe("2026-05-22T16:00:00.000Z");
+      expect(rangeEnd).toBeNull();
+    });
+
+    it("a negative offset (US Eastern, UTC-5) keeps the correct calendar date", () => {
+      const filter: DateRangeFilter = { enabled: true, mode: "range", startDate: "2026-05-01" };
+      const { rangeStart } = resolveDateWindow(filter, NOW, -5);
+      // Start of May 1 in UTC-5 is 05:00Z that same day — NOT April 30.
+      expect(rangeStart?.toISOString()).toBe("2026-05-01T05:00:00.000Z");
+    });
+  });
 });
 
 describe("classifyPostDate", () => {

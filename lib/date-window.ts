@@ -27,50 +27,82 @@ export type DateVerdict = "ok" | "too_old" | "too_new";
 /** Default rolling window (days) used when no custom range is active. */
 export const DEFAULT_WINDOW_DAYS = 7;
 
+// ---------------------------------------------------------------------------
+// Timezone helpers
+//
+// Day boundaries ("today", a custom range, the rolling default) are interpreted
+// in a configurable timezone offset so that "Today" means the user's local day,
+// not UTC. The offset is hours from UTC (e.g. 8 = Philippines UTC+8, -5 = US
+// Eastern). Default 0 keeps pure-UTC behavior. All returned bounds are still
+// absolute instants (Date), so post-timestamp comparison is unaffected.
+// ---------------------------------------------------------------------------
+
+const pad2 = (n: number) => String(n).padStart(2, "0");
+
+/** ISO offset suffix for a given hours-from-UTC, e.g. 8 → "+08:00", -5 → "-05:00". */
+function tzSuffix(offsetHours: number): string {
+  const sign = offsetHours < 0 ? "-" : "+";
+  const abs = Math.abs(offsetHours);
+  const h = Math.floor(abs);
+  const m = Math.round((abs - h) * 60);
+  return `${sign}${pad2(h)}:${pad2(m)}`;
+}
+
+/** The Y-M-D calendar date that `instant` falls on, in the given offset. */
+function localYMD(instant: Date, offsetHours: number): string {
+  const shifted = new Date(instant.getTime() + offsetHours * 3_600_000);
+  return `${shifted.getUTCFullYear()}-${pad2(shifted.getUTCMonth() + 1)}-${pad2(shifted.getUTCDate())}`;
+}
+
+/** Absolute instant for the start (00:00:00.000) of `ymd` in the given offset. */
+function startOfDay(ymd: string, offsetHours: number): Date {
+  return new Date(`${ymd}T00:00:00.000${tzSuffix(offsetHours)}`);
+}
+
+/** Absolute instant for the end (23:59:59.999) of `ymd` in the given offset. */
+function endOfDay(ymd: string, offsetHours: number): Date {
+  return new Date(`${ymd}T23:59:59.999${tzSuffix(offsetHours)}`);
+}
+
 /**
  * Resolve the active date window from the user's setting.
  *
  * Precedence:
- *  1. enabled + mode "today"          → today only (UTC), auto-adapts to `now`
- *  2. enabled + mode "range" w/ dates → fixed [startDate 00:00, endDate 23:59] UTC
+ *  1. enabled + mode "today"          → today only, auto-adapts to `now`
+ *  2. enabled + mode "range" w/ dates → fixed [startDate 00:00, endDate 23:59]
  *  3. anything else (disabled, no dates, unknown mode) → rolling default window
  *
- * @param filter The stored setting (may be null/undefined/partial).
- * @param now    Reference time — inject in tests for determinism.
+ * All day boundaries are interpreted in `offsetHours` (hours from UTC) so that
+ * "today" / a custom date means the user's local day. Default 0 = UTC.
+ *
+ * @param filter      The stored setting (may be null/undefined/partial).
+ * @param now         Reference time — inject in tests for determinism.
+ * @param offsetHours Timezone offset in hours from UTC (e.g. 8 for PH). Default 0.
  */
 export function resolveDateWindow(
   filter: DateRangeFilter | null | undefined,
-  now: Date = new Date()
+  now: Date = new Date(),
+  offsetHours = 0
 ): DateWindow {
-  // 1. Current-day only — auto-adapts to today (UTC)
+  // 1. Current-day only — auto-adapts to the local "today"
   if (filter?.enabled && filter.mode === "today") {
-    const rangeStart = new Date(now);
-    rangeStart.setUTCHours(0, 0, 0, 0);
-    const rangeEnd = new Date(now);
-    rangeEnd.setUTCHours(23, 59, 59, 999);
-    return { rangeStart, rangeEnd };
+    const today = localYMD(now, offsetHours);
+    return { rangeStart: startOfDay(today, offsetHours), rangeEnd: endOfDay(today, offsetHours) };
   }
 
   // 2. Custom fixed range — needs at least one bound
   if (filter?.enabled && (filter.startDate || filter.endDate)) {
-    let rangeStart: Date | null = null;
-    let rangeEnd: Date | null = null;
-    if (filter.startDate) {
-      rangeStart = new Date(filter.startDate);
-      rangeStart.setUTCHours(0, 0, 0, 0);
-    }
-    if (filter.endDate) {
-      rangeEnd = new Date(filter.endDate);
-      rangeEnd.setUTCHours(23, 59, 59, 999);
-    }
-    return { rangeStart, rangeEnd };
+    return {
+      rangeStart: filter.startDate ? startOfDay(filter.startDate, offsetHours) : null,
+      rangeEnd: filter.endDate ? endOfDay(filter.endDate, offsetHours) : null,
+    };
   }
 
   // 3. Default rolling N-day window (open-ended into the future)
-  const rangeStart = new Date(now);
-  rangeStart.setUTCDate(rangeStart.getUTCDate() - DEFAULT_WINDOW_DAYS);
-  rangeStart.setUTCHours(0, 0, 0, 0);
-  return { rangeStart, rangeEnd: null };
+  const back = new Date(now.getTime() + offsetHours * 3_600_000);
+  back.setUTCDate(back.getUTCDate() - DEFAULT_WINDOW_DAYS);
+  const startYMD = `${back.getUTCFullYear()}-${pad2(back.getUTCMonth() + 1)}-${pad2(back.getUTCDate())}`;
+  return { rangeStart: startOfDay(startYMD, offsetHours), rangeEnd: null };
 }
 
 /**
