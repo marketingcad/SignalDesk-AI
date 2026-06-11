@@ -1,12 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useTheme } from "next-themes";
 import Link from "next/link";
 import { Zap, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
-import FloatingLines from "@/components/FloatingLines";
+import { HeroBackground } from "@/components/hero-background";
 
 export default function AuthLayout({
   children,
@@ -14,10 +13,11 @@ export default function AuthLayout({
   children: React.ReactNode;
 }) {
   const [mounted, setMounted] = useState(false);
-  const { resolvedTheme } = useTheme();
-  const isDark = resolvedTheme === "dark";
 
-  useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(raf);
+  }, []);
 
   return (
     <div className="relative flex min-h-screen flex-col overflow-hidden bg-background">
@@ -44,31 +44,10 @@ export default function AuthLayout({
         </div>
       </nav>
 
-      {/* Background animation */}
+      {/* Background animation — slightly calmer behind the auth form */}
       {mounted && (
-        <div className="pointer-events-none absolute inset-0 z-0">
-          <FloatingLines
-            linesGradient={
-              isDark
-                ? ["#6366f1", "#818cf8", "#a5b4fc", "#c7d2fe"]
-                : ["#4338ca", "#4f46e5", "#6366f1", "#818cf8"]
-            }
-            enabledWaves={["top", "middle", "bottom"]}
-            lineCount={[3, 4, 2]}
-            lineDistance={[5, 3, 6]}
-            topWavePosition={{ x: 10.0, y: 0.5, rotate: -0.4 }}
-            middleWavePosition={{ x: 5.0, y: 0.0, rotate: 0.2 }}
-            bottomWavePosition={{ x: 2.0, y: -0.7, rotate: -1 }}
-            animationSpeed={0.4}
-            interactive={true}
-            bendRadius={4.0}
-            bendStrength={-0.4}
-            mouseDamping={0.04}
-            parallax={true}
-            parallaxStrength={0.1}
-            mixBlendMode={isDark ? "screen" : "normal"}
-            transparent={!isDark}
-          />
+        <div className="absolute inset-0 z-0">
+          <HeroBackground density={0.85} intensity={0.9} speed={0.9} pingMs={2200} />
         </div>
       )}
 
