@@ -45,10 +45,11 @@ export function startScheduler(): void {
   console.log("[scheduler] Starting cron scheduler...");
   console.log("[scheduler] ═══════════════════════════════════\n");
 
+  // Google-dork discovery was removed. Reddit scrapes subreddits directly;
+  // Facebook scrapes the group URLs configured in settings. X and LinkedIn have
+  // no automated discovery — scrape them on demand via the Scrape URL page.
   scheduleJob("Reddit", config.cron.reddit, "Reddit (subreddit search)");
-  scheduleJob("X", config.cron.x, "X/Twitter (Google dork)");
-  scheduleJob("LinkedIn", config.cron.linkedin, "LinkedIn (Google dork)");
-  scheduleJob("Facebook", config.cron.facebook, "Facebook (Google dork)");
+  scheduleJob("Facebook", config.cron.facebook, "Facebook (configured group URLs)");
 
   // Full run every 6 hours (free-tier friendly)
   const fullRunTask = cron.schedule("0 */6 * * *", async () => {

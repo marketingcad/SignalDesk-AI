@@ -1,6 +1,5 @@
 import { PlaywrightCrawler } from "crawlee";
 import { config } from "../config";
-import { getCachedKeywords } from "../api/backendClient";
 import { useStorageDir, cleanStorage } from "../crawler/storage";
 import { isCurrentWeek, isOlderThanCurrentWeek, resolveTimestamp } from "../utils/dateHelpers";
 import type { ScrapedPost, ScrapeResult } from "../types";
@@ -9,16 +8,13 @@ import { BROWSER_ARGS } from "./browserArgs";
 /**
  * Facebook Scraper — crawls publicly accessible Facebook group posts.
  *
- * Two strategies:
- * 1. Google dorking: site:facebook.com/groups "hiring virtual assistant"
- *    Phase 1 collects post URLs from Google results, then Phase 2 visits
- *    each Facebook URL to extract real post content, author, and timestamp.
+ * Opens each group URL configured in settings, scrolls the group page, and
+ * extracts individual post permalinks from div[role="article"] containers.
+ * (Google-dork discovery was removed — for one-off posts/groups use the
+ * Scrape URL page.)
  *
- * 2. Direct group URLs (from config): opens the group page and extracts
- *    individual post permalinks from div[role="article"] containers.
- *
- * NOTE: Most Facebook groups require login. Strategy 2 works best with
- * saved cookies via browserAuth.
+ * NOTE: Most Facebook groups require login, so this works best with a saved
+ * session via browserAuth / Live Login.
  */
 
 // ---------------------------------------------------------------------------
@@ -213,91 +209,16 @@ export async function scrapeFacebook(): Promise<ScrapeResult> {
   const seen = new Set<string>();
 
   useStorageDir("facebook");
-  // Use dynamic keywords from /settings page, fallback to env var defaults
-  const cached = getCachedKeywords();
-  const searchTerms = cached?.searchQueries?.length ? cached.searchQueries : config.targets.facebookSearchQueries;
-
-  // Google dork for Facebook group posts (filtered to last week)
-  const googleUrls: string[] = searchTerms.map(
-    (q) =>
-      `https://www.google.com/search?q=site:facebook.com/groups+"${encodeURIComponent(q)}"&tbs=qdr:w`
-  );
-
-  // Direct group URLs from config (these need permalink extraction)
+  // Direct group URLs from config — scraped directly (Google discovery removed).
   const directGroupUrls: string[] = config.targets.facebookGroupUrls.filter(Boolean);
 
-  // ── Phase 1: Collect Facebook post URLs from Google search results ──
-  const googleDorkPostUrls: Array<{ url: string; source: string }> = [];
-
-  if (googleUrls.length > 0) {
-    const googleCrawler = new PlaywrightCrawler({
-      headless: config.headless,
-      maxRequestsPerCrawl: googleUrls.length,
-      requestHandlerTimeoutSecs: 30,
-      maxConcurrency: 1,
-      maxRequestRetries: 1,
-      useSessionPool: false,
-      browserPoolOptions: {
-        retireBrowserAfterPageCount: 1,
-      },
-      launchContext: {
-        launchOptions: {
-          args: BROWSER_ARGS,
-        },
-      },
-
-      async requestHandler({ page, request, log }) {
-        log.info(`[Phase 1] Collecting Facebook URLs from Google: ${request.url}`);
-
-        await page.waitForSelector("#search", { timeout: 15000 }).catch(() => {});
-        await page.waitForTimeout(config.scrollDelayMs);
-
-        const items = await page.$$eval(
-          "div.g",
-          (elements) =>
-            elements.map((el) => {
-              const linkEl = el.querySelector("a");
-              return { url: linkEl?.href || "" };
-            })
-        );
-
-        let collected = 0;
-        for (const item of items) {
-          if (!item.url.includes("facebook.com")) continue;
-          if (seen.has(item.url)) continue;
-          seen.add(item.url);
-
-          const groupMatch = item.url.match(/groups\/([^/?]+)/);
-          const source = groupMatch ? `fb/${groupMatch[1]}` : "facebook-search";
-          googleDorkPostUrls.push({ url: item.url, source });
-          collected++;
-        }
-
-        log.info(`[Phase 1] Collected ${collected} Facebook URLs from Google`);
-      },
-
-      failedRequestHandler({ request, log }, err) {
-        log.error(`[Phase 1] Failed: ${request.url} — ${err.message}`);
-        errors.push(`Google dork: ${request.url}: ${err.message}`);
-      },
-    });
-
-    try {
-      await googleCrawler.run(googleUrls.map((url) => ({ url })));
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      errors.push(`Google dork crawler error: ${msg}`);
-    }
-
-    console.log(`[facebook] Phase 1 complete: ${googleDorkPostUrls.length} Facebook URLs collected from Google`);
-  }
-
-  // ── Phase 2: Visit each Facebook URL to extract real post content ──
-  // Combine Google dork URLs + direct group URLs for the main crawl
-  const facebookUrls = [
-    ...googleDorkPostUrls.map((p) => ({ url: p.url, userData: { source: p.source, fromGoogle: true } })),
-    ...directGroupUrls.map((url) => ({ url, userData: { source: "", fromGoogle: false } })),
-  ];
+  // ── Visit each configured Facebook group URL to extract post content ──
+  // (Discovery via Google dorking was removed; configure group URLs in settings,
+  // or use the Scrape URL page for one-off Facebook posts/groups.)
+  const facebookUrls = directGroupUrls.map((url) => ({
+    url,
+    userData: { source: "" },
+  }));
 
   if (facebookUrls.length > 0) {
     // Reset storage for Phase 2 (Phase 1 used the same dir)
@@ -321,21 +242,14 @@ export async function scrapeFacebook(): Promise<ScrapeResult> {
       },
 
       async requestHandler({ page, request, log }) {
-        const { source: requestSource, fromGoogle } = request.userData as { source: string; fromGoogle: boolean };
-        const isDirectGroup = !fromGoogle;
-
-        if (isDirectGroup) {
-          // ── Strategy 2: Direct group page — scroll and extract multiple posts ──
-          log.info(`Scraping Facebook group directly: ${request.url}`);
-        } else {
-          // ── Strategy 1 Phase 2: Visit Google dork URL to extract real content ──
-          log.info(`Scraping Facebook post from Google dork URL: ${request.url}`);
-        }
+        const { source: requestSource } = request.userData as { source?: string };
+        // Direct group page — scroll and extract multiple posts.
+        log.info(`Scraping Facebook group directly: ${request.url}`);
 
         const baseUrl = "https://www.facebook.com";
 
-        // Scroll to load posts (more for group pages, less for single posts)
-        const maxScrolls = isDirectGroup ? 6 : 2;
+        // Scroll to load posts on the group page
+        const maxScrolls = 6;
         let hitOldPost = false;
         for (let i = 0; i < maxScrolls; i++) {
           if (hitOldPost) {
@@ -393,24 +307,12 @@ export async function scrapeFacebook(): Promise<ScrapeResult> {
         const groupMatch = request.url.match(/groups\/([^/?]+)/);
         const source = requestSource || (groupMatch ? `fb/${groupMatch[1]}` : "facebook");
 
-        if (extracted.length === 0 && fromGoogle) {
-          // Google dork URL didn't yield extractable content (login wall, deleted post, etc.)
-          log.info(`No content extracted from Google dork URL (likely login-gated): ${request.url}`);
-          return;
-        }
-
         for (const item of extracted) {
           const resolvedTs = resolveTimestamp(item.rawTs);
 
-          // For direct group pages, strictly filter to current week.
-          // For Google dork URLs (already filtered to past week by Google's tbs=qdr:w),
-          // be lenient — keep posts with no parseable timestamp.
-          if (isDirectGroup) {
-            if (isOlderThanCurrentWeek(resolvedTs)) continue;
-            if (!isCurrentWeek(resolvedTs)) continue;
-          } else {
-            if (isOlderThanCurrentWeek(resolvedTs)) continue;
-          }
+          // Strictly filter direct group posts to the current week.
+          if (isOlderThanCurrentWeek(resolvedTs)) continue;
+          if (!isCurrentWeek(resolvedTs)) continue;
 
           const postUrl = item.url || request.url;
           if (seen.has(postUrl)) continue;

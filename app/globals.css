@@ -215,6 +215,26 @@
   animation: pulse-dot 2s ease-in-out infinite;
 }
 
+/* Hero aurora orbs — slow drifting gradient blobs behind the signal network */
+@keyframes aurora-a {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  33%      { transform: translate3d(6%, 4%, 0) scale(1.12); }
+  66%      { transform: translate3d(-4%, -6%, 0) scale(0.94); }
+}
+@keyframes aurora-b {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  33%      { transform: translate3d(-7%, 5%, 0) scale(0.9); }
+  66%      { transform: translate3d(5%, -4%, 0) scale(1.15); }
+}
+@keyframes aurora-c {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1.05); }
+  50%      { transform: translate3d(4%, -5%, 0) scale(0.92); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-aurora] { animation: none !important; }
+}
+
 /* View switch animations */
 @keyframes view-switch {
   from { opacity: 0; transform: scale(0.98); }

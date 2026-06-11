@@ -1,4 +1,4 @@
-import { scrapeReddit, scrapeX, scrapeLinkedin, scrapeFacebook } from "../scrapers";
+import { scrapeReddit, scrapeFacebook } from "../scrapers";
 import { sendLeadsBatch } from "../api/backendClient";
 import { sendRunSummary, sendNewLeadsAlert } from "../alerts/discord";
 import { filterPosts } from "../utils/postFilter";
@@ -11,12 +11,17 @@ import type { Platform, ScrapeResult } from "../types";
 
 type ScraperFn = () => Promise<ScrapeResult>;
 
+// Empty scraper for platforms with no automated discovery (use the Scrape URL page).
+const empty = (platform: Platform): ScraperFn => async () => ({ platform, posts: [], duration: 0, errors: [] });
+
 const SCRAPERS: Record<Platform, ScraperFn> = {
   Reddit: scrapeReddit,
-  X: scrapeX,
-  LinkedIn: scrapeLinkedin,
+  // X and LinkedIn discovery relied on Google dorking, which was removed.
+  // Scrape these platforms on demand via the Scrape URL page instead.
+  X: empty("X"),
+  LinkedIn: empty("LinkedIn"),
   Facebook: scrapeFacebook,
-  Other: async () => ({ platform: "Other" as const, posts: [], duration: 0, errors: [] }),
+  Other: empty("Other"),
 };
 
 let runInProgress = false;
@@ -84,7 +89,7 @@ export async function runAllPlatforms(): Promise<ScrapeResult[]> {
     console.log("[crawler] ║      STARTING FULL SCRAPER RUN           ║");
     console.log("[crawler] ╚══════════════════════════════════════════╝\n");
 
-    const platforms: Platform[] = ["Reddit", "X", "LinkedIn", "Facebook"];
+    const platforms: Platform[] = ["Reddit", "Facebook"];
 
     for (const platform of platforms) {
       try {
