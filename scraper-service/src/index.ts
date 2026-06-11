@@ -732,7 +732,7 @@ app.post("/api/test/discord", async (req, res) => {
       {
         url: mockPosts[0].url,
         leadId: "mock-lead-001",
-        intentScore: 0.91,
+        intentScore: 91,
         intentLevel: "High",
         matchedKeywords: ["virtual assistant", "e-commerce", "customer emails"],
         duplicate: false,
@@ -740,7 +740,7 @@ app.post("/api/test/discord", async (req, res) => {
       {
         url: mockPosts[1].url,
         leadId: "mock-lead-002",
-        intentScore: 0.85,
+        intentScore: 85,
         intentLevel: "High",
         matchedKeywords: ["hire a VA", "Shopify", "customer messages"],
         duplicate: false,
@@ -748,7 +748,7 @@ app.post("/api/test/discord", async (req, res) => {
       {
         url: mockPosts[2].url,
         leadId: "mock-lead-003",
-        intentScore: 0.78,
+        intentScore: 78,
         intentLevel: "Medium",
         matchedKeywords: ["virtual assistant", "small business"],
         duplicate: false,
