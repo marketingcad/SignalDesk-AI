@@ -284,7 +284,7 @@ app.post("/api/scrape-url", async (req, res) => {
           url: p.url,
           platform: p.platform,
           timestamp: p.timestamp,
-          matchedKeywords: keywordsByUrl.get(p.url) ?? [],
+          matchedKeywords: keywordsByUrl.get(p.url) ?? p.matchedKeywords ?? [],
         })),
       });
     } catch (err) {
@@ -394,7 +394,7 @@ app.post("/api/scrape-url/batch", async (req, res) => {
       url: p.url,
       platform: p.platform,
       timestamp: p.timestamp,
-      matchedKeywords: kwMap.get(p.url) ?? [],
+      matchedKeywords: kwMap.get(p.url) ?? p.matchedKeywords ?? [],
     })),
   });
 });

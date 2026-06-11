@@ -8,6 +8,8 @@ export interface ScrapedPost {
   timestamp: string;
   engagement: number;
   source: string;
+  /** Positive keywords (high+medium intent) matched in the post text, if any */
+  matchedKeywords?: string[];
 }
 
 export interface ScrapeResult {

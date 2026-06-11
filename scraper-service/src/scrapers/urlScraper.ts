@@ -373,19 +373,20 @@ async function extractFacebook(page: Page, groupUrl: string): Promise<Omit<Scrap
     const withMatches = keywordFiltered.filter((p) => p.matchedKeywords.length > 0);
     const noMatches = keywordFiltered.filter((p) => p.matchedKeywords.length === 0);
 
-    console.log(`[url-scraper] Keyword filtering: ${withMatches.length} matched, ${noMatches.length} unmatched`);
+    console.log(`[url-scraper] Keyword filtering: ${withMatches.length} matched, ${noMatches.length} unmatched (dropped)`);
     keywordFiltered.forEach((p, i) => {
       const kwTag = p.matchedKeywords.length > 0 ? ` [KW: ${p.matchedKeywords.join(", ")}]` : " [no keyword match]";
       console.log(`[url-scraper]   ${i + 1}. [${p.author}] "${p.text.slice(0, 120)}..."${kwTag} -> ${p.permalink.slice(0, 100)}`);
     });
 
-    // Return ALL current-week posts (keyword info is logged; backend AI scoring handles prioritisation)
-    return keywordFiltered.map((p) => ({
+    // Keep only posts that matched at least one positive keyword from Settings.
+    return withMatches.map((p) => ({
       author: p.author,
       text: p.text,
       url: p.permalink,
       timestamp: p.resolvedTs || new Date().toISOString(),
       engagement: 0,
+      matchedKeywords: p.matchedKeywords,
     }));
   }
 
@@ -1107,18 +1108,20 @@ async function extractLinkedin(page: Page): Promise<Omit<ScrapedPost, "platform"
     const withMatches = keywordFiltered.filter((p) => p.matchedKeywords.length > 0);
     const noMatches = keywordFiltered.filter((p) => p.matchedKeywords.length === 0);
 
-    console.log(`[url-scraper] LinkedIn keyword filtering: ${withMatches.length} matched, ${noMatches.length} unmatched`);
+    console.log(`[url-scraper] LinkedIn keyword filtering: ${withMatches.length} matched, ${noMatches.length} unmatched (dropped)`);
     keywordFiltered.forEach((p, i) => {
       const kwTag = p.matchedKeywords.length > 0 ? ` [KW: ${p.matchedKeywords.join(", ")}]` : " [no keyword match]";
       console.log(`[url-scraper]   ${i + 1}. [${p.author}] "${p.text.slice(0, 120)}..."${kwTag}`);
     });
 
-    return keywordFiltered.map((p) => ({
+    // Keep only posts that matched at least one positive keyword from Settings.
+    return withMatches.map((p) => ({
       author: p.author,
       text: p.text,
       url: p.permalink,
       timestamp: p.resolvedTs || new Date().toISOString(),
       engagement: p.engagement,
+      matchedKeywords: p.matchedKeywords,
     }));
   }
 
@@ -1431,18 +1434,20 @@ async function extractX(page: Page): Promise<Omit<ScrapedPost, "platform" | "sou
     const withMatches = keywordFiltered.filter((t) => t.matchedKeywords.length > 0);
     const noMatches = keywordFiltered.filter((t) => t.matchedKeywords.length === 0);
 
-    console.log(`[url-scraper] X keyword filtering: ${withMatches.length} matched, ${noMatches.length} unmatched`);
+    console.log(`[url-scraper] X keyword filtering: ${withMatches.length} matched, ${noMatches.length} unmatched (dropped)`);
     keywordFiltered.forEach((t, i) => {
       const kwTag = t.matchedKeywords.length > 0 ? ` [KW: ${t.matchedKeywords.join(", ")}]` : " [no keyword match]";
       console.log(`[url-scraper]   ${i + 1}. [@${t.screenName}] "${t.text.slice(0, 120)}..."${kwTag}`);
     });
 
-    return keywordFiltered.map((t) => ({
+    // Keep only tweets that matched at least one positive keyword from Settings.
+    return withMatches.map((t) => ({
       author: t.author || `@${t.screenName}`,
       text: t.text,
       url: t.permalink,
       timestamp: t.resolvedTs || new Date().toISOString(),
       engagement: t.engagement,
+      matchedKeywords: t.matchedKeywords,
     }));
   }
 
@@ -1817,6 +1822,24 @@ export async function scrapeUrl(targetUrl: string): Promise<ScrapeResult> {
           break;
       }
 
+      // Central keyword gate for social platforms. The GraphQL/API extractors
+      // already gate + attach matchedKeywords; this catches the DOM-fallback
+      // paths so every social lead is held to the same Settings-keyword bar.
+      if (platform === "Facebook" || platform === "LinkedIn" || platform === "X") {
+        const kwPlatform = platform.toLowerCase() as "facebook" | "linkedin" | "x";
+        const keywords = getMatchingKeywords(kwPlatform);
+        const before = extracted.length;
+        extracted = extracted
+          .map((item) => ({
+            ...item,
+            matchedKeywords: item.matchedKeywords ?? matchKeywords(item.text, keywords),
+          }))
+          .filter((item) => (item.matchedKeywords?.length ?? 0) > 0);
+        if (extracted.length < before) {
+          console.log(`[url-scraper] Keyword gate (${platform}): kept ${extracted.length}/${before} after matching Settings keywords`);
+        }
+      }
+
       for (const item of extracted) {
         posts.push({
           ...item,
@@ -2131,6 +2154,24 @@ export async function scrapeOneUrl(
         case "Other":
           extracted = await extractGeneric(page);
           break;
+      }
+
+      // Central keyword gate for social platforms. The GraphQL/API extractors
+      // already gate + attach matchedKeywords; this catches the DOM-fallback
+      // paths so every social lead is held to the same Settings-keyword bar.
+      if (platform === "Facebook" || platform === "LinkedIn" || platform === "X") {
+        const kwPlatform = platform.toLowerCase() as "facebook" | "linkedin" | "x";
+        const keywords = getMatchingKeywords(kwPlatform);
+        const before = extracted.length;
+        extracted = extracted
+          .map((item) => ({
+            ...item,
+            matchedKeywords: item.matchedKeywords ?? matchKeywords(item.text, keywords),
+          }))
+          .filter((item) => (item.matchedKeywords?.length ?? 0) > 0);
+        if (extracted.length < before) {
+          console.log(`[url-scraper] Keyword gate (${platform}): kept ${extracted.length}/${before} after matching Settings keywords`);
+        }
       }
 
       for (const item of extracted) {
