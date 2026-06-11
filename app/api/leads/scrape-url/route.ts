@@ -3,7 +3,7 @@ import { verifySession, SESSION_COOKIE_NAME } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { HIRING_KEYWORDS } from "@/lib/keywords";
 
-const SCRAPER_URL = process.env.SCRAPER_SERVICE_URL || "http://localhost:4000";
+const SCRAPER_URL = (process.env.SCRAPER_SERVICE_URL || "http://localhost:4000").replace(/\/+$/, "");
 const SCRAPER_TOKEN = process.env.BACKEND_AUTH_TOKEN || "";
 
 type ScraperPost = {
