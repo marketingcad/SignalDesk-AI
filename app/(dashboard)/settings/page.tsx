@@ -88,7 +88,6 @@ export default function SettingsPage() {
     } | null;
   } | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
-  const [loginTriggered, setLoginTriggered] = useState(false);
   const [validating, setValidating] = useState<string | null>(null);
 
   // --- Live Login (cloud remote browser) state ---
@@ -120,19 +119,6 @@ export default function SettingsPage() {
       // scraper service unreachable
     } finally {
       setAuthLoading(false);
-    }
-  };
-
-  const triggerBrowserLogin = async () => {
-    setLoginTriggered(true);
-    try {
-      await fetch("/api/auth/browser-login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "login" }),
-      });
-    } catch {
-      // scraper unreachable
     }
   };
 
@@ -539,7 +525,7 @@ export default function SettingsPage() {
                   <p className="text-xs text-foreground">
                     {authStatus.cookiesSaved
                       ? "Browser cookies are saved. Authenticated scraping is available."
-                      : "No browser cookies saved. Click \"Open Browser Login\" to authenticate."}
+                      : "No login session saved. Use Live Login (Cloud) below to authenticate."}
                   </p>
                 </div>
 
@@ -621,33 +607,6 @@ export default function SettingsPage() {
                 )}
               </>
             )}
-
-            {/* Login button */}
-            <div className="flex items-center gap-3">
-              <Button
-                size="sm"
-                className="gap-1.5 shadow-sm shadow-primary/25"
-                onClick={triggerBrowserLogin}
-                disabled={loginTriggered}
-              >
-                {loginTriggered ? (
-                  <>
-                    <Check className="h-3.5 w-3.5" />
-                    Browser Opened
-                  </>
-                ) : (
-                  <>
-                    <KeyRound className="h-3.5 w-3.5" />
-                    Open Browser Login
-                  </>
-                )}
-              </Button>
-              {loginTriggered && (
-                <span className="text-xs text-muted-foreground animate-fade-in">
-                  A browser window has opened. Log in to Facebook and LinkedIn, then close it.
-                </span>
-              )}
-            </div>
 
             {/* Live Login (cloud) — remote viewable browser */}
             <div className="rounded-lg border border-border bg-secondary/40 p-4 space-y-3">

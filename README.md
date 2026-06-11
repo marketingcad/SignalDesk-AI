@@ -8,26 +8,34 @@ Lead intelligence dashboard for **Virtual Assistant hiring detection**. Scrapes 
 ## Architecture Overview
 
 ```
-                        +-------------------+
-                        |  Chrome Extension |
-                        |  (MV3 Content     |
-                        |   Scripts)        |
-                        +--------+----------+
-                                 |
-                                 | POST /api/leads/batch
-                                 v
-                        +-------------------+    +------------------+
-                        |  Next.js Backend  |<---+ Scraper Service  |
-                        |  (API Routes)     |    | (Playwright +    |
-                        +--------+----------+    |  Crawlee + Cron) |
-                                 |               +------------------+
-                    +------------+------------+
-                    |            |             |
-                    v            v             v
-              +---------+  +---------+  +------------+
-              |Supabase |  | Discord |  | Google     |
-              |(Postgres)|  | Webhook |  | Gemini AI  |
-              +---------+  +---------+  +------------+
+              +---------------------+     +---------------------+
+              |  Scrape URL page    |     |  Scheduled jobs     |
+              |  (paste URLs, on-   |     |  (node-cron,        |
+              |   demand scraping)  |     |   automatic)        |
+              +----------+----------+     +----------+----------+
+                         |                           |
+                         +-------------+-------------+
+                                       | drives
+                                       v
+                            +-------------------+
+                            |  Scraper Service  |
+                            |  (Playwright +    |
+                            |   Crawlee + Cron) |
+                            +--------+----------+
+                                     | POST /api/leads/batch
+                                     v
+                            +-------------------+
+                            |  Next.js Backend  |
+                            |  (API Routes)     |
+                            +--------+----------+
+                                     |
+                        +------------+------------+
+                        |            |             |
+                        v            v             v
+                  +---------+  +---------+  +------------+
+                  |Supabase |  | Discord |  | Google     |
+                  |(Postgres)| | Webhook |  | Gemini AI  |
+                  +---------+  +---------+  +------------+
 ```
 
 ---
@@ -36,9 +44,9 @@ Lead intelligence dashboard for **Virtual Assistant hiring detection**. Scrapes 
 
 ### End-to-End Pipeline
 
-1. **Scrape** — Posts are collected from Facebook groups, Reddit subreddits, LinkedIn, and X via two methods:
-   - **Chrome Extension** — Content scripts detect posts in real-time as you browse
-   - **Scraper Service** — Playwright + Crawlee crawlers run on a cron schedule
+1. **Scrape** — Posts are collected from Facebook groups, Reddit subreddits, LinkedIn, and X by the **Scraper Service** (Playwright + Crawlee), driven two ways:
+   - **Scrape URL page** — paste one or more URLs in the app for on-demand scraping
+   - **Scheduled jobs** — Playwright + Crawlee crawlers run automatically on a cron schedule
 2. **Date filter** — Only posts from the **last 7 days** (rolling window) are kept; older posts are discarded
 3. **Pre-filter** — Self-promotion and job-seeking posts are rejected using **negative keywords from Settings** before they reach the backend
 4. **Keyword gate** — Posts must match at least one **positive keyword from Settings** (high_intent or medium_intent) to be processed. Posts with no keyword match are skipped entirely and never appear in the dashboard
@@ -62,7 +70,6 @@ Lead intelligence dashboard for **Virtual Assistant hiring detection**. Scrapes 
 | Scheduling | node-cron (scraper-service) |
 | Notifications | Discord Webhooks, Nodemailer (email) |
 | AI | Google Generative AI (Gemini) for lead qualification |
-| Browser Extension | Chrome MV3, content scripts + service worker |
 | Desktop App | Tauri v2 (Rust), auto-updater, NSIS/MSI/DMG/AppImage |
 | CI/CD | GitHub Actions (multi-OS matrix builds + GitHub Releases) |
 | UI Components | Radix UI, Shadcn/ui, Lucide icons |
@@ -81,7 +88,6 @@ signal-desk-ai/
 ├── lib/                    # Core logic (scoring, auth, alerts, AI, DB queries)
 ├── hooks/                  # Custom React hooks (realtime subscriptions, API fetcher)
 ├── scraper-service/        # Standalone Playwright + Crawlee scraper (node-cron)
-├── extension/              # Chrome MV3 extension (content scripts + popup)
 ├── src-tauri/              # Tauri desktop app shell (Rust)
 │   ├── src/main.rs         # Spawns Next.js + scraper, manages lifecycle
 │   ├── tauri.conf.json     # Window, updater, CSP, bundle config
@@ -97,22 +103,19 @@ signal-desk-ai/
 
 ## Data Collection Sources
 
-### 1. Chrome Extension
+### 1. Scrape URL page (on-demand)
 
-The Chrome MV3 extension injects content scripts into supported platforms and monitors posts in real-time:
+The primary, in-app entry point. Paste one or more post/group/profile URLs on the **Scrape URL** page and the Scraper Service fetches them on demand:
 
-- **Supported sites:** Facebook groups, LinkedIn feed/groups, Reddit subreddits, X home/search
+- **Supported sites:** Facebook groups, LinkedIn feed/groups, Reddit subreddits, X home/search (platform auto-detected from the URL)
 - **How it works:**
-  1. Content scripts use `MutationObserver` to detect new posts as the page loads
-  2. Extracts author, text, URL, and engagement (likes/comments/shares)
-  3. Pre-filters short or spammy posts client-side
-  4. Batches posts (up to 50 posts, 5-second flush window) in the service worker
-  5. Sends to `POST /api/leads/batch` with JWT Bearer token
-- **Offline support:** Queues posts when offline via IndexedDB buffer
-- **Deduplication:** IndexedDB-based persistent dedup prevents re-sending the same post
-- **Auto-monitoring:** Configurable auto-scroll + timed monitoring (2-minute default interval)
+  1. The page submits URLs to `POST /api/leads/scrape-url`, which proxies to the Scraper Service
+  2. The service opens each URL with Playwright (using the saved login session where required)
+  3. Extracts author, text, URL, and engagement, then applies the keyword gate + scoring
+  4. Sends qualifying posts to `POST /api/leads/batch`
+- **History:** Each run is logged (sessions + scraped posts) and viewable in the app
 
-### 2. Scraper Service (Self-Hosted)
+### 2. Scraper Service (Scheduled, self-hosted)
 
 A standalone Node.js service using Playwright and Crawlee for automated headless scraping:
 
@@ -304,8 +307,8 @@ JWT-based session authentication:
 1. **Login** — User submits email/password to `POST /api/auth/login`
 2. **Verification** — Password compared against bcrypt hash in Supabase `users` table
 3. **Session** — JWT token (HS256, 7-day expiry) set as an `httpOnly` cookie
-4. **Middleware** — Protected routes check the session cookie on every request
-5. **Extension auth** — Chrome extension stores the JWT and sends it as a `Bearer` token
+4. **Middleware** — Protected routes check the session cookie on every request (`proxy.ts`)
+5. **Service auth** — The Scraper Service authenticates to the backend with a shared `BACKEND_AUTH_TOKEN` Bearer token
 
 ### Password Reset Flow
 - `POST /api/auth/forgot-password` generates a 1-hour reset token
@@ -332,7 +335,7 @@ JWT-based session authentication:
 |--------|-------|-------------|
 | GET | `/api/leads` | Fetch leads (filterable by platform, intent, status, date) |
 | POST | `/api/leads/process` | Ingest single lead (keyword gate + score + alert) |
-| POST | `/api/leads/batch` | Bulk ingest from extension/scraper (keyword gate + score) |
+| POST | `/api/leads/batch` | Bulk ingest from the Scraper Service (keyword gate + score) |
 | POST | `/api/leads/qualify` | AI qualification |
 | POST | `/api/leads/scrape-url` | Scrape a URL for posts |
 | GET | `/api/leads/scraped-posts` | Manual scrape history |
@@ -408,9 +411,8 @@ Discord alerts are managed by the **Smart Alert Engine** in [`lib/alert-engine.t
 
 | Source | Trigger |
 |--------|---------|
-| Scraper Service | Scheduled or manual scrape finds leads scoring >= 65 |
+| Scraper Service | Scheduled or on-demand (Scrape URL) scrape finds leads scoring >= 65 |
 | Facebook Webhook | Real-time Facebook feed event classified |
-| Chrome Extension | Batch of leads submitted via extension |
 | Manual Upload | Single lead submitted via API |
 
 ### Notification Content
@@ -599,13 +601,14 @@ npm install
 npm start
 ```
 
-### Loading the Chrome Extension
+### Scraping from the app
 
-1. Build the extension: `cd extension && npm run build`
-2. Open `chrome://extensions` in Chrome
-3. Enable "Developer mode"
-4. Click "Load unpacked" and select the `extension/dist` directory
-5. Configure your API URL and login token in the extension popup
+1. Open the **Scrape URL** page in the dashboard
+2. Paste one or more post / group / profile URLs and run it (on-demand), **or**
+3. Create a **Schedule** to scrape those URLs automatically on a cron interval
+4. Results flow into the **Leads** and **Alerts** pages
+
+> Authenticated platforms (Facebook, LinkedIn) require a saved login session — set it up via **Settings → Live Login**.
 
 ---
 
