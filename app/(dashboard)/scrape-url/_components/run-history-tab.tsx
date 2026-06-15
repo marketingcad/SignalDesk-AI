@@ -501,7 +501,7 @@ export function RunHistoryTab({
                 <p className="text-xs text-muted-foreground mt-1 max-w-xs leading-relaxed">
                   Run history will appear here once a scheduled scrape executes.
                 </p>
-              </div>``
+              </div>
             </div>
           ) : (
             <div className="divide-y divide-border h-130 overflow-y-scroll [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border hover:[&::-webkit-scrollbar-thumb]:bg-muted-foreground/30">
