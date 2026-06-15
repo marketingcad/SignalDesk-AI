@@ -8,12 +8,16 @@ const backendClient_1 = require("../api/backendClient");
 const discord_1 = require("../alerts/discord");
 const postFilter_1 = require("../utils/postFilter");
 const sessionHealth_1 = require("../utils/sessionHealth");
+// Empty scraper for platforms with no automated discovery (use the Scrape URL page).
+const empty = (platform) => async () => ({ platform, posts: [], duration: 0, errors: [] });
 const SCRAPERS = {
     Reddit: scrapers_1.scrapeReddit,
-    X: scrapers_1.scrapeX,
-    LinkedIn: scrapers_1.scrapeLinkedin,
+    // X and LinkedIn discovery relied on Google dorking, which was removed.
+    // Scrape these platforms on demand via the Scrape URL page instead.
+    X: empty("X"),
+    LinkedIn: empty("LinkedIn"),
     Facebook: scrapers_1.scrapeFacebook,
-    Other: async () => ({ platform: "Other", posts: [], duration: 0, errors: [] }),
+    Other: empty("Other"),
 };
 let runInProgress = false;
 function isRunning() {
@@ -61,7 +65,7 @@ async function runAllPlatforms() {
         console.log("\n[crawler] ╔══════════════════════════════════════════╗");
         console.log("[crawler] ║      STARTING FULL SCRAPER RUN           ║");
         console.log("[crawler] ╚══════════════════════════════════════════╝\n");
-        const platforms = ["Reddit", "X", "LinkedIn", "Facebook"];
+        const platforms = ["Reddit", "Facebook"];
         for (const platform of platforms) {
             try {
                 const result = await runPlatform(platform);

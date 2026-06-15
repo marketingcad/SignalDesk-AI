@@ -8,6 +8,9 @@ exports.hasSavedCookies = hasSavedCookies;
 exports.getProfileDir = getProfileDir;
 exports.getStorageState = getStorageState;
 exports.saveStorageState = saveStorageState;
+exports.loadSessionFromSupabase = loadSessionFromSupabase;
+exports.saveSessionToSupabase = saveSessionToSupabase;
+exports.initSession = initSession;
 exports.shouldUseStorageState = shouldUseStorageState;
 exports.loginAndSave = loginAndSave;
 exports.validateCookies = validateCookies;
@@ -15,6 +18,10 @@ exports.validateAllCookies = validateAllCookies;
 const playwright_1 = require("playwright");
 const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
+const supabase_1 = require("../db/supabase");
+/** Durable session storage: one row in Supabase that survives redeploys. */
+const SESSION_TABLE = "scraper_sessions";
+const SESSION_ROW_ID = "default";
 /**
  * Persistent browser profile directory (local dev).
  */
@@ -82,10 +89,82 @@ async function saveStorageState(context) {
         fs_1.default.mkdirSync(path_1.default.dirname(exports.STORAGE_STATE_PATH), { recursive: true });
         await context.storageState({ path: exports.STORAGE_STATE_PATH });
         console.log(`[auth] Rolling session refreshed → cookies re-saved (no expiry while scraping runs)`);
+        // Also persist to Supabase so the refreshed cookies survive a redeploy.
+        await saveSessionToSupabase();
     }
     catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         console.warn(`[auth] Could not refresh rolling session: ${msg}`);
+    }
+}
+/**
+ * Load the durable session from Supabase into the local rolling file.
+ * Returns true if a session was found and written. This is the source of truth
+ * that survives container redeploys (where the local file is wiped).
+ */
+async function loadSessionFromSupabase() {
+    const sb = (0, supabase_1.getSupabase)();
+    if (!sb)
+        return false;
+    try {
+        const { data, error } = await sb
+            .from(SESSION_TABLE)
+            .select("storage_state")
+            .eq("id", SESSION_ROW_ID)
+            .maybeSingle();
+        if (error || !data?.storage_state)
+            return false;
+        const json = typeof data.storage_state === "string"
+            ? data.storage_state
+            : JSON.stringify(data.storage_state);
+        fs_1.default.mkdirSync(path_1.default.dirname(exports.STORAGE_STATE_PATH), { recursive: true });
+        fs_1.default.writeFileSync(exports.STORAGE_STATE_PATH, json, "utf-8");
+        console.log("[auth] Session loaded from Supabase → rolling file");
+        return true;
+    }
+    catch (err) {
+        console.warn(`[auth] loadSessionFromSupabase failed: ${err instanceof Error ? err.message : err}`);
+        return false;
+    }
+}
+/**
+ * Persist the current rolling session to Supabase so it survives redeploys.
+ * Called after every successful scrape (via saveStorageState) and after a Live
+ * Login save, so the freshest cookies are always durably stored.
+ */
+async function saveSessionToSupabase(rawJson) {
+    const sb = (0, supabase_1.getSupabase)();
+    if (!sb)
+        return;
+    try {
+        const payload = rawJson ?? (fs_1.default.existsSync(exports.STORAGE_STATE_PATH) ? fs_1.default.readFileSync(exports.STORAGE_STATE_PATH, "utf-8") : null);
+        if (!payload)
+            return;
+        await sb
+            .from(SESSION_TABLE)
+            .upsert({ id: SESSION_ROW_ID, storage_state: JSON.parse(payload), updated_at: new Date().toISOString() }, { onConflict: "id" });
+        console.log("[auth] Session persisted to Supabase");
+    }
+    catch (err) {
+        console.warn(`[auth] saveSessionToSupabase failed: ${err instanceof Error ? err.message : err}`);
+    }
+}
+/**
+ * Startup: make the rolling session durable.
+ *
+ * Priority order:
+ *   1. Supabase row — auto-refreshed and survives redeploys (the steady state).
+ *   2. BROWSER_STORAGE_STATE env — one-time bootstrap; once present it is migrated
+ *      into Supabase so future boots use the durable copy and you never re-paste.
+ */
+async function initSession() {
+    if (await loadSessionFromSupabase())
+        return;
+    if (process.env.BROWSER_STORAGE_STATE) {
+        fs_1.default.mkdirSync(path_1.default.dirname(exports.STORAGE_STATE_PATH), { recursive: true });
+        fs_1.default.writeFileSync(exports.STORAGE_STATE_PATH, process.env.BROWSER_STORAGE_STATE, "utf-8");
+        console.log("[auth] Seeded session from BROWSER_STORAGE_STATE env → migrating to Supabase");
+        await saveSessionToSupabase(process.env.BROWSER_STORAGE_STATE);
     }
 }
 /**

@@ -270,7 +270,7 @@ app.post("/api/scrape-url", async (req, res) => {
                     url: p.url,
                     platform: p.platform,
                     timestamp: p.timestamp,
-                    matchedKeywords: keywordsByUrl.get(p.url) ?? [],
+                    matchedKeywords: keywordsByUrl.get(p.url) ?? p.matchedKeywords ?? [],
                 })),
             });
         }
@@ -369,7 +369,7 @@ app.post("/api/scrape-url/batch", async (req, res) => {
             url: p.url,
             platform: p.platform,
             timestamp: p.timestamp,
-            matchedKeywords: kwMap.get(p.url) ?? [],
+            matchedKeywords: kwMap.get(p.url) ?? p.matchedKeywords ?? [],
         })),
     });
 });
@@ -682,7 +682,7 @@ app.post("/api/test/discord", async (req, res) => {
             {
                 url: mockPosts[0].url,
                 leadId: "mock-lead-001",
-                intentScore: 0.91,
+                intentScore: 91,
                 intentLevel: "High",
                 matchedKeywords: ["virtual assistant", "e-commerce", "customer emails"],
                 duplicate: false,
@@ -690,7 +690,7 @@ app.post("/api/test/discord", async (req, res) => {
             {
                 url: mockPosts[1].url,
                 leadId: "mock-lead-002",
-                intentScore: 0.85,
+                intentScore: 85,
                 intentLevel: "High",
                 matchedKeywords: ["hire a VA", "Shopify", "customer messages"],
                 duplicate: false,
@@ -698,7 +698,7 @@ app.post("/api/test/discord", async (req, res) => {
             {
                 url: mockPosts[2].url,
                 leadId: "mock-lead-003",
-                intentScore: 0.78,
+                intentScore: 78,
                 intentLevel: "Medium",
                 matchedKeywords: ["virtual assistant", "small business"],
                 duplicate: false,
@@ -770,7 +770,18 @@ const vncProxy = http_proxy_1.default.createProxyServer({
     target: `http://127.0.0.1:${liveLogin_1.WEBSOCKIFY_PORT}`,
     ws: true,
 });
-vncProxy.on("error", (err) => console.error("[vnc-proxy]", err.message));
+// Fail fast instead of hanging when websockify isn't running (no session).
+vncProxy.on("error", (err, _req, res) => {
+    console.error("[vnc-proxy]", err.message);
+    const r = res;
+    if (r && !r.headersSent) {
+        r.writeHead(503, { "Content-Type": "text/plain" });
+        r.end("Live Login session is not active. Start it from Settings and try again.");
+    }
+    else if (r) {
+        r.end();
+    }
+});
 // app.use("/vnc", …) strips the "/vnc" prefix from req.url, so requests reach
 // websockify at the path it expects (/vnc.html, /websockify, static assets).
 //
@@ -779,6 +790,12 @@ vncProxy.on("error", (err) => console.error("[vnc-proxy]", err.message));
 // requests can't forward the token query anyway). The ACTUAL screen stream is
 // the WebSocket, which is strictly token-gated in the `upgrade` handler below.
 app.use("/vnc", (req, res) => {
+    // No active session → websockify is down; return a readable error instead of
+    // proxying into a connection-refused hang (the old "loading forever" bug).
+    if (!(0, liveLogin_1.getLiveStatus)().active) {
+        res.status(503).send("Live Login session is not active. Start it from Settings and try again.");
+        return;
+    }
     vncProxy.web(req, res);
 });
 const server = app.listen(config_1.config.port, () => {
@@ -795,6 +812,11 @@ const server = app.listen(config_1.config.port, () => {
   Backend:   ${config_1.config.backendApiUrl}
   Headless:  ${config_1.config.headless}
   `);
+    // Restore the durable login session (Supabase → rolling file) before scrapers
+    // run, so a fresh container picks up the latest cookies without a manual paste.
+    (0, browserAuth_1.initSession)()
+        .then(() => console.log(`  Auth:      session ${(0, browserAuth_1.hasSavedCookies)() ? "loaded" : "not found — login required"}`))
+        .catch((err) => console.warn("  Auth:      session init failed:", err));
     // Fetch user-configured keywords from /settings page before starting scrapers
     (0, backendClient_1.fetchKeywords)().then((kw) => {
         if (kw) {

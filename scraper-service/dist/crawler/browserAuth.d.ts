@@ -38,6 +38,27 @@ export declare function getStorageState(): string | undefined;
  */
 export declare function saveStorageState(context: import("playwright").BrowserContext): Promise<void>;
 /**
+ * Load the durable session from Supabase into the local rolling file.
+ * Returns true if a session was found and written. This is the source of truth
+ * that survives container redeploys (where the local file is wiped).
+ */
+export declare function loadSessionFromSupabase(): Promise<boolean>;
+/**
+ * Persist the current rolling session to Supabase so it survives redeploys.
+ * Called after every successful scrape (via saveStorageState) and after a Live
+ * Login save, so the freshest cookies are always durably stored.
+ */
+export declare function saveSessionToSupabase(rawJson?: string): Promise<void>;
+/**
+ * Startup: make the rolling session durable.
+ *
+ * Priority order:
+ *   1. Supabase row — auto-refreshed and survives redeploys (the steady state).
+ *   2. BROWSER_STORAGE_STATE env — one-time bootstrap; once present it is migrated
+ *      into Supabase so future boots use the durable copy and you never re-paste.
+ */
+export declare function initSession(): Promise<void>;
+/**
  * Check if we should use storageState (server mode) vs persistent profile (local mode).
  * On Render, there's no persistent profile dir, so we always use storageState.
  */

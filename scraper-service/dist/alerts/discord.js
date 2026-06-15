@@ -144,8 +144,9 @@ async function sendNewLeadsAlert(sourceUrl, platform, posts, batch) {
         const batchResult = batch.results.find((r) => r.url === p.url);
         const keywords = (batchResult?.matchedKeywords ?? []).map((k) => `\`${k}\``).join("  ");
         const intent = batchResult?.intentLevel ?? "";
+        // intent_score is already a 0–100 value from the backend — do NOT ×100.
         const score = batchResult?.intentScore != null
-            ? ` (${Math.round(batchResult.intentScore * 100)}%)`
+            ? ` (${Math.round(batchResult.intentScore)}%)`
             : "";
         const fields = [];
         if (keywords)

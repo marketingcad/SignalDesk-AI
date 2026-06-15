@@ -246,8 +246,13 @@ function parseGraphQLResponseBody(body: string, baseUrl: string): GraphQLPost[] 
 
 /**
  * Check if a post's text matches any of the given keywords.
- * Uses case-insensitive substring + word-boundary matching for accuracy.
+ * Uses case-insensitive substring + fuzzy word matching for accuracy.
  * Returns the list of matched keywords (empty = no match).
+ *
+ * IMPORTANT: This is the SHARED matcher. It must stay identical to the backend's
+ * copy in lib/keywords.ts (matchKeywords) so the scraper and the backend agree
+ * on what counts as a keyword match. The two live in separate packages and
+ * cannot import from each other — keep them in sync by hand.
  */
 export function matchKeywords(text: string, keywords: string[]): string[] {
   const lower = text.toLowerCase();

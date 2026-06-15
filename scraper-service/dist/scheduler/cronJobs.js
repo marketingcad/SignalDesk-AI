@@ -69,10 +69,11 @@ function startScheduler() {
     console.log("\n[scheduler] ═══════════════════════════════════");
     console.log("[scheduler] Starting cron scheduler...");
     console.log("[scheduler] ═══════════════════════════════════\n");
+    // Google-dork discovery was removed. Reddit scrapes subreddits directly;
+    // Facebook scrapes the group URLs configured in settings. X and LinkedIn have
+    // no automated discovery — scrape them on demand via the Scrape URL page.
     scheduleJob("Reddit", config_1.config.cron.reddit, "Reddit (subreddit search)");
-    scheduleJob("X", config_1.config.cron.x, "X/Twitter (Google dork)");
-    scheduleJob("LinkedIn", config_1.config.cron.linkedin, "LinkedIn (Google dork)");
-    scheduleJob("Facebook", config_1.config.cron.facebook, "Facebook (Google dork)");
+    scheduleJob("Facebook", config_1.config.cron.facebook, "Facebook (configured group URLs)");
     // Full run every 6 hours (free-tier friendly)
     const fullRunTask = cron.schedule("0 */6 * * *", async () => {
         if ((0, crawlerManager_1.isRunning)()) {
