@@ -4,7 +4,7 @@ import { qualifyLeadsBatch } from "@/lib/ai-lead-qualifier";
 import { inferLocationFromText } from "@/lib/geo-fallback";
 import { supabase } from "@/lib/supabase";
 import { alertEngine } from "@/lib/alert-engine";
-import { HIRING_KEYWORDS } from "@/lib/keywords";
+import { HIRING_KEYWORDS, matchKeywords } from "@/lib/keywords";
 import { resolveDateWindow, classifyPostDate, type DateRangeFilter } from "@/lib/date-window";
 import type { DynamicScoringConfig, WeightedKeyword, NegativeSignal } from "@/lib/intent-scoring";
 import type { Platform, AIQualificationResult } from "@/lib/types";
@@ -128,7 +128,7 @@ export async function POST(request: NextRequest) {
 
   const validPosts: IncomingPost[] = [];
   const seenTexts = new Set<string>(); // also dedup within the batch itself
-  let skippedNoKeyword = 0;
+  let noKeywordMatch = 0;
   let skippedRedditNotVA = 0;
   let skippedTooOld = 0;
 
@@ -188,13 +188,15 @@ export async function POST(request: NextRequest) {
     }
     seenTexts.add(textKey);
 
-    // --- Keyword gate: only keep posts that match at least one user keyword ---
-    const lowerText = post.text.toLowerCase();
-    const hasKeywordMatch = userKeywords.some((kw) => lowerText.includes(kw));
-    if (!hasKeywordMatch) {
-      skippedNoKeyword++;
-      results.push({ url: post.url, error: "No keyword match — skipped" });
-      continue;
+    // --- Keyword signal (fuzzy, shared with the scraper's matcher) ---
+    // We no longer hard-drop posts that miss the keyword list. The scraper
+    // already keyword-gates before sending, and exact-substring matching here
+    // discarded real leads on minor wording differences (e.g. "Looking for VA"
+    // vs "looking for a va"). Keywords now inform scoring/labeling; the AI
+    // VA-relevance check below is the authoritative filter. When the AI is
+    // unavailable, we fall back to requiring a keyword match (see scoring loop).
+    if (matchKeywords(post.text, userKeywords).length === 0) {
+      noKeywordMatch++; // tracked for visibility — still sent to the AI gate
     }
 
     validPosts.push(post);
@@ -203,8 +205,8 @@ export async function POST(request: NextRequest) {
   if (skippedTooOld > 0) {
     console.log(`[leads/batch] Skipped ${skippedTooOld} posts — outside active date window`);
   }
-  if (skippedNoKeyword > 0) {
-    console.log(`[leads/batch] Skipped ${skippedNoKeyword} posts — no keyword match`);
+  if (noKeywordMatch > 0) {
+    console.log(`[leads/batch] ${noKeywordMatch} posts had no keyword match — passing to AI gate anyway`);
   }
   // --- Score all valid posts (rate-limited chunks with retry + keyword fallback) ---
   if (validPosts.length > 0) {
@@ -246,6 +248,21 @@ export async function POST(request: NextRequest) {
           });
           continue;
         }
+      } else {
+        // AI unavailable — fall back to a STRICT exact-keyword gate so we never
+        // flood the DB with unverified posts. The fuzzy matcher is intentionally
+        // NOT used here: the scraper already fuzzy-gated before sending, so it
+        // would pass everything through. Strict exact-substring matching is the
+        // old, safe behavior — we'd rather miss a borderline lead than insert junk.
+        const lower = post.text.toLowerCase();
+        const exactMatch = userKeywords.some((kw) => lower.includes(kw));
+        if (!exactMatch) {
+          results.push({
+            url: post.url,
+            error: "No AI result and no exact keyword match — skipped",
+          });
+          continue;
+        }
       }
 
       // Resolve geographic location (AI → keyword fallback)
@@ -261,9 +278,9 @@ export async function POST(request: NextRequest) {
         if (fallbackLocation) aiLocation = fallbackLocation;
       }
 
-      // Merge scoring keywords with ALL user keywords that appear in the post
-      const lowerText = post.text.toLowerCase();
-      const userMatches = userKeywords.filter((kw) => lowerText.includes(kw));
+      // Merge scoring keywords with the fuzzy keyword matches in the post
+      // (same matcher the scraper uses, so labels are consistent end-to-end)
+      const userMatches = matchKeywords(post.text, userKeywords);
       const allKeywords = Array.from(new Set([...userMatches, ...scoring.matchedKeywords]));
 
       toInsert.push({
@@ -351,7 +368,7 @@ export async function POST(request: NextRequest) {
   }
 
   console.log(
-    `[leads/batch] Done — ${insertedCount} inserted, ${existingUrlMap.size} duplicates, ${skippedTooOld} too-old, ${skippedNoKeyword} no-keyword-match, ${skippedRedditNotVA} reddit-not-VA, ${results.filter((r) => r.error && !r.error.includes("No keyword match") && !r.error.includes("Reddit AI filter") && !r.error.includes("Post too old")).length} errors`
+    `[leads/batch] Done — ${insertedCount} inserted, ${existingUrlMap.size} duplicates, ${skippedTooOld} too-old, ${noKeywordMatch} no-keyword-match (AI-checked), ${skippedRedditNotVA} AI-filtered, ${results.filter((r) => r.error && !r.error.includes("keyword match") && !r.error.includes("AI filter") && !r.error.includes("Post too old")).length} errors`
   );
 
   return NextResponse.json(
@@ -361,7 +378,7 @@ export async function POST(request: NextRequest) {
       inserted: insertedCount,
       duplicates: existingUrlMap.size,
       skippedTooOld,
-      skippedNoKeyword,
+      noKeywordMatch,
       skippedRedditNotVA,
       results,
     },

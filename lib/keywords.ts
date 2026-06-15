@@ -285,3 +285,39 @@ export function classifyTextWithKeywords(
 export function classifyText(text: string): PostClassification {
   return classifyTextWithKeywords(text, HIRING_KEYWORDS, SEEKING_KEYWORDS);
 }
+
+/**
+ * Match a post's text against a keyword list and return the matched keywords.
+ *
+ * Case-insensitive. Matches an exact substring OR, for multi-word keywords, when
+ * ≥70% of the keyword's significant words (length > 2) appear anywhere in the
+ * text. The fuzzy fallback catches real leads that use slightly different
+ * wording — e.g. "Looking for VA" matches the keyword "looking for a va".
+ *
+ * IMPORTANT: This is the SHARED matcher. It must stay identical to the scraper's
+ * copy in scraper-service/src/scrapers/urlScraper.ts (matchKeywords) so the
+ * scraper and the backend agree on what counts as a keyword match. The two live
+ * in separate packages and cannot import from each other.
+ */
+export function matchKeywords(text: string, keywords: string[]): string[] {
+  const lower = text.toLowerCase();
+  const matched: string[] = [];
+  for (const kw of keywords) {
+    const kwLower = kw.toLowerCase().trim();
+    if (!kwLower) continue;
+    // Exact substring match
+    if (lower.includes(kwLower)) {
+      matched.push(kw.trim());
+    } else {
+      // Fuzzy fallback: ≥70% of significant words present anywhere
+      const words = kwLower.split(/\s+/).filter((w) => w.length > 2);
+      if (words.length >= 2) {
+        const wordMatches = words.filter((w) => lower.includes(w));
+        if (wordMatches.length >= Math.ceil(words.length * 0.7)) {
+          matched.push(kw.trim());
+        }
+      }
+    }
+  }
+  return matched;
+}

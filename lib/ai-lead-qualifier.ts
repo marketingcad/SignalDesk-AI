@@ -373,10 +373,14 @@ function getGenAI(): GoogleGenerativeAI | null {
 // When one model hits 429, we move to the next one automatically.
 // ---------------------------------------------------------------------------
 
+// Live free-tier models (verified via ListModels). gemini-2.0-flash and
+// gemini-2.0-flash-lite were retired (404) and removed. These are "thinking"
+// models — see maxOutputTokens below, which must leave room for thinking tokens
+// or the JSON response gets truncated (finishReason: MAX_TOKENS → unparseable).
 const FREE_MODELS = [
   "gemini-2.5-flash",
-  "gemini-2.0-flash",
-  "gemini-2.0-flash-lite",
+  "gemini-2.5-flash-lite",
+  "gemini-flash-latest",
 ];
 
 // Track which models are temporarily exhausted (cooldown per model)
@@ -461,7 +465,10 @@ export async function qualifyLeadWithAI(input: {
       model: modelName,
       generationConfig: {
         temperature: 0.2,
-        maxOutputTokens: 1024,
+        // 2.5 models spend output tokens on internal "thinking" before the JSON.
+        // 1024 was too low — thinking consumed the budget and truncated the
+        // response (finishReason: MAX_TOKENS → null). 4096 leaves ample room.
+        maxOutputTokens: 4096,
         responseMimeType: "application/json",
       },
     });

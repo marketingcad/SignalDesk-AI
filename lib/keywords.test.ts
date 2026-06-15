@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { classifyText, HIRING_KEYWORDS, SEEKING_KEYWORDS } from "./keywords";
+import { classifyText, matchKeywords, HIRING_KEYWORDS, SEEKING_KEYWORDS } from "./keywords";
 
 describe("classifyText", () => {
   // ── Hiring Detection ─────────────────────────────────────────
@@ -74,5 +74,43 @@ describe("classifyText", () => {
     expect(SEEKING_KEYWORDS).toContain("hire me");
     expect(SEEKING_KEYWORDS).toContain("dm me");
     expect(SEEKING_KEYWORDS).toContain("[for hire]");
+  });
+});
+
+describe("matchKeywords (shared fuzzy matcher)", () => {
+  it("matches exact substrings", () => {
+    expect(matchKeywords("we are hiring a va for our store", ["hiring a va"])).toContain("hiring a va");
+  });
+
+  it("is case insensitive", () => {
+    expect(matchKeywords("HIRING A VA NOW", ["hiring a va"])).toContain("hiring a va");
+  });
+
+  it("fuzzy-matches real leads with slightly different wording", () => {
+    // Regression: the real lead that the strict substring gate wrongly dropped.
+    // "Looking for VA" should match the keyword "looking for a va" (missing "a").
+    const text = "A client reached out. Looking for VA. Looking for NDIS/Australian VA.";
+    expect(matchKeywords(text, ["looking for a va"])).toContain("looking for a va");
+  });
+
+  it("does not fuzzy-match unrelated text", () => {
+    expect(matchKeywords("the weather is nice today", ["looking for a va"])).toEqual([]);
+    expect(matchKeywords("", ["hiring a va"])).toEqual([]);
+  });
+
+  it("requires >=70% of significant words for a fuzzy match", () => {
+    // Only "looking" present out of {looking, for, virtual, assistant} → no match.
+    expect(matchKeywords("looking at the sunset", ["looking for a virtual assistant"])).toEqual([]);
+  });
+
+  it("returns every matching keyword from the list", () => {
+    const matched = matchKeywords("hiring a va and need admin support", [
+      "hiring a va",
+      "need admin support",
+      "hiring shopify va",
+    ]);
+    expect(matched).toContain("hiring a va");
+    expect(matched).toContain("need admin support");
+    expect(matched).not.toContain("hiring shopify va");
   });
 });
