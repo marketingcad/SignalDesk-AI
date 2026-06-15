@@ -455,12 +455,19 @@ app.post("/api/schedules", async (req, res) => {
   if (status && status !== "active" && status !== "paused")
     return res.status(400).json({ error: "'status' must be 'active' or 'paused'" });
 
-  const schedule = await createSchedule({
-    name: name.trim(),
-    url: url.trim(),
-    cron: cron.trim(),
-    status: (status as "active" | "paused") ?? "active",
-  });
+  let schedule;
+  try {
+    schedule = await createSchedule({
+      name: name.trim(),
+      url: url.trim(),
+      cron: cron.trim(),
+      status: (status as "active" | "paused") ?? "active",
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[api] Schedule create failed:", msg);
+    return res.status(500).json({ error: `Failed to create schedule: ${msg}` });
+  }
 
   console.log(`[api] Schedule created: "${schedule.name}" (${schedule.cron})`);
   res.status(201).json({ success: true, schedule });

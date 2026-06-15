@@ -71,7 +71,7 @@ export function buildFacebookSearchUrl(keyword: string): string {
 // Facebook: GraphQL response parser
 // ---------------------------------------------------------------------------
 
-interface GraphQLPost {
+export interface GraphQLPost {
   postId: string;
   author: string;
   text: string;
@@ -79,6 +79,45 @@ interface GraphQLPost {
   permalink: string;
   groupId: string;
   groupName: string;
+}
+
+/**
+ * Identity key for a Facebook post, used to dedupe copies of the SAME post that
+ * arrive from different GraphQL node shapes — one with a numeric permalink +
+ * real author, one with a base64 ("UzpfST...") permalink + "unknown" author.
+ * We recover the numeric FB post id from a plain permalink, or by base64-decoding
+ * the encoded one (which embeds "...:VK:<numericId>"), and fall back to the text.
+ */
+export function fbPostKey(p: GraphQLPost): string {
+  const fromUrl = p.permalink.match(/\/(\d{8,})(?:[/?#]|$)/)?.[1];
+  if (fromUrl) return fromUrl;
+
+  const lastSegment = p.permalink.split("/").filter(Boolean).pop() || "";
+  if (/^[A-Za-z0-9+/=]{16,}={0,2}$/.test(lastSegment)) {
+    try {
+      const decoded = Buffer.from(lastSegment.replace(/=+$/, ""), "base64").toString("utf8");
+      const ids = decoded.match(/\d{8,}/g);
+      if (ids) return ids.sort((a, b) => b.length - a.length)[0];
+    } catch {
+      // not valid base64 — fall through
+    }
+  }
+
+  const normText = (p.text || "").toLowerCase().replace(/\s+/g, " ").trim().slice(0, 120);
+  return normText || p.postId;
+}
+
+/** Pick the richer of two duplicate posts: prefer a known author, then a numeric permalink. */
+export function richerFbPost(a: GraphQLPost, b: GraphQLPost): GraphQLPost {
+  const aKnown = !!a.author && a.author.toLowerCase() !== "unknown";
+  const bKnown = !!b.author && b.author.toLowerCase() !== "unknown";
+  if (aKnown !== bKnown) return aKnown ? a : b;
+
+  const aNumeric = /\/\d{8,}(?:[/?#]|$)/.test(a.permalink);
+  const bNumeric = /\/\d{8,}(?:[/?#]|$)/.test(b.permalink);
+  if (aNumeric !== bNumeric) return aNumeric ? a : b;
+
+  return a;
 }
 
 /**
@@ -349,12 +388,18 @@ async function extractFacebook(page: Page, groupUrl: string): Promise<Omit<Scrap
 
   // ── Step 3: Process GraphQL posts ──
   if (graphqlPosts.length > 0) {
-    const seen = new Set<string>();
-    const deduped = graphqlPosts.filter((p) => {
-      if (seen.has(p.postId)) return false;
-      seen.add(p.postId);
-      return true;
-    });
+    // Dedupe by post identity (not raw postId): the same post can arrive twice
+    // with different id/permalink/author shapes. Keep the richer copy.
+    const byKey = new Map<string, GraphQLPost>();
+    for (const p of graphqlPosts) {
+      const key = fbPostKey(p);
+      const existing = byKey.get(key);
+      byKey.set(key, existing ? richerFbPost(existing, p) : p);
+    }
+    const deduped = [...byKey.values()];
+    if (deduped.length < graphqlPosts.length) {
+      console.log(`[url-scraper] Facebook dedupe: ${graphqlPosts.length} raw → ${deduped.length} unique posts`);
+    }
 
     // Resolve timestamps and filter to current week
     const withTs = deduped.map((p) => ({
@@ -655,12 +700,17 @@ async function extractFacebookSearch(page: Page, searchUrl: string): Promise<Omi
 
   // If GraphQL interception worked, use those results
   if (graphqlPosts.length > 0) {
-    const seen = new Set<string>();
-    const deduped = graphqlPosts.filter((p) => {
-      if (seen.has(p.postId)) return false;
-      seen.add(p.postId);
-      return true;
-    });
+    // Dedupe by post identity (not raw postId) — keep the richer copy.
+    const byKey = new Map<string, GraphQLPost>();
+    for (const p of graphqlPosts) {
+      const key = fbPostKey(p);
+      const existing = byKey.get(key);
+      byKey.set(key, existing ? richerFbPost(existing, p) : p);
+    }
+    const deduped = [...byKey.values()];
+    if (deduped.length < graphqlPosts.length) {
+      console.log(`[url-scraper] Facebook dedupe: ${graphqlPosts.length} raw → ${deduped.length} unique posts`);
+    }
 
     const withTs = deduped.map((p) => ({
       ...p,

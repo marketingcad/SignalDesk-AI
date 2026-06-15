@@ -6,6 +6,8 @@ import type {
   AIQualificationResult,
 } from "./types";
 import { scoreIntent, type ScoringResult, type DynamicScoringConfig } from "./intent-scoring";
+import { matchKeywords, HIRING_KEYWORDS, SEEKING_KEYWORDS } from "./keywords";
+import { qualifyLeadWithRules } from "./rule-qualifier";
 
 // ---------------------------------------------------------------------------
 // Google Gemini AI Lead Qualification Agent
@@ -542,7 +544,7 @@ export async function qualifyLeadWithAI(input: {
 export interface QualifyResult {
   scoring: ScoringResult;
   aiResult: AIQualificationResult | null;
-  source: "ai" | "keyword";
+  source: "ai" | "rules";
 }
 
 export async function qualifyLead(
@@ -590,15 +592,35 @@ export async function qualifyLead(
     };
   }
 
-  // Fallback to keyword-based scoring — uses dynamic config from /settings keywords if available
-  console.log("[ai-lead-qualifier] ⚠️ AI unavailable — falling back to keyword scoring");
-  const scoring = scoreIntent(
-    { text: input.text, engagement: input.engagement, platform: input.platform },
-    dynamicConfig
-  );
-  console.log(`[ai-lead-qualifier] 📊 Keyword score: ${scoring.score}/100 (${scoring.level})`);
+  // Fallback: AI unavailable → deterministic RULE-BASED qualifier.
+  // Produces a full AIQualificationResult (so the relevance gate + UI keep
+  // working) using the shared FUZZY matcher, so genuine leads aren't dropped on
+  // minor wording — the failure mode of the old strict-keyword fallback.
+  console.log("[ai-lead-qualifier] ⚠️ AI unavailable — using rule-based fallback qualifier");
+  const hiringKw = dynamicConfig?.positiveSignals?.map((s) => s.phrase) ?? HIRING_KEYWORDS;
+  const seekingKw = dynamicConfig?.negativeSignals?.map((s) => s.phrase) ?? SEEKING_KEYWORDS;
 
-  return { scoring, aiResult: null, source: "keyword" };
+  const aiResult = qualifyLeadWithRules(
+    {
+      platform: input.platform,
+      text: input.text,
+      source: input.source,
+      authorLocation: input.authorLocation,
+      detectedLanguage: input.detectedLanguage,
+    },
+    hiringKw,
+    seekingKw
+  );
+
+  // Score from the rule verdict (leadScore × 10), but keep the real fuzzy
+  // Settings-keyword matches as the labels (not the AI pseudo-tags).
+  const scoring = mapAIToScoringResult(aiResult);
+  scoring.matchedKeywords = matchKeywords(input.text, hiringKw);
+  console.log(
+    `[ai-lead-qualifier] 📊 Rule-based: ${aiResult.intentCategory} → ${scoring.score}/100 (${scoring.level}), hiring=${aiResult.isHiring}`
+  );
+
+  return { scoring, aiResult, source: "rules" };
 }
 
 // ---------------------------------------------------------------------------
@@ -648,9 +670,9 @@ export async function qualifyLeadsBatch(
     }
 
     const aiCount = chunkResults.filter((r) => r.source === "ai").length;
-    const kwCount = chunkResults.filter((r) => r.source === "keyword").length;
+    const kwCount = chunkResults.filter((r) => r.source === "rules").length;
     console.log(
-      `[ai-lead-qualifier] Chunk ${chunkIndex} done — AI: ${aiCount}, Keyword fallback: ${kwCount}`
+      `[ai-lead-qualifier] Chunk ${chunkIndex} done — AI: ${aiCount}, Rule-based fallback: ${kwCount}`
     );
 
     // Delay between chunks (skip after the last one)
