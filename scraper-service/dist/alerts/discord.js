@@ -54,6 +54,25 @@ function platformAuthor(platform) {
         icon_url: PLATFORM_ICON[platform],
     };
 }
+/**
+ * Build the "Keywords" field value, safely under Discord's 1024-char field-value
+ * limit. A post can match 30+ keywords; the full list overflows and Discord
+ * rejects the whole message with a 400. Cap the chips and add a "+N more".
+ */
+function keywordsField(matched) {
+    if (!matched.length)
+        return "";
+    const MAX_CHIPS = 12;
+    const shown = matched.slice(0, MAX_CHIPS);
+    let value = shown.map((k) => `\`${k}\``).join("  ");
+    const remaining = matched.length - shown.length;
+    if (remaining > 0)
+        value += `  +${remaining} more`;
+    // Hard safety cap (Discord field value max is 1024 chars)
+    if (value.length > 1024)
+        value = value.slice(0, 1021) + "…";
+    return value;
+}
 // ---------------------------------------------------------------------------
 // sendRunSummary — fired once after a full scheduled run across all platforms
 // ---------------------------------------------------------------------------
@@ -142,7 +161,7 @@ async function sendNewLeadsAlert(sourceUrl, platform, posts, batch) {
     // ── Per-post embeds (Reddit-link-preview style) ────────────────────────────
     const postEmbeds = postsToShow.map((p) => {
         const batchResult = batch.results.find((r) => r.url === p.url);
-        const keywords = (batchResult?.matchedKeywords ?? []).map((k) => `\`${k}\``).join("  ");
+        const keywords = keywordsField(batchResult?.matchedKeywords ?? []);
         const intent = batchResult?.intentLevel ?? "";
         // intent_score is already a 0–100 value from the backend — do NOT ×100.
         const score = batchResult?.intentScore != null

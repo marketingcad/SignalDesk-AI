@@ -1,6 +1,25 @@
 import type { ScrapedPost, ScrapeResult, BatchScrapeResult, BatchUrlResult } from "../types";
 export declare function isFacebookSearchUrl(url: string): boolean;
 export declare function buildFacebookSearchUrl(keyword: string): string;
+export interface GraphQLPost {
+    postId: string;
+    author: string;
+    text: string;
+    timestamp: string;
+    permalink: string;
+    groupId: string;
+    groupName: string;
+}
+/**
+ * Identity key for a Facebook post, used to dedupe copies of the SAME post that
+ * arrive from different GraphQL node shapes — one with a numeric permalink +
+ * real author, one with a base64 ("UzpfST...") permalink + "unknown" author.
+ * We recover the numeric FB post id from a plain permalink, or by base64-decoding
+ * the encoded one (which embeds "...:VK:<numericId>"), and fall back to the text.
+ */
+export declare function fbPostKey(p: GraphQLPost): string;
+/** Pick the richer of two duplicate posts: prefer a known author, then a numeric permalink. */
+export declare function richerFbPost(a: GraphQLPost, b: GraphQLPost): GraphQLPost;
 /**
  * Check if a post's text matches any of the given keywords.
  * Uses case-insensitive substring + fuzzy word matching for accuracy.

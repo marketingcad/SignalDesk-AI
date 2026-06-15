@@ -172,7 +172,11 @@ async function insertSchedule(schedule) {
         updated_at: schedule.updatedAt,
     });
     if (error) {
+        // Throw instead of swallowing: a failed insert must surface as an error so
+        // the API returns 500 and the UI shows it — rather than reporting a phantom
+        // "created" schedule that vanishes on the next refresh.
         console.error("[persistence] Failed to insert schedule:", error.message);
+        throw new Error(`Failed to persist schedule: ${error.message}`);
     }
 }
 async function patchSchedule(id, patch) {
