@@ -1,0 +1,230 @@
+- main [ref=e110]:
+  - generic [ref=e112]:
+    - generic [ref=e113]:
+      - generic [ref=e114]:
+        - heading "Scrape URL" [level=1] [ref=e115]
+        - paragraph [ref=e116]: Extract leads from any URL — social platforms, forums, blogs, job boards & more
+      - generic [ref=e117]:
+        - button "Ask AI" [ref=e118]:
+          - img
+          - generic [ref=e119]: Ask AI
+        - button "Search leads... /" [ref=e121]:
+          - img
+          - generic [ref=e122]: Search leads...
+          - generic [ref=e123]: /
+        - link "Notifications, 14 unread" [ref=e222] [cursor=pointer]:
+          - /url: /alerts
+          - button "Notifications, 14 unread" [ref=e223]:
+            - img
+            - generic [ref=e224]: "14"
+        - button "Toggle theme" [ref=e126]:
+          - img
+          - generic [ref=e225]: Toggle theme
+        - button "John Doe avatar" [ref=e226]:
+          - img "John Doe avatar" [ref=e227] [cursor=pointer]
+    - generic [ref=e274]:
+      - generic [ref=e275]:
+        - generic [ref=e276]:
+          - generic [ref=e277]:
+            - paragraph [ref=e278]: Schedules
+            - paragraph [ref=e279]: "1"
+          - img [ref=e281]
+        - paragraph [ref=e285]: 1 URL tracked
+      - generic [ref=e286]:
+        - generic [ref=e287]:
+          - generic [ref=e288]:
+            - paragraph [ref=e289]: Active
+            - paragraph [ref=e290]: "1"
+          - img [ref=e292]
+        - paragraph [ref=e301]: all running
+      - generic [ref=e302]:
+        - generic [ref=e303]:
+          - generic [ref=e304]:
+            - paragraph [ref=e305]: Total Runs
+            - paragraph [ref=e306]: "1"
+          - img [ref=e308]
+        - paragraph [ref=e313]: lifetime scrapes
+      - generic [ref=e314]:
+        - generic [ref=e315]:
+          - generic [ref=e316]:
+            - paragraph [ref=e317]: Success Rate
+            - paragraph [ref=e318]: 100%
+          - img [ref=e320]
+        - paragraph [ref=e323]: 1/1 healthy
+    - generic [ref=e133]:
+      - button "Schedules 1" [ref=e324]:
+        - img [ref=e135]
+        - text: Schedules
+        - generic [ref=e325]: "1"
+      - button "Run 1" [ref=e326]:
+        - img [ref=e138]
+        - text: Run
+        - generic [ref=e327]: "1"
+    - generic [ref=e329]:
+      - generic [ref=e330]:
+        - generic [ref=e332]:
+          - img [ref=e333]
+          - generic [ref=e335]: Schedules
+          - generic [ref=e336]: "1"
+        - button "FB VA Group 1271932963438391 — Hourly (prod E2E) Active Every hour 1 runs in 59m 10s" [ref=e694]:
+          - img [ref=e341]
+          - generic [ref=e343]:
+            - generic [ref=e344]:
+              - generic [ref=e345]: FB VA Group 1271932963438391 — Hourly (prod E2E)
+              - generic [ref=e346]: Active
+            - generic [ref=e348]:
+              - generic [ref=e349]:
+                - img [ref=e350]
+                - text: Every hour
+              - generic [ref=e353]: 1 runs
+              - generic [ref=e354]:
+                - img [ref=e355]
+                - text: in 59m 10s
+          - generic [ref=e359]:
+            - button [ref=e360]:
+              - img
+            - button [ref=e361]:
+              - img
+            - button [ref=e362]:
+              - img
+            - button [ref=e363]:
+              - img
+        - generic [ref=e364]:
+          - paragraph [ref=e365]:
+            - text: Click
+            - img [ref=e366]
+            - text: to filter runs by schedule
+          - paragraph [ref=e368]: 1 of 1 active
+      - generic [ref=e369]:
+        - generic [ref=e370]:
+          - generic [ref=e371]:
+            - img [ref=e372]
+            - generic [ref=e375]: All Runs
+            - generic [ref=e376]: "1"
+          - generic [ref=e377]:
+            - button [ref=e378]:
+              - img
+            - button [ref=e379]:
+              - img
+        - generic [ref=e381]:
+          - generic [ref=e382]:
+            - generic [ref=e383]:
+              - generic [ref=e384]:
+                - img [ref=e386]
+                - generic [ref=e389]:
+                  - generic [ref=e390]
+                  - paragraph [ref=e394]: https://www.facebook.com/groups/1271932963438391
+              - generic [ref=e395]:
+                - generic [ref=e396]: Success
+                - button "Hide posts" [active] [ref=e415]:
+                  - img [ref=e696]
+            - generic [ref=e400]:
+              - generic [ref=e401]:
+                - img [ref=e402]
+                - text: Today 02:21 AM
+              - generic [ref=e405]:
+                - img [ref=e406]
+                - text: 31s
+              - button "16 posts found" [ref=e409] [cursor=pointer]:
+                - img [ref=e410]
+                - text: 16 posts found
+              - generic [ref=e413]: +0 leads
+          - generic [ref=e698]:
+            - generic [ref=e700]: Posts Found (16)
+            - generic [ref=e701]:
+              - generic [ref=e702]:
+                - generic [ref=e703]: "1."
+                - generic [ref=e704]:
+                  - generic [ref=e705]
+                  - paragraph [ref=e712]: I am looking for an experienced **GoHighLevel / HighLevel builder** to complete a setup for a business-builder qualification funnel. This is not a basic VA role. I need someone who can build the full
+                  - button "https://www.facebook.com/1959778014653879" [ref=e713]
+              - generic [ref=e719]:
+                - generic [ref=e720]: "2."
+                - generic [ref=e721]:
+                  - generic [ref=e722]
+                  - paragraph [ref=e729]: "**Seeking for a Full Time Role for $1000/mo. as Automation Specialist** Most agencies don’t actually need “another VA.” They need someone who can keep the backend from turning into a mess while the"
+                  - button "https://www.facebook.com/1960221104609570" [ref=e730]
+              - generic [ref=e736]:
+                - generic [ref=e737]: "3."
+                - generic [ref=e738]:
+                  - generic [ref=e739]
+                  - paragraph [ref=e746]: "# ♨️ WE'RE HIRING ♨️ #PTPAdmin **BrightBeam** is a US-based remote agency that places AI-trained VAs with growing online brands. We help e-commerce brands streamline their backend operations, market"
+                  - button "https://www.facebook.com/1960922054539475" [ref=e747]
+              - generic [ref=e753]:
+                - generic [ref=e754]: "4."
+                - generic [ref=e755]:
+                  - generic [ref=e756]
+                  - paragraph [ref=e763]: "# **🚀 GoHighLevel Expert Virtual Assistant (REAL EXPERIENCE ONLY – TEST REQUIRED)** We’re building a high-performance AI-driven real estate operation—and we are only looking for top-tier GoHighLevel"
+                  - button "https://www.facebook.com/1957852388179775" [ref=e764]
+              - generic [ref=e770]:
+                - generic [ref=e771]: "5."
+                - generic [ref=e772]:
+                  - generic [ref=e773]
+                  - paragraph [ref=e780]: "**HIRING: Digital Marketing Specialist (Remote) ** Are you an expert in **GoHighLevel, SEO, and Marketing Automation**? We're looking for someone who can: ✅ Build funnels & automations in GHL ✅ Opt"
+                  - button "https://www.facebook.com/1957083708256643" [ref=e781]
+              - generic [ref=e787]:
+                - generic [ref=e788]: "6."
+                - generic [ref=e789]:
+                  - generic [ref=e790]
+                  - paragraph [ref=e797]: "📢 Hiring: Payroll & Administrative Assistant (GoHighLevel Experience Preferred) Yuppies Cleaning Services is looking for a reliable and detail-oriented Payroll & Administrative Assistant to join our"
+                  - button "https://www.facebook.com/1957624958202518" [ref=e798]
+              - generic [ref=e804]:
+                - generic [ref=e805]: "7."
+                - generic [ref=e806]:
+                  - generic [ref=e807]
+                  - paragraph [ref=e814]: "**LOOKING FOR A TECH-SIDE GHL BEAST (Long-Term / Retainer)** If you call yourself a GoHighLevel \"Expert\" just because you know how to copy-paste a snapshot... please keep scrolling. This isn't for yo"
+                  - button "https://www.facebook.com/1955437581754589" [ref=e815]
+              - generic [ref=e821]:
+                - generic [ref=e822]: "8."
+                - generic [ref=e823]:
+                  - generic [ref=e824]
+                  - paragraph [ref=e831]: Looking for someone part time to work go high level . Create automations , build a website in ghl . Help with getting approved for a phone number
+                  - button "https://www.facebook.com/1947667515864929" [ref=e832]
+              - generic [ref=e838]:
+                - generic [ref=e839]: "9."
+                - generic [ref=e840]:
+                  - generic [ref=e841]
+                  - paragraph [ref=e848]: "Looking for a GHL expert for HVAC company Build and optimize a complete system for a home service company Please send me: 1. Portfolio samples 2. Your hourly rate or project rate 3. Availability"
+                  - button "https://www.facebook.com/1952560798708934" [ref=e849]
+              - generic [ref=e855]:
+                - generic [ref=e856]: "10."
+                - generic [ref=e857]:
+                  - generic [ref=e858]
+                  - paragraph [ref=e865]: "Expert Needed: Dialpad → GHL Webhook Integration + Ongoing Monthly Support OVERVIEW We are an Australian sales team using GoHighLevel (GHL) as our CRM and Dialpad as our phone system. We need a deve"
+                  - button "https://www.facebook.com/1953833001915047" [ref=e866]
+              - generic [ref=e872]:
+                - generic [ref=e873]: "11."
+                - generic [ref=e874]:
+                  - generic [ref=e875]
+                  - paragraph [ref=e882]: "# 🚀 GoHighLevel Expert Virtual Assistant (REAL EXPERIENCE ONLY – TEST REQUIRED) We’re building a high-performance AI-driven real estate operation—and we are only looking for top-tier GoHighLevel exp"
+                  - button "https://www.facebook.com/1953585695273111" [ref=e883]
+              - generic [ref=e889]:
+                - generic [ref=e890]: "12."
+                - generic [ref=e891]:
+                  - generic [ref=e892]
+                  - paragraph [ref=e899]: "**🚀 GoHighLevel Expert Virtual Assistant (REAL EXPERIENCE ONLY – TEST REQUIRED)** We’re building a high-performance AI-driven real estate operation—and we are only looking for top-tier GoHighLevel e"
+                  - button "https://www.facebook.com/1951824062115941" [ref=e900]
+              - generic [ref=e906]:
+                - generic [ref=e907]: "13."
+                - generic [ref=e908]:
+                  - generic [ref=e909]
+                  - paragraph [ref=e916]: Looking for highly proficient GHL VA willing to work full-time remotely! Monthly rate ranges from 50K-60K depends on your experience and level of expertise. Apply now. https://www.facebook.com/share/
+                  - button "https://www.facebook.com/1953091985322482" [ref=e917]
+              - generic [ref=e923]:
+                - generic [ref=e924]: "14."
+                - generic [ref=e925]:
+                  - generic [ref=e926]
+                  - paragraph [ref=e933]: "🚨 WE'RE HIRING: AUTOMATION & GHL VA 🚨 Are you a GoHighLevel expert looking for your next opportunity? We're specifically looking for someone who is **HIGHLY PROFICIENT in GoHighLevel (GHL)** and h"
+                  - button "https://www.facebook.com/122105952920640651" [ref=e934]
+              - generic [ref=e940]:
+                - generic [ref=e941]: "15."
+                - generic [ref=e942]:
+                  - generic [ref=e943]
+                  - paragraph [ref=e950]: "## **🚀 GoHighLevel Expert Virtual Assistant (REAL EXPERIENCE ONLY – TEST REQUIRED)** We’re building a high-performance AI-driven real estate operation—and we are only looking for top-tier GoHighLeve"
+                  - button "https://www.facebook.com/1950969918868022" [ref=e951]
+              - generic [ref=e957]:
+                - generic [ref=e958]: "16."
+                - generic [ref=e959]:
+                  - generic [ref=e960]
+                  - paragraph [ref=e967]: "#PTPA BrightBeam is a remote agency that places AI-trained VAs with growing online brands. We help e-commerce brands streamline their backend operations, marketing workflows, customer support, and ad"
+                  - button "https://www.facebook.com/1951561082142239" [ref=e968]

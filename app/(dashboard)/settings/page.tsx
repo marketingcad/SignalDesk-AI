@@ -36,6 +36,19 @@ type KeywordsState = Record<KeywordCategory, string[]>;
 
 const ALL_PLATFORMS: Platform[] = ["Facebook", "LinkedIn", "Reddit", "X", "Other"];
 
+// In-page navigation — one entry per settings container box. Clicking an entry
+// smooth-scrolls to the matching section (anchored by `id`), and the active
+// entry is highlighted via scrollspy, mirroring the app sidebar's behavior.
+const SECTIONS: { id: string; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+  { id: "platform-monitoring", label: "Platform Monitoring", icon: Radio },
+  { id: "browser-login", label: "Browser Login", icon: KeyRound },
+  { id: "alert-threshold", label: "Alert Threshold", icon: Zap },
+  { id: "date-range", label: "Date Range", icon: CalendarRange },
+  { id: "keywords", label: "Keywords", icon: Hash },
+  { id: "keyword-discovery", label: "Keyword Discovery", icon: Sparkles },
+  { id: "scoring-rules", label: "Scoring Rules", icon: Shield },
+];
+
 export default function SettingsPage() {
   // --- Platform state ---
   const [platformToggles, setPlatformToggles] = useState<Record<Platform, boolean>>({
@@ -436,9 +449,13 @@ export default function SettingsPage() {
         title="Settings"
         subtitle="Configure monitoring and alert preferences"
       />
-      <div className="p-4 space-y-4 md:p-6 md:space-y-6 max-w-7xl mx-auto">
+      <div className="p-4 md:p-6 max-w-7xl mx-auto">
+       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:gap-6">
+        <SettingsNav sections={SECTIONS} />
+        <div className="min-w-0 flex-1 space-y-4 md:space-y-6">
         {/* Platform Monitoring */}
         <SettingsSection
+          id="platform-monitoring"
           icon={Radio}
           title="Platform Monitoring"
           description="Toggle detection for each supported platform"
@@ -500,6 +517,7 @@ export default function SettingsPage() {
 
         {/* Browser Login */}
         <SettingsSection
+          id="browser-login"
           icon={KeyRound}
           title="Browser Login"
           description="Manage authenticated sessions for Facebook and LinkedIn scraping"
@@ -705,6 +723,7 @@ export default function SettingsPage() {
 
         {/* Intent Threshold */}
         <SettingsSection
+          id="alert-threshold"
           icon={Zap}
           title="Alert Threshold"
           description="Set the minimum intent score to trigger real-time alerts"
@@ -741,6 +760,7 @@ export default function SettingsPage() {
 
         {/* Date Range */}
         <SettingsSection
+          id="date-range"
           icon={CalendarRange}
           title="Date Range"
           description="Only capture leads whose post date falls within this range — others are skipped and never sent to Discord"
@@ -896,6 +916,7 @@ export default function SettingsPage() {
 
         {/* Keywords */}
         <SettingsSection
+          id="keywords"
           icon={Hash}
           title="Keywords"
           description="Manage detection keywords for each intent category"
@@ -930,6 +951,7 @@ export default function SettingsPage() {
 
         {/* Keyword Discovery */}
         <SettingsSection
+          id="keyword-discovery"
           icon={Sparkles}
           title="Keyword Discovery"
           description="AI analyzes your high-intent leads to suggest new keywords you're missing"
@@ -1027,6 +1049,7 @@ export default function SettingsPage() {
 
         {/* Scoring Rules */}
         <SettingsSection
+          id="scoring-rules"
           icon={Shield}
           title="Scoring Rules"
           description="Intent scoring weights for lead classification"
@@ -1059,12 +1082,83 @@ export default function SettingsPage() {
             </span>
           </div>
         </SettingsSection>
+        </div>
+       </div>
       </div>
     </>
   );
 }
 
+// Sticky in-page section navigation with scrollspy. On desktop it sits as a
+// sticky left rail; on mobile it collapses to a horizontally scrollable bar
+// pinned under the header. Clicking an entry smooth-scrolls to its section.
+function SettingsNav({
+  sections,
+}: {
+  sections: { id: string; label: string; icon: React.ComponentType<{ className?: string }> }[];
+}) {
+  const [active, setActive] = useState(sections[0]?.id ?? "");
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+        if (visible[0]) setActive(visible[0].target.id);
+      },
+      // Active zone: just below the sticky header down to ~40% of the viewport.
+      { rootMargin: "-80px 0px -55% 0px", threshold: 0 }
+    );
+    for (const s of sections) {
+      const el = document.getElementById(s.id);
+      if (el) observer.observe(el);
+    }
+    return () => observer.disconnect();
+  }, [sections]);
+
+  const handleClick = (id: string) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+    setActive(id);
+  };
+
+  return (
+    <nav className="sticky top-16 z-20 -mx-4 border-b border-border bg-background/85 px-4 py-2 backdrop-blur md:-mx-6 md:px-6 lg:top-20 lg:mx-0 lg:w-56 lg:shrink-0 lg:self-start lg:rounded-xl lg:border lg:bg-card lg:px-2 lg:py-3 lg:backdrop-blur-none">
+      <p className="mb-2 hidden px-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground lg:block">
+        On this page
+      </p>
+      <div className="flex gap-1 overflow-x-auto lg:flex-col lg:overflow-visible">
+        {sections.map((s) => {
+          const isActive = active === s.id;
+          return (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => handleClick(s.id)}
+              className={cn(
+                "group relative flex shrink-0 items-center gap-2.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150 lg:w-full",
+                isActive
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:bg-accent hover:text-foreground"
+              )}
+            >
+              {isActive && (
+                <span className="absolute left-0 top-1/2 hidden h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-primary lg:block" />
+              )}
+              <s.icon className={cn("h-4 w-4 shrink-0", isActive && "text-primary")} />
+              <span className="truncate">{s.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </nav>
+  );
+}
+
 function SettingsSection({
+  id,
   icon: Icon,
   title,
   description,
@@ -1073,6 +1167,7 @@ function SettingsSection({
   saved,
   saving,
 }: {
+  id?: string;
   icon: React.ComponentType<{ className?: string }>;
   title: string;
   description: string;
@@ -1082,7 +1177,7 @@ function SettingsSection({
   saving?: boolean;
 }) {
   return (
-    <Card className="overflow-hidden p-0">
+    <Card id={id} className="overflow-hidden p-0 scroll-mt-20 lg:scroll-mt-24">
       <div className="flex items-center gap-3 border-b border-border px-5 py-4">
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
           <Icon className="h-4 w-4 text-primary" />
