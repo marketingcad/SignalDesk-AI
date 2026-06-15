@@ -34,16 +34,6 @@ function getCountryColor(country: string, _index: number) {
   return COUNTRY_COLOR_MAP[country] || "#71717a";
 }
 
-// Mock geography data (fallback when API returns empty)
-const mockGeoData: GeoDataPoint[] = [
-  { country: "Philippines", code: "PH", leads: 48, highIntent: 12, percentage: 28 },
-  { country: "India", code: "IN", leads: 32, highIntent: 8, percentage: 19 },
-  { country: "United States", code: "US", leads: 42, highIntent: 15, percentage: 25 },
-  { country: "United Kingdom", code: "GB", leads: 18, highIntent: 5, percentage: 11 },
-  { country: "Australia", code: "AU", leads: 14, highIntent: 4, percentage: 8 },
-  { country: "Others", code: "OT", leads: 16, highIntent: 3, percentage: 9 },
-];
-
 function CustomTooltip({
   active,
   payload,
@@ -77,7 +67,7 @@ interface GeographyChartProps {
 export function GeographyChart({ variant = "bar" }: GeographyChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
-  const [geoData, setGeoData] = useState<GeoDataPoint[]>(mockGeoData);
+  const [geoData, setGeoData] = useState<GeoDataPoint[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -89,18 +79,14 @@ export function GeographyChart({ variant = "bar" }: GeographyChartProps) {
             data.map((d, i) => ({ ...d, fill: getCountryColor(d.country, i) }))
           );
         } else {
-          setGeoData(
-            mockGeoData.map((d, i) => ({ ...d, fill: getCountryColor(d.country, i) }))
-          );
+          setGeoData([]);
         }
       })
-      .catch(() => {
-        setGeoData(
-          mockGeoData.map((d, i) => ({ ...d, fill: getCountryColor(d.country, i) }))
-        );
-      })
+      .catch(() => setGeoData([]))
       .finally(() => setLoading(false));
   }, []);
+
+  const isEmpty = !loading && geoData.length === 0;
 
   useEffect(() => {
     const el = containerRef.current;
@@ -114,6 +100,17 @@ export function GeographyChart({ variant = "bar" }: GeographyChartProps) {
   }, []);
 
   if (variant === "breakdown") {
+    if (isEmpty) {
+      return (
+        <div className="flex h-[160px] flex-col items-center justify-center gap-2 text-center">
+          <MapPin className="h-8 w-8 text-muted-foreground/40" />
+          <p className="text-sm font-medium text-foreground/70">No geography data yet</p>
+          <p className="text-xs text-muted-foreground">
+            Lead locations will appear here once leads are collected.
+          </p>
+        </div>
+      );
+    }
     return (
       <div className="space-y-3">
         {loading
@@ -166,6 +163,14 @@ export function GeographyChart({ variant = "bar" }: GeographyChartProps) {
       {loading ? (
         <div className="h-full w-full flex items-center justify-center">
           <div className="h-6 w-6 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+        </div>
+      ) : isEmpty ? (
+        <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
+          <MapPin className="h-8 w-8 text-muted-foreground/40" />
+          <p className="text-sm font-medium text-foreground/70">No geography data yet</p>
+          <p className="text-xs text-muted-foreground">
+            Lead locations will appear here once leads are collected.
+          </p>
         </div>
       ) : (
         dimensions.width > 0 && (

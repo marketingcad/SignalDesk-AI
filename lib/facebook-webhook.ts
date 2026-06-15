@@ -1,10 +1,80 @@
 import crypto from "crypto";
 import { supabase } from "./supabase";
-import { classifyText, type PostClassification } from "./keywords";
+import {
+  classifyText,
+  classifyTextWithKeywords,
+  HIRING_KEYWORDS,
+  SEEKING_KEYWORDS,
+  type PostClassification,
+} from "./keywords";
 
 // Re-export for backwards compatibility with the webhook route
 export type { PostClassification };
 export const classifyPost = classifyText;
+
+// ---------------------------------------------------------------------------
+// DB-aware keyword loading
+//
+// The webhook classifies incoming Facebook posts against the user-configured
+// keywords from the Supabase `keywords` table (managed on /settings), so it
+// stays in sync with the rest of the system. Falls back to the static default
+// lists when the DB is empty or unreachable. Cached with a short TTL to avoid
+// a query per webhook delivery.
+// ---------------------------------------------------------------------------
+
+export interface ClassifierKeywords {
+  hiring: string[]; // high + medium intent
+  seeking: string[]; // negative
+}
+
+const KEYWORDS_TTL_MS = 60_000;
+let cachedKeywords: ClassifierKeywords | null = null;
+let cachedKeywordsAt = 0;
+
+/**
+ * Load hiring/seeking keywords from the DB, falling back to static defaults.
+ * Result is cached for KEYWORDS_TTL_MS to avoid repeated queries during bursts.
+ */
+export async function getClassifierKeywords(
+  forceRefresh = false
+): Promise<ClassifierKeywords> {
+  const fresh = cachedKeywords && Date.now() - cachedKeywordsAt < KEYWORDS_TTL_MS;
+  if (fresh && !forceRefresh) return cachedKeywords!;
+
+  try {
+    const { data } = await supabase
+      .from("keywords")
+      .select("keyword, category")
+      .order("created_at", { ascending: true });
+
+    if (data && data.length > 0) {
+      const hiring: string[] = [];
+      const seeking: string[] = [];
+      for (const row of data) {
+        if (row.category === "negative") seeking.push(row.keyword);
+        else hiring.push(row.keyword); // high_intent + medium_intent
+      }
+      cachedKeywords = { hiring, seeking };
+      cachedKeywordsAt = Date.now();
+      return cachedKeywords;
+    }
+  } catch (err) {
+    console.error("[facebook-webhook] Failed to load keywords from DB — using static defaults:", err);
+  }
+
+  // Fallback: static defaults (don't cache so we retry the DB next time)
+  return { hiring: HIRING_KEYWORDS, seeking: SEEKING_KEYWORDS };
+}
+
+/**
+ * Classify a post against the user-configured DB keywords (with static fallback).
+ */
+export async function classifyPostWithDb(
+  message: string
+): Promise<PostClassification> {
+  const { hiring, seeking } = await getClassifierKeywords();
+  return classifyTextWithKeywords(message, hiring, seeking);
+}
 
 // ---------------------------------------------------------------------------
 // Types

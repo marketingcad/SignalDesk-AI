@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
-import { platformBreakdown as mockBreakdown } from "@/lib/mock-data";
+import { PieChart as PieChartIcon } from "lucide-react";
 import { getPlatformColor } from "@/lib/utils";
 
 interface PlatformData {
@@ -26,7 +26,8 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: Array<
 
 export function PlatformChart() {
   const [mounted, setMounted] = useState(false);
-  const [platformBreakdown, setPlatformBreakdown] = useState<PlatformData[]>(mockBreakdown);
+  const [platformBreakdown, setPlatformBreakdown] = useState<PlatformData[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => setMounted(true), []);
 
@@ -50,13 +51,28 @@ export function PlatformChart() {
           );
         }
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
+
+  const hasData = platformBreakdown.length > 0;
+
+  if (mounted && !loading && !hasData) {
+    return (
+      <div className="flex h-[200px] flex-col items-center justify-center gap-2 text-center">
+        <PieChartIcon className="h-8 w-8 text-muted-foreground/40" />
+        <p className="text-sm font-medium text-foreground/70">No platform data yet</p>
+        <p className="text-xs text-muted-foreground">
+          Leads will appear here once the scraper collects them.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col items-center gap-4 lg:flex-row lg:items-center lg:gap-6">
       <div className="h-[160px] w-[160px] shrink-0">
-        {!mounted ? (
+        {!mounted || loading ? (
           <div className="h-full w-full animate-pulse rounded-full bg-muted/50" />
         ) : (
         <ResponsiveContainer width="100%" height="100%">

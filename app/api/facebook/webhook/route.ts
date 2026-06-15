@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   verifySignature,
   extractPostEvents,
-  classifyPost,
+  getClassifierKeywords,
   isDuplicate,
   insertPostLog,
   sendDiscordNotification,
 } from "@/lib/facebook-webhook";
+import { classifyTextWithKeywords } from "@/lib/keywords";
 
 // ---------------------------------------------------------------------------
 // GET — Webhook verification (Meta challenge handshake)
@@ -64,6 +65,9 @@ export async function POST(request: NextRequest) {
 
   const events = extractPostEvents(body);
 
+  // Load user-configured keywords once for this delivery (DB → static fallback)
+  const { hiring, seeking } = await getClassifierKeywords();
+
   // Fire-and-forget: process events without blocking the response
   const processing = (async () => {
     for (const event of events) {
@@ -76,7 +80,11 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
-        const classification = classifyPost(event.message);
+        const classification = classifyTextWithKeywords(
+          event.message,
+          hiring,
+          seeking
+        );
 
         if (classification) {
           // Send Discord notification

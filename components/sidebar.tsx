@@ -60,6 +60,7 @@ export function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose, onMobi
   const [platformStatus, setPlatformStatus] = useState<
     { platform: Platform; enabled: boolean; lastActive: Date | null }[]
   >(ALL_PLATFORMS.map((p) => ({ platform: p, enabled: true, lastActive: null })));
+  const [statusLoaded, setStatusLoaded] = useState(false);
 
   useEffect(() => {
     // Fetch unread alert count
@@ -82,6 +83,7 @@ export function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose, onMobi
             lastActive: counts?.[p]?.lastActive ? new Date(counts[p].lastActive) : null,
           }))
         );
+        setStatusLoaded(true);
       })
       .catch(() => {});
   }, []);
@@ -236,13 +238,23 @@ export function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose, onMobi
                   <div
                     className={cn(
                       "h-1.5 w-1.5 rounded-full",
-                      p.enabled ? "bg-emerald-400 animate-pulse-dot" : "bg-muted-foreground/50"
+                      !statusLoaded
+                        ? "bg-muted-foreground/30"
+                        : p.enabled
+                        ? "bg-emerald-400 animate-pulse-dot"
+                        : "bg-muted-foreground/50"
                     )}
                   />
                   <span className="text-xs text-sidebar-foreground">{p.platform}</span>
                 </div>
                 <span className="text-[11px] text-muted-foreground">
-                  {p.enabled && p.lastActive ? timeAgo(p.lastActive) : p.enabled ? "Active" : "Off"}
+                  {!statusLoaded
+                    ? "—"
+                    : p.enabled && p.lastActive
+                    ? timeAgo(p.lastActive)
+                    : p.enabled
+                    ? "Active"
+                    : "Off"}
                 </span>
               </div>
             ))}

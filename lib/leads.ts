@@ -406,7 +406,7 @@ export async function getGeographyData(): Promise<GeographyDataPoint[]> {
 export async function getPlatformCounts(): Promise<
   Record<Platform, { total: number; lastActive: Date | null }>
 > {
-  const platforms: Platform[] = ["Facebook", "LinkedIn", "Reddit", "X"];
+  const platforms: Platform[] = ["Facebook", "LinkedIn", "Reddit", "X", "Other"];
   const result: Record<string, { total: number; lastActive: Date | null }> = {};
 
   for (const platform of platforms) {
