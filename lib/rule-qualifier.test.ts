@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { qualifyLeadWithRules } from "./rule-qualifier";
+import { qualifyLeadWithRules, looksLikeEmployerHiring } from "./rule-qualifier";
 import { HIRING_KEYWORDS, SEEKING_KEYWORDS } from "./keywords";
 
 const run = (text: string) =>
@@ -58,5 +58,48 @@ describe("qualifyLeadWithRules (AI fallback)", () => {
     expect(r).toHaveProperty("spamRisk");
     expect(r.budgetEstimate).toBe("hourly_mid"); // $15/hr → mid
     expect(r.leadSummary).toContain("[rule-based fallback]");
+  });
+});
+
+describe("looksLikeEmployerHiring (AI-miss safety net)", () => {
+  it("rescues a clear hire the AI may reject for 'NOT a typical VA role'", () => {
+    // The exact Emily-style post the live AI dropped during the prod test.
+    expect(
+      looksLikeEmployerHiring(
+        "🚨 WE'RE HIRING | Creative Marketing/Design & Funnel Systems Specialist " +
+          "(GHL Expert). We're looking for an exceptional person to join our team " +
+          "long-term. This is NOT a typical VA role. Send your resume to apply."
+      )
+    ).toBe(true);
+  });
+
+  it("does NOT fire on discussion questions (Aref-style false positive)", () => {
+    expect(
+      looksLikeEmployerHiring(
+        "Quick question for the GHL pros in here… Has anyone built a clean UTM tracking setup?"
+      )
+    ).toBe(false);
+  });
+
+  it("does NOT fire on a support/troubleshooting complaint (Peter-style)", () => {
+    expect(
+      looksLikeEmployerHiring(
+        "What is going on today..... The help tool won't open and no automation is working."
+      )
+    ).toBe(false);
+  });
+
+  it("does NOT fire on a VA self-promo even if it says 'hire me'", () => {
+    expect(
+      looksLikeEmployerHiring(
+        "I'm a virtual assistant available for hire — DM me for rates. Hire me!"
+      )
+    ).toBe(false);
+  });
+
+  it("does NOT fire on spam/MLM", () => {
+    expect(
+      looksLikeEmployerHiring("We're hiring! Earn $5000/week, be your own boss, unlimited income.")
+    ).toBe(false);
   });
 });

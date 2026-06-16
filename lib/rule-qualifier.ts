@@ -57,6 +57,38 @@ const SCAM_TERMS = [
 
 const HOURLY_RATE = /\$\s?(\d{1,3})\s?(?:\/|per\s)?(?:hr|hour)/i;
 
+// Explicit EMPLOYER-side hiring phrases. These are written by the buyer (the
+// client doing the hiring), not by a VA promoting themselves — so they're a
+// safe, deterministic signal that a post is a genuine hiring lead.
+const EMPLOYER_HIRING_PHRASES = [
+  "we're hiring", "we are hiring", "now hiring", "hiring:", "we're looking for",
+  "we are looking for", "looking for someone", "looking to hire", "to apply",
+  "send your resume", "send your cv", "send me your resume", "send us your resume",
+  "join our team", "join my team", "we need a", "we need an", "i need to hire",
+];
+
+// Self-promo / job-seeker tells — if present, it's a VA selling themselves, NOT
+// an employer hiring, so the override below must NOT fire.
+const SEEKER_TAGS = [
+  "[for hire]", "for hire", "hire me", "available for hire", "open for clients",
+  "open to work", "i'm a va", "i am a va", "i'm a virtual assistant",
+  "i am a virtual assistant", "dm me for", "offering my services", "my services",
+];
+
+/**
+ * True when a post shows UNAMBIGUOUS employer-side hiring intent and is not a
+ * VA self-promo / job-seeker or spam. Used as a deterministic safety net in the
+ * lead gate so the clearest "we're hiring … to apply" posts are never dropped on
+ * an AI misfire (e.g. a real hire that says "this is NOT a typical VA role").
+ */
+export function looksLikeEmployerHiring(text: string): boolean {
+  const lower = (text || "").toLowerCase();
+  if (!EMPLOYER_HIRING_PHRASES.some((p) => lower.includes(p))) return false;
+  if (SCAM_TERMS.some((t) => lower.includes(t))) return false;
+  if (SEEKER_TAGS.some((t) => lower.includes(t))) return false;
+  return true;
+}
+
 export interface RuleQualifierInput {
   platform: Platform;
   text: string;

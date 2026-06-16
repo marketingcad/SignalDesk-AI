@@ -5,6 +5,7 @@ import { inferLocationFromText } from "@/lib/geo-fallback";
 import { supabase } from "@/lib/supabase";
 import { alertEngine } from "@/lib/alert-engine";
 import { HIRING_KEYWORDS, matchKeywords } from "@/lib/keywords";
+import { looksLikeEmployerHiring } from "@/lib/rule-qualifier";
 import { resolveDateWindow, classifyPostDate, type DateRangeFilter } from "@/lib/date-window";
 import type { DynamicScoringConfig, WeightedKeyword, NegativeSignal } from "@/lib/intent-scoring";
 import type { Platform, AIQualificationResult } from "@/lib/types";
@@ -241,12 +242,25 @@ export async function POST(request: NextRequest) {
         const isTooLowScore = aiResult.leadScore <= 3;
 
         if (isNotVARelated || isTooLowScore) {
-          skippedRedditNotVA++;
-          results.push({
-            url: post.url,
-            error: `AI filter — ${isNotVARelated ? "not VA-related" : "score too low"} (AI: ${aiResult.intentCategory}, score: ${aiResult.leadScore}/10, hiring: ${aiResult.isHiring}, platform: ${post.platform})`,
-          });
-          continue;
+          // Deterministic safety net: don't drop posts with UNAMBIGUOUS
+          // employer-hiring intent ("we're hiring … to apply", "join our team")
+          // even when the AI mis-judged them — e.g. a real hire that says
+          // "this is NOT a typical VA role". looksLikeEmployerHiring already
+          // excludes scam and VA self-promo, so this only rescues genuine hires.
+          if (looksLikeEmployerHiring(post.text)) {
+            console.log(`[leads/batch] ⚑ Override: AI rejected (${aiResult.intentCategory}/${aiResult.leadScore}) but explicit employer-hiring signal present — keeping ${post.url}`);
+            if (scoring.level === "Low") {
+              scoring.level = "Medium";
+              scoring.score = Math.max(scoring.score, 65);
+            }
+          } else {
+            skippedRedditNotVA++;
+            results.push({
+              url: post.url,
+              error: `AI filter — ${isNotVARelated ? "not VA-related" : "score too low"} (AI: ${aiResult.intentCategory}, score: ${aiResult.leadScore}/10, hiring: ${aiResult.isHiring}, platform: ${post.platform})`,
+            });
+            continue;
+          }
         }
       } else {
         // AI unavailable — fall back to a STRICT exact-keyword gate so we never

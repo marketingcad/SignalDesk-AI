@@ -96,8 +96,16 @@ export function fbPostKey(p: GraphQLPost): string {
   if (/^[A-Za-z0-9+/=]{16,}={0,2}$/.test(lastSegment)) {
     try {
       const decoded = Buffer.from(lastSegment.replace(/=+$/, ""), "base64").toString("utf8");
+      // Encoded permalinks look like "S:<userId>:VK:<postId>" — the post id is the
+      // number after "VK:". Match it explicitly. The old "longest numeric run"
+      // heuristic silently broke when the user id and post id had the SAME digit
+      // length (it then returned the USER id), so the base64 copy and the numeric
+      // copy of one post got different keys and slipped past dedup.
+      const vk = decoded.match(/VK:(\d{8,})/i);
+      if (vk) return vk[1];
+      // Fallback: the post id trails the user id, so take the LAST numeric run.
       const ids = decoded.match(/\d{8,}/g);
-      if (ids) return ids.sort((a, b) => b.length - a.length)[0];
+      if (ids) return ids[ids.length - 1];
     } catch {
       // not valid base64 — fall through
     }

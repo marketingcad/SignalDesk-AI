@@ -41,6 +41,15 @@ Key red flags for self-promotion (NOT a lead):
 - Author mentions THEIR hourly rate or pricing
 - "Looking for opportunities", "looking for clients"
 
+3. **DISCUSSION / SUPPORT / TIPS (NOT a lead)** → A post that asks a how-to question, requests troubleshooting help, reports a bug or outage, or shares tips/educational/promotional content is NOT a lead — even when it mentions tools (GoHighLevel/GHL, CRM, automation, funnels). The author is not trying to HIRE anyone.
+   Examples: "Quick question for the GHL pros — has anyone built…", "How do I auto-create sub-accounts?", "The help tool won't open / my automations stopped working", "5 tips to scale your agency with GoHighLevel".
+   Classify these as intentCategory "LOW_INTENT" or "NOT_RELATED", isHiring false/uncertain, leadScore ≤ 3.
+
+WHAT COUNTS AS A HIRING LEAD — BE INCLUSIVE:
+- A CLIENT or EMPLOYER hiring ANY remote role is a lead — NOT only the literal phrase "virtual assistant". Web developer, video editor, executive assistant, marketing/design specialist, GoHighLevel/GHL expert, funnel builder, customer-support rep, automation engineer, etc. ALL count when an employer is recruiting them to work remotely.
+- Do NOT reject a hiring post just because it does not use the word "VA", or because it explicitly says "this is NOT a typical VA role". If an employer is recruiting someone to work for them, it IS a hiring lead.
+- Treat as HIGH_INTENT (leadScore 8–10) when the post contains clear employer-hiring signals: "we're hiring", "we are hiring", "now hiring", "join our team", "to apply", "send your resume/CV", "looking for someone to…", a stated salary/rate for an open role, or explicit application instructions (an email/DM to apply).
+
 Return structured JSON output only.
 
 ---

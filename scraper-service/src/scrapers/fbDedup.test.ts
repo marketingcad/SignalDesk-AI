@@ -34,6 +34,18 @@ describe("fbPostKey", () => {
     expect(fbPostKey(numeric)).toBe(fbPostKey(encoded));
   });
 
+  it("uses the post id after VK: even when the user id has the SAME digit length", () => {
+    // Real-world regression: base64 of "S:1709167990267825:VK:4427080260905089"
+    // — BOTH ids are 16 digits, so the old longest-run tiebreak returned the user
+    // id and broke dedup. The encoded copy must match the numeric permalink.
+    const numeric = post({ permalink: "https://www.facebook.com/4427080260905089", author: "Anonymous participant" });
+    const encoded = post({
+      permalink: "https://www.facebook.com/UzpfSTE3MDkxNjc5OTAyNjc4MjU6Vks6NDQyNzA4MDI2MDkwNTA4OQ==",
+    });
+    expect(fbPostKey(encoded)).toBe("4427080260905089");
+    expect(fbPostKey(numeric)).toBe(fbPostKey(encoded));
+  });
+
   it("falls back to normalized text when no id is present", () => {
     const a = post({ permalink: "https://www.facebook.com/groups/x", text: "Hiring a VA now" });
     const b = post({ permalink: "https://www.facebook.com/share/abc", text: "Hiring a VA now" });
