@@ -143,9 +143,9 @@ export async function sendNewLeadsAlert(
       .map((r) => r.url)
   );
   const newPosts = posts.filter((p) => newUrls.has(p.url));
-  // Fallback: if URL matching fails, show first N posts up to inserted count
-  const postsToShow = (newPosts.length > 0 ? newPosts : posts).slice(0, 5);
-  const extra = batch.inserted - postsToShow.length;
+  // Show EVERY new lead — no cap. URL matching normally yields exactly the new
+  // leads; if it fails, fall back to the first `inserted` scraped posts.
+  const leadPosts = newPosts.length > 0 ? newPosts : posts.slice(0, batch.inserted);
 
   const color = PLATFORM_COLOR[platform];
   const isScheduled = sourceUrl.startsWith("scheduled:");
@@ -174,7 +174,7 @@ export async function sendNewLeadsAlert(
   };
 
   // ── Per-post embeds (Reddit-link-preview style) ────────────────────────────
-  const postEmbeds: Record<string, unknown>[] = postsToShow.map((p) => {
+  const postEmbeds: Record<string, unknown>[] = leadPosts.map((p) => {
     const batchResult = batch.results.find((r) => r.url === p.url);
     const keywords = keywordsField(batchResult?.matchedKeywords ?? []);
     const intent = batchResult?.intentLevel ?? "";
@@ -199,22 +199,52 @@ export async function sendNewLeadsAlert(
     };
   });
 
-  // ── Trailing "N more" embed ────────────────────────────────────────────────
-  if (extra > 0) {
-    postEmbeds.push({
-      description: `_…and **${extra}** more new lead${extra !== 1 ? "s" : ""}. Open SignalDesk to view all._`,
-      color: 0x334155,
-      footer: { text: "SignalDesk AI · Scraper" },
-      timestamp: new Date().toISOString(),
-    });
+  // Discord caps each message at 10 embeds AND ~6000 total characters. Pack the
+  // summary + every per-post embed into as many messages as needed so ALL leads
+  // are shown (no "+N more" truncation).
+  const sizeOf = (e: Record<string, unknown>): number => {
+    let n = 0;
+    const add = (s: unknown) => { if (typeof s === "string") n += s.length; };
+    add(e.title);
+    add(e.description);
+    add((e.footer as { text?: string } | undefined)?.text);
+    add((e.author as { name?: string } | undefined)?.name);
+    for (const f of ((e.fields as Array<{ name?: string; value?: string }> | undefined) ?? [])) {
+      add(f.name);
+      add(f.value);
+    }
+    return n;
+  };
+
+  const MAX_EMBEDS = 10;
+  const MAX_CHARS = 5800; // leave headroom under Discord's 6000 limit
+  const messages: Record<string, unknown>[][] = [];
+  let current: Record<string, unknown>[] = [];
+  let currentChars = 0;
+  for (const e of [summaryEmbed, ...postEmbeds]) {
+    const s = sizeOf(e);
+    if (current.length >= MAX_EMBEDS || (current.length > 0 && currentChars + s > MAX_CHARS)) {
+      messages.push(current);
+      current = [];
+      currentChars = 0;
+    }
+    current.push(e);
+    currentChars += s;
   }
+  if (current.length) messages.push(current);
 
   try {
-    await axios.post(config.discordWebhookUrl, {
-      username: "SignalDesk Scraper",
-      embeds: [summaryEmbed, ...postEmbeds],
-    });
-    console.log(`[discord] New leads alert sent: ${batch.inserted} ${platform} leads`);
+    for (let i = 0; i < messages.length; i++) {
+      await axios.post(config.discordWebhookUrl, {
+        username: "SignalDesk Scraper",
+        embeds: messages[i],
+      });
+      // Small gap between messages to stay under Discord's webhook rate limit.
+      if (i < messages.length - 1) await new Promise((r) => setTimeout(r, 700));
+    }
+    console.log(
+      `[discord] New leads alert sent: ${batch.inserted} ${platform} leads across ${messages.length} message(s)`
+    );
   } catch (err) {
     console.error("[discord] Failed to send new leads alert:", err);
   }
