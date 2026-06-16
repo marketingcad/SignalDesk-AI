@@ -404,8 +404,6 @@ const VALIDATION_TARGETS: Record<string, { url: string; loginIndicators: RegExp[
     loginIndicators: [
       /\/login/i,
       /\/checkpoint/i,
-      /id="loginform"/i,
-      /id="email"/i,
     ],
   },
   linkedin: {
@@ -414,7 +412,6 @@ const VALIDATION_TARGETS: Record<string, { url: string; loginIndicators: RegExp[
       /\/login/i,
       /\/uas\/login/i,
       /\/authwall/i,
-      /class="sign-in-form"/i,
     ],
   },
 };
@@ -471,21 +468,21 @@ export async function validateCookies(
     }
 
     const finalUrl = page.url();
-    const bodyHtml = await page.content().catch(() => "");
 
     await context.close();
 
-    // Check if the final URL or page content indicates a login wall
+    // Trust ONLY the final redirect URL: a logged-out session bounces /me (or
+    // /feed) to a /login or /checkpoint URL. The page HTML of a logged-IN profile
+    // still contains strings like "/login" or id="email" (hidden forms), which
+    // produced false "expired" results — so we no longer scan the body.
     for (const indicator of target.loginIndicators) {
-      if (indicator.test(finalUrl) || indicator.test(bodyHtml)) {
-        console.log(
-          `[auth] ${platform} cookie validation: EXPIRED (matched: ${indicator.source})`
-        );
+      if (indicator.test(finalUrl)) {
+        console.log(`[auth] ${platform} cookie validation: EXPIRED (redirected to ${finalUrl})`);
         return "expired";
       }
     }
 
-    console.log(`[auth] ${platform} cookie validation: VALID`);
+    console.log(`[auth] ${platform} cookie validation: VALID (${finalUrl})`);
     return "valid";
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
