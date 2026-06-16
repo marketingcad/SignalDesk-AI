@@ -255,6 +255,13 @@ describe("getAuthenticatedPlatforms", () => {
     expect(getAuthenticatedPlatforms()).toEqual({ facebook: false, linkedin: true, x: true });
   });
 
+  it("detects Facebook from a minimally-seeded session (xs, no domain field)", () => {
+    // Real-world durable session shape: a single `xs` session cookie with no
+    // domain. FB is genuinely logged in; LinkedIn/X are not.
+    h.files.set(STORAGE_STATE_PATH, stateWith([{ name: "xs", value: "abc1234" }]));
+    expect(getAuthenticatedPlatforms()).toEqual({ facebook: true, linkedin: false, x: false });
+  });
+
   it("treats a marker cookie with an empty value as not authenticated", () => {
     h.files.set(STORAGE_STATE_PATH, stateWith([{ name: "c_user", value: "", domain: ".facebook.com" }]));
     expect(getAuthenticatedPlatforms().facebook).toBe(false);

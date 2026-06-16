@@ -45,7 +45,12 @@ export type AuthPlatformKey = "facebook" | "linkedin" | "x";
  * platform being logged in does not mean the others are.
  */
 const AUTH_COOKIE_MARKERS: Record<AuthPlatformKey, { domain: string; name: string }[]> = {
-  facebook: [{ domain: "facebook.com", name: "c_user" }],
+  // c_user (user id) and xs (session secret) are both Facebook login cookies;
+  // either one present means there's an active FB session.
+  facebook: [
+    { domain: "facebook.com", name: "c_user" },
+    { domain: "facebook.com", name: "xs" },
+  ],
   linkedin: [{ domain: "linkedin.com", name: "li_at" }],
   x: [
     { domain: "x.com", name: "auth_token" },
@@ -81,7 +86,10 @@ export function getAuthenticatedPlatforms(): Record<AuthPlatformKey, boolean> {
     for (const key of Object.keys(AUTH_COOKIE_MARKERS) as AuthPlatformKey[]) {
       result[key] = AUTH_COOKIE_MARKERS[key].some((m) =>
         cookies.some(
-          (c) => c.name === m.name && !!c.value && c.domain.includes(m.domain)
+          // Match on the platform-specific cookie name + a value. Enforce the
+          // domain only when present: minimally-seeded sessions can carry the
+          // marker cookie without a domain field, and they're still valid logins.
+          (c) => c.name === m.name && !!c.value && (!c.domain || c.domain.includes(m.domain))
         )
       );
     }
