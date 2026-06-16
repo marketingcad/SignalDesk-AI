@@ -389,7 +389,7 @@ export default function LeadsPage() {
               <FilterSelect
                 label="Status"
                 value={statusFilter}
-                options={["All", "New", "Contacted", "Qualified", "Dismissed"]}
+                options={["All", "New Leads", "Engaged", "Proposal Sent", "Won", "Lost"]}
                 onChange={(v) => setStatusFilter(v as FilterStatus)}
               />
               <div className="flex items-center gap-1.5">
@@ -1065,28 +1065,37 @@ const [isShowActions, setIsShowActions] = useState(false);
             variant="outline"
             size="sm"
             className="gap-1.5 whitespace-nowrap"
-            onClick={() => onUpdateStatus(lead.id, "Contacted")}
+            onClick={() => onUpdateStatus(lead.id, "Engaged")}
           >
             <MessageCircle className="h-3.5 w-3.5" />
-            Contacted
+            Engaged
           </Button>
           <Button
             variant="outline"
             size="sm"
             className="gap-1.5 whitespace-nowrap"
-            onClick={() => onUpdateStatus(lead.id, "Qualified")}
+            onClick={() => onUpdateStatus(lead.id, "Proposal Sent")}
           >
             <UserPlus className="h-3.5 w-3.5" />
-            Qualify
+            Proposal Sent
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-400 whitespace-nowrap"
+            onClick={() => onUpdateStatus(lead.id, "Won")}
+          >
+            <CheckSquare className="h-3.5 w-3.5" />
+            Won
           </Button>
           <Button
             variant="outline"
             size="sm"
             className="gap-1.5 border-rose-500/20 text-rose-400 hover:bg-rose-500/10 hover:text-rose-400 whitespace-nowrap"
-            onClick={() => onUpdateStatus(lead.id, "Dismissed")}
+            onClick={() => onUpdateStatus(lead.id, "Lost")}
           >
             <XCircle className="h-3.5 w-3.5" />
-            Dismiss
+            Lost
           </Button>
           <Button
             variant="outline"

@@ -2,9 +2,11 @@ export type Platform = "Facebook" | "LinkedIn" | "Reddit" | "X" | "Other";
 
 export type IntentLevel = "High" | "Medium" | "Low";
 
-export type LeadStatus = "New" | "Contacted" | "Qualified" | "Dismissed";
-
 export type PipelineStage = "New Leads" | "Engaged" | "Proposal Sent" | "Won" | "Lost";
+
+// Lead status now mirrors the pipeline stages so /leads and /pipeline share one
+// vocabulary (New Leads → Engaged → Proposal Sent → Won / Lost).
+export type LeadStatus = PipelineStage;
 
 export const PIPELINE_STAGES: PipelineStage[] = [
   "New Leads",

@@ -35,7 +35,7 @@ type AlertItem = {
   username: string;
   source: string;
   createdAt: Date;
-  read: boolean; // true when status !== "New"
+  read: boolean; // true when status !== "New Leads"
   url?: string;
 };
 
@@ -49,7 +49,7 @@ function leadToAlert(lead: Lead): AlertItem {
     username: lead.username,
     source: lead.source,
     createdAt: new Date(lead.createdAt),
-    read: lead.status !== "New",
+    read: lead.status !== "New Leads",
     url: lead.url || undefined,
   };
 }
@@ -149,7 +149,7 @@ export default function AlertsPage() {
       await fetch(`/api/leads/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "Contacted" }),
+        body: JSON.stringify({ status: "Engaged" }),
       });
     } catch {
       // Optimistic — already updated UI
@@ -166,13 +166,13 @@ export default function AlertsPage() {
         fetch(`/api/leads/${a.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status: "Contacted" }),
+          body: JSON.stringify({ status: "Engaged" }),
         })
       )
     );
   }, [alerts]);
 
-  /** Archive a single alert (set status to Dismissed) */
+  /** Archive a single alert (set status to Lost) */
   const archiveAlert = useCallback(async (id: string) => {
     const alert = alerts.find((a) => a.id === id);
     setAlerts((prev) => prev.filter((a) => a.id !== id));
@@ -181,7 +181,7 @@ export default function AlertsPage() {
       await fetch(`/api/leads/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "Dismissed" }),
+        body: JSON.stringify({ status: "Lost" }),
       });
     } catch {
       // Revert on failure

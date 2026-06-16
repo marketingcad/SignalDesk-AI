@@ -306,7 +306,7 @@ export async function POST(request: NextRequest) {
         intent_score: scoring.score,
         intent_level: scoring.level,
         intent_category: scoring.category,
-        status: "New",
+        status: "New Leads",
         engagement: post.engagement || 0,
         matched_keywords: allKeywords,
         detected_at: post.timestamp || new Date().toISOString(),

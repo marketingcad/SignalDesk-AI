@@ -103,7 +103,7 @@ export async function getAlerts(
     .from("leads")
     .select("*", { count: "exact" })
     .gte("intent_score", ALERT_MIN_SCORE)
-    .neq("status", "Dismissed");
+    .neq("status", "Lost");
 
   // Only count/return alerts created after `since` (used for the "new since
   // last seen" badge in the sidebar).
@@ -148,7 +148,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     previous.length > 0
       ? Math.round(previous.reduce((s, r) => s + r.intent_score, 0) / previous.length)
       : 0;
-  const contacted = current.filter((r) => r.status !== "New").length;
+  const contacted = current.filter((r) => r.status !== "New Leads").length;
   const responseRate = totalLeads > 0 ? Math.round((contacted / totalLeads) * 100) : 0;
 
   function pctChange(curr: number, prev: number): number {
@@ -260,7 +260,7 @@ export async function getArchivedAlerts(limit = 20, offset = 0): Promise<{ leads
     .from("leads")
     .select("*", { count: "exact" })
     .gte("intent_score", 60)
-    .eq("status", "Dismissed")
+    .eq("status", "Lost")
     .order("created_at", { ascending: false })
     .range(offset, offset + limit - 1);
 
@@ -272,7 +272,7 @@ export async function deleteArchivedAlerts(): Promise<number> {
   const { data, error } = await supabase
     .from("leads")
     .delete()
-    .eq("status", "Dismissed")
+    .eq("status", "Lost")
     .gte("intent_score", 60)
     .select("id");
 
@@ -299,7 +299,8 @@ export async function updateLeadStage(
 ): Promise<Lead | null> {
   const { data, error } = await supabase
     .from("leads")
-    .update({ pipeline_stage: pipelineStage, stage_position: stagePosition })
+    // Mirror the stage into status so the Leads page reflects pipeline moves too.
+    .update({ pipeline_stage: pipelineStage, status: pipelineStage, stage_position: stagePosition })
     .eq("id", id)
     .select("*")
     .maybeSingle();
@@ -312,9 +313,11 @@ export async function updateLeadStatus(
   id: string,
   status: LeadStatus
 ): Promise<Lead | null> {
+  // status and pipeline_stage now share one vocabulary — keep them in sync so a
+  // change on the Leads page also moves the lead in the Pipeline board.
   const { data, error } = await supabase
     .from("leads")
-    .update({ status })
+    .update({ status, pipeline_stage: status })
     .eq("id", id)
     .select("*")
     .maybeSingle();

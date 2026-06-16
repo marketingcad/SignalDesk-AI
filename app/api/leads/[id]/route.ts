@@ -3,7 +3,7 @@ import { verifySession, SESSION_COOKIE_NAME } from "@/lib/auth";
 import { updateLeadStatus, deleteLead } from "@/lib/leads";
 import type { LeadStatus } from "@/lib/types";
 
-const VALID_STATUSES: LeadStatus[] = ["New", "Contacted", "Qualified", "Dismissed"];
+const VALID_STATUSES: LeadStatus[] = ["New Leads", "Engaged", "Proposal Sent", "Won", "Lost"];
 
 export async function PATCH(
   request: NextRequest,
