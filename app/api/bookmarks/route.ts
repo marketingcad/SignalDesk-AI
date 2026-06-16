@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifySession, SESSION_COOKIE_NAME } from "@/lib/auth";
-import path from "path";
-import fs from "fs/promises";
-
-const BOOKMARKS_FILE = path.join(process.cwd(), "scraper-service", "storage", "bookmarks.json");
+import { supabase } from "@/lib/supabase";
 
 type Bookmark = {
   id: string;
@@ -15,18 +12,17 @@ type Bookmark = {
   createdAt: string;
 };
 
-async function readBookmarks(): Promise<Bookmark[]> {
-  try {
-    const raw = await fs.readFile(BOOKMARKS_FILE, "utf-8");
-    return JSON.parse(raw);
-  } catch {
-    return [];
-  }
-}
-
-async function writeBookmarks(bookmarks: Bookmark[]) {
-  await fs.mkdir(path.dirname(BOOKMARKS_FILE), { recursive: true });
-  await fs.writeFile(BOOKMARKS_FILE, JSON.stringify(bookmarks, null, 2));
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function toBookmark(row: any): Bookmark {
+  return {
+    id: row.id,
+    url: row.url,
+    name: row.name,
+    platform: row.platform,
+    notes: row.notes ?? "",
+    favorite: row.favorite ?? false,
+    createdAt: row.created_at,
+  };
 }
 
 async function auth(request: NextRequest) {
@@ -35,61 +31,111 @@ async function auth(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  if (!(await auth(request)))
+  const session = await auth(request);
+  if (!session)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const bookmarks = await readBookmarks();
-  return NextResponse.json({ bookmarks });
+
+  const { data, error } = await supabase
+    .from("bookmarks")
+    .select("*")
+    .eq("user_id", session.userId)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("[api/bookmarks] List error:", error);
+    return NextResponse.json({ error: "Failed to load bookmarks" }, { status: 500 });
+  }
+
+  return NextResponse.json({ bookmarks: (data ?? []).map(toBookmark) });
 }
 
 export async function POST(request: NextRequest) {
-  if (!(await auth(request)))
+  const session = await auth(request);
+  if (!session)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const body = await request.json().catch(() => ({}));
-  if (!body.url?.trim()) return NextResponse.json({ error: "URL is required" }, { status: 400 });
 
-  const bookmarks = await readBookmarks();
-  const bookmark: Bookmark = {
-    id: crypto.randomUUID(),
-    url: body.url.trim(),
-    name: body.name?.trim() || body.url.trim(),
-    platform: body.platform || null,
-    notes: body.notes?.trim() || "",
-    favorite: false,
-    createdAt: new Date().toISOString(),
-  };
-  bookmarks.unshift(bookmark);
-  await writeBookmarks(bookmarks);
-  return NextResponse.json({ bookmark }, { status: 201 });
+  const body = await request.json().catch(() => ({}));
+  if (!body.url?.trim())
+    return NextResponse.json({ error: "URL is required" }, { status: 400 });
+
+  const url = body.url.trim();
+  const { data, error } = await supabase
+    .from("bookmarks")
+    .insert({
+      url,
+      name: body.name?.trim() || url,
+      platform: body.platform || null,
+      notes: body.notes?.trim() || "",
+      favorite: false,
+      user_id: session.userId,
+    })
+    .select("*")
+    .single();
+
+  if (error) {
+    // 23505 = unique_violation (user already saved this URL)
+    if (error.code === "23505") {
+      return NextResponse.json({ error: "URL already bookmarked" }, { status: 409 });
+    }
+    console.error("[api/bookmarks] Insert error:", error);
+    return NextResponse.json({ error: "Failed to save bookmark" }, { status: 500 });
+  }
+
+  return NextResponse.json({ bookmark: toBookmark(data) }, { status: 201 });
 }
 
 export async function DELETE(request: NextRequest) {
-  if (!(await auth(request)))
+  const session = await auth(request);
+  if (!session)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const { id } = await request.json().catch(() => ({ id: null }));
   if (!id) return NextResponse.json({ error: "ID is required" }, { status: 400 });
 
-  let bookmarks = await readBookmarks();
-  bookmarks = bookmarks.filter((b) => b.id !== id);
-  await writeBookmarks(bookmarks);
+  const { error } = await supabase
+    .from("bookmarks")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", session.userId);
+
+  if (error) {
+    console.error("[api/bookmarks] Delete error:", error);
+    return NextResponse.json({ error: "Failed to delete bookmark" }, { status: 500 });
+  }
+
   return NextResponse.json({ success: true });
 }
 
 export async function PATCH(request: NextRequest) {
-  if (!(await auth(request)))
+  const session = await auth(request);
+  if (!session)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const body = await request.json().catch(() => ({}));
   if (!body.id) return NextResponse.json({ error: "ID is required" }, { status: 400 });
 
-  const bookmarks = await readBookmarks();
-  const idx = bookmarks.findIndex((b) => b.id === body.id);
-  if (idx === -1) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  const updates: Record<string, unknown> = {};
+  if (body.name !== undefined) updates.name = body.name.trim();
+  if (body.url !== undefined) updates.url = body.url.trim();
+  if (body.notes !== undefined) updates.notes = body.notes.trim();
+  if (body.platform !== undefined) updates.platform = body.platform;
+  if (body.favorite !== undefined) updates.favorite = body.favorite;
 
-  if (body.name !== undefined) bookmarks[idx].name = body.name.trim();
-  if (body.url !== undefined) bookmarks[idx].url = body.url.trim();
-  if (body.notes !== undefined) bookmarks[idx].notes = body.notes.trim();
-  if (body.platform !== undefined) bookmarks[idx].platform = body.platform;
-  if (body.favorite !== undefined) bookmarks[idx].favorite = body.favorite;
+  const { data, error } = await supabase
+    .from("bookmarks")
+    .update(updates)
+    .eq("id", body.id)
+    .eq("user_id", session.userId)
+    .select("*")
+    .single();
 
-  await writeBookmarks(bookmarks);
-  return NextResponse.json({ bookmark: bookmarks[idx] });
+  if (error) {
+    if (error.code === "PGRST116") {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+    console.error("[api/bookmarks] Update error:", error);
+    return NextResponse.json({ error: "Failed to update bookmark" }, { status: 500 });
+  }
+
+  return NextResponse.json({ bookmark: toBookmark(data) });
 }
