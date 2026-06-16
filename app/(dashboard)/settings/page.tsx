@@ -287,6 +287,18 @@ export default function SettingsPage() {
     loadAuthStatus();
   }, []);
 
+  // Deep-link support: when arriving at /settings#browser-login (e.g. from the
+  // session-expiry modal), scroll that section into view once it has rendered.
+  useEffect(() => {
+    if (loading) return;
+    const id = window.location.hash.replace(/^#/, "");
+    if (!id) return;
+    const el = document.getElementById(id);
+    if (el) {
+      requestAnimationFrame(() => el.scrollIntoView({ behavior: "smooth", block: "start" }));
+    }
+  }, [loading]);
+
   // --- Keywords CRUD (already wired to API) ---
   const addKeyword = async (keyword: string, category: KeywordCategory) => {
     const trimmed = keyword.trim().toLowerCase();

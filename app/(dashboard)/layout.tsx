@@ -6,6 +6,7 @@ import { Sidebar } from "@/components/sidebar";
 import { AiAssistantPanel } from "@/components/ai-assistant-panel";
 import { AskAiContext } from "@/components/ask-ai-context";
 import { PageTransition } from "@/components/page-transition";
+import { SessionExpiryModal } from "@/components/session-expiry-modal";
 import { cn } from "@/lib/utils";
 
 export default function DashboardLayout({
@@ -54,6 +55,9 @@ export default function DashboardLayout({
           onClick={() => setAskAiOpen(false)}
         />
       )}
+
+      {/* Prompts re-login when a platform scraping session has expired/was wiped */}
+      <SessionExpiryModal />
 
       <Sidebar
         collapsed={collapsed}
