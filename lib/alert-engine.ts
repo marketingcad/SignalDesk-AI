@@ -164,70 +164,106 @@ class AlertEngine {
       .map(([p, c]) => `${PLATFORM_EMOJI[p] || "📌"} **${p}**: ${c}`)
       .join("  •  ");
 
-    const leadList = leads
-      .slice(0, 8)
-      .map((lead, i) => {
-        const emoji = PLATFORM_EMOJI[lead.platform] || "📌";
-        const scoreIcon = lead.score >= 80 ? "🟢" : lead.score >= 50 ? "🟡" : "⚪";
-        const preview = lead.message.slice(0, 80).replace(/\n/g, " ");
-        return (
-          `${scoreIcon} **${i + 1}.** ${emoji} **${lead.author_name}** — Score: **${lead.score}**\n` +
-          `> ${preview}…\n` +
-          `> [View Post →](${lead.url})`
-        );
-      })
-      .join("\n\n");
-
-    const avgScore = Math.round(leads.reduce((s, l) => s + l.score, 0) / leads.length);
-
-    const embed = {
-      title: `📊 SignalDesk Lead Digest — ${leads.length} Qualified Leads`,
-      description: leadList,
-      color: leads[0].score >= 80 ? LEVEL_COLOR.High : LEVEL_COLOR.Medium,
-      fields: [
-        {
-          name: "📡 Platforms",
-          value: platformSummary,
-          inline: false,
-        },
-        {
-          name: "📈 Avg Score",
-          value: `**${avgScore}**/100`,
-          inline: true,
-        },
-        {
-          name: "🏆 Top Score",
-          value: `**${leads[0].score}**/100`,
-          inline: true,
-        },
-        {
-          name: "📋 Total Leads",
-          value: `**${leads.length}**`,
-          inline: true,
-        },
-      ],
-      footer: {
-        text: "SignalDesk AI • Lead Digest",
-      },
-      timestamp: new Date().toISOString(),
-    };
-
-    const res = await fetch(webhookUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        username: "SignalDesk AI",
-        embeds: [embed],
-      }),
+    // Build an entry for EVERY lead — no cap (the old slice(0, 8) hid leads).
+    const entries = leads.map((lead, i) => {
+      const emoji = PLATFORM_EMOJI[lead.platform] || "📌";
+      const scoreIcon = lead.score >= 80 ? "🟢" : lead.score >= 50 ? "🟡" : "⚪";
+      const preview = lead.message.slice(0, 80).replace(/\n/g, " ");
+      return (
+        `${scoreIcon} **${i + 1}.** ${emoji} **${lead.author_name}** — Score: **${lead.score}**\n` +
+        `> ${preview}…\n` +
+        `> [View Post →](${lead.url})`
+      );
     });
 
-    if (!res.ok) {
-      const errBody = await res.text().catch(() => "");
-      console.error(`[AlertEngine] Digest failed: ${res.status} — ${errBody}`);
-      throw new Error(`Discord digest failed: ${res.status}`);
+    // Pack entries into description chunks under Discord's 4096-char limit.
+    const DESC_LIMIT = 3800;
+    const descChunks: string[] = [];
+    let buf = "";
+    for (const e of entries) {
+      if (buf && buf.length + 2 + e.length > DESC_LIMIT) {
+        descChunks.push(buf);
+        buf = e;
+      } else {
+        buf = buf ? `${buf}\n\n${e}` : e;
+      }
+    }
+    if (buf) descChunks.push(buf);
+    if (descChunks.length === 0) descChunks.push("_No preview available._");
+
+    const avgScore = Math.round(leads.reduce((s, l) => s + l.score, 0) / leads.length);
+    const color = leads[0].score >= 80 ? LEVEL_COLOR.High : LEVEL_COLOR.Medium;
+
+    // First embed carries the title + summary fields; continuation embeds hold
+    // the rest of the list so every lead is shown (no truncation).
+    const embeds: Record<string, unknown>[] = descChunks.map((desc, idx) =>
+      idx === 0
+        ? {
+            title: `📊 SignalDesk Lead Digest — ${leads.length} Qualified Leads`,
+            description: desc,
+            color,
+            fields: [
+              { name: "📡 Platforms", value: platformSummary, inline: false },
+              { name: "📈 Avg Score", value: `**${avgScore}**/100`, inline: true },
+              { name: "🏆 Top Score", value: `**${leads[0].score}**/100`, inline: true },
+              { name: "📋 Total Leads", value: `**${leads.length}**`, inline: true },
+            ],
+            footer: { text: "SignalDesk AI • Lead Digest" },
+            timestamp: new Date().toISOString(),
+          }
+        : {
+            description: desc,
+            color,
+            footer: { text: `SignalDesk AI • Lead Digest (${idx + 1}/${descChunks.length})` },
+          }
+    );
+
+    // Discord caps each message at 10 embeds AND ~6000 chars — pack accordingly.
+    const sizeOf = (e: Record<string, unknown>): number => {
+      let n = 0;
+      const add = (s: unknown) => { if (typeof s === "string") n += s.length; };
+      add(e.title);
+      add(e.description);
+      add((e.footer as { text?: string } | undefined)?.text);
+      for (const f of ((e.fields as Array<{ name?: string; value?: string }> | undefined) ?? [])) {
+        add(f.name);
+        add(f.value);
+      }
+      return n;
+    };
+    const MAX_EMBEDS = 10;
+    const MAX_CHARS = 5800;
+    const messages: Record<string, unknown>[][] = [];
+    let cur: Record<string, unknown>[] = [];
+    let curChars = 0;
+    for (const e of embeds) {
+      const s = sizeOf(e);
+      if (cur.length >= MAX_EMBEDS || (cur.length > 0 && curChars + s > MAX_CHARS)) {
+        messages.push(cur);
+        cur = [];
+        curChars = 0;
+      }
+      cur.push(e);
+      curChars += s;
+    }
+    if (cur.length) messages.push(cur);
+
+    for (let i = 0; i < messages.length; i++) {
+      const res = await fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: "SignalDesk AI", embeds: messages[i] }),
+      });
+      if (!res.ok) {
+        const errBody = await res.text().catch(() => "");
+        console.error(`[AlertEngine] Digest failed: ${res.status} — ${errBody}`);
+        throw new Error(`Discord digest failed: ${res.status}`);
+      }
+      // Small gap between messages to stay under Discord's webhook rate limit.
+      if (i < messages.length - 1) await new Promise((r) => setTimeout(r, 700));
     }
 
-    console.log(`[AlertEngine] Digest sent with ${leads.length} leads`);
+    console.log(`[AlertEngine] Digest sent with ${leads.length} leads across ${messages.length} message(s)`);
   }
 }
 
