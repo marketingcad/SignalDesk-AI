@@ -11,7 +11,8 @@ const statusStyles: Record<LeadStatus, { bg: string; text: string; dot: string }
 };
 
 export function StatusBadge({ status }: { status: LeadStatus }) {
-  const style = statusStyles[status];
+  // Fall back gracefully for any legacy/unknown status value so the badge never crashes.
+  const style = statusStyles[status] ?? statusStyles["New Leads"];
 
   return (
     <Badge variant="outline" className={cn("gap-1.5 text-xs font-medium border-transparent", style.bg, style.text)}>
