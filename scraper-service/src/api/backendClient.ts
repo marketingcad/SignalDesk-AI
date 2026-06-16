@@ -129,9 +129,14 @@ export async function sendLeadsBatch(
       source: p.source,
     }));
 
-    const { data } = await client.post<BatchResponse>("/api/leads/batch", {
-      posts: mapped,
-    });
+    // Override the default 30s timeout: AI qualification of a full batch can take
+    // a few minutes, and timing out client-side made runs report "+0 leads" even
+    // though the server finished inserting them.
+    const { data } = await client.post<BatchResponse>(
+      "/api/leads/batch",
+      { posts: mapped },
+      { timeout: config.batchRequestTimeoutMs }
+    );
 
     console.log(
       `[backend] Response: ${data.inserted} inserted, ${data.duplicates} duplicates`

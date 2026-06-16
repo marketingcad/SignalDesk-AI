@@ -83,6 +83,11 @@ export const config = {
   maxResultsPerRun: parseInt(envOrDefault("MAX_RESULTS_PER_RUN", "50"), 10),
   scrollDelayMs: parseInt(envOrDefault("SCROLL_DELAY_MS", "2000"), 10),
   requestTimeoutMs: parseInt(envOrDefault("REQUEST_TIMEOUT_MS", "30000"), 10),
+  // The /api/leads/batch endpoint runs slow AI qualification (Gemini, ~6-11s per
+  // post in chunks). A 30s timeout made the scraper give up before the server
+  // finished — so the run logged "+0 leads" while leads were actually inserted.
+  // Use a generous timeout just for that call.
+  batchRequestTimeoutMs: parseInt(envOrDefault("BATCH_REQUEST_TIMEOUT_MS", "300000"), 10),
 
   // Browser
   headless: envOrDefault("HEADLESS", "true") === "true",
