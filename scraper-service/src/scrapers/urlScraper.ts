@@ -2,7 +2,7 @@ import { chromium } from "playwright";
 import type { Page, Response as PlaywrightResponse } from "playwright";
 import { config } from "../config";
 import { getCachedKeywords } from "../api/backendClient";
-import { hasSavedCookies, getProfileDir, getStorageState, shouldUseStorageState, saveStorageState } from "../crawler/browserAuth";
+import { hasSavedCookies, getProfileDir, getStorageStateForContext, shouldUseStorageState, saveStorageState } from "../crawler/browserAuth";
 import { isCurrentWeek, isOlderThanCurrentWeek, resolveTimestamp } from "../utils/dateHelpers";
 import type { Platform, ScrapedPost, ScrapeResult, BatchScrapeResult, BatchUrlResult } from "../types";
 import { BROWSER_ARGS } from "./browserArgs";
@@ -1713,14 +1713,14 @@ export async function scrapeUrl(targetUrl: string): Promise<ScrapeResult> {
     let page: import("playwright").Page;
 
     if (cookiesExist && shouldUseStorageState()) {
-      const statePath = getStorageState();
-      console.log(`[url-scraper] Using storageState: ${statePath ? "yes" : "none"}`);
+      const storageState = getStorageStateForContext();
+      console.log(`[url-scraper] Using storageState: ${storageState?.cookies.length ? `yes (${storageState.cookies.length} cookies)` : "none — logged out"}`);
       browser = await chromium.launch({
         headless: config.headless,
         args: BROWSER_ARGS,
       });
       context = await browser.newContext({
-        storageState: statePath,
+        storageState,
         userAgent:
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
       });
@@ -2109,10 +2109,9 @@ export async function createBrowserContext(): Promise<{
   let browser: import("playwright").Browser | null = null;
 
   if (cookiesExist && shouldUseStorageState()) {
-    const statePath = getStorageState();
     browser = await chromium.launch({ headless: config.headless, args: BROWSER_ARGS });
     context = await browser.newContext({
-      storageState: statePath,
+      storageState: getStorageStateForContext(),
       userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     });
   } else if (cookiesExist) {

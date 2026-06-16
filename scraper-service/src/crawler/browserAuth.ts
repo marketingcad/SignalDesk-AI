@@ -86,10 +86,15 @@ export function getAuthenticatedPlatforms(): Record<AuthPlatformKey, boolean> {
     for (const key of Object.keys(AUTH_COOKIE_MARKERS) as AuthPlatformKey[]) {
       result[key] = AUTH_COOKIE_MARKERS[key].some((m) =>
         cookies.some(
-          // Match on the platform-specific cookie name + a value. Enforce the
-          // domain only when present: minimally-seeded sessions can carry the
-          // marker cookie without a domain field, and they're still valid logins.
-          (c) => c.name === m.name && !!c.value && (!c.domain || c.domain.includes(m.domain))
+          // A usable login cookie must have a value AND a matching domain.
+          // A domain-less marker cookie (e.g. a minimally-seeded `xs`) cannot be
+          // loaded into a browser context, so it is NOT a real session — don't
+          // report it as authenticated (it would show green while scrapes fail).
+          (c) =>
+            c.name === m.name &&
+            !!c.value &&
+            typeof c.domain === "string" &&
+            c.domain.includes(m.domain)
         )
       );
     }
@@ -97,6 +102,56 @@ export function getAuthenticatedPlatforms(): Record<AuthPlatformKey, boolean> {
     // malformed/unreadable session → treat as not authenticated
   }
   return result;
+}
+
+type PWCookie = {
+  name: string;
+  value: string;
+  domain: string;
+  path: string;
+  expires: number;
+  httpOnly: boolean;
+  secure: boolean;
+  sameSite: "Strict" | "Lax" | "None";
+};
+type PWOrigin = { origin: string; localStorage: { name: string; value: string }[] };
+
+/**
+ * Build a storageState OBJECT safe to pass to browser.newContext().
+ *
+ * Playwright rejects the entire context if ANY cookie lacks a `url` or a
+ * `domain`+`path` pair ("Cookie should have a url or a domain/path pair"),
+ * which crashes the scrape outright. A minimally-seeded session can contain
+ * exactly such a cookie (a bare `xs`). Drop those unusable cookies and
+ * normalise the rest so the context always builds — logged-out at worst, never
+ * a crash. Returns undefined when there is no session data at all.
+ */
+export function getStorageStateForContext():
+  | { cookies: PWCookie[]; origins: PWOrigin[] }
+  | undefined {
+  const raw = readStorageStateRaw();
+  if (!raw) return undefined;
+  let parsed: { cookies?: Partial<PWCookie>[]; origins?: PWOrigin[] };
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+  const validSameSite = new Set(["Strict", "Lax", "None"]);
+  const cookies: PWCookie[] = (parsed.cookies ?? [])
+    // storageState cookies must carry a domain — drop any that don't.
+    .filter((c) => c && typeof c.name === "string" && typeof c.domain === "string" && c.domain)
+    .map((c) => ({
+      name: c.name as string,
+      value: String(c.value ?? ""),
+      domain: c.domain as string,
+      path: c.path || "/",
+      expires: typeof c.expires === "number" ? c.expires : -1,
+      httpOnly: !!c.httpOnly,
+      secure: !!c.secure,
+      sameSite: validSameSite.has(c.sameSite as string) ? (c.sameSite as PWCookie["sameSite"]) : "Lax",
+    }));
+  return { cookies, origins: Array.isArray(parsed.origins) ? parsed.origins : [] };
 }
 
 /**
@@ -371,8 +426,10 @@ export async function validateCookies(
   // Check if we even have cookies to validate
   if (!hasSavedCookies()) return "no_cookies";
 
-  const storageState = getStorageState();
-  if (!storageState) return "no_cookies";
+  // Use the sanitised object so a malformed cookie can't crash newContext.
+  // If sanitising leaves no usable cookies, there's effectively no session.
+  const storageState = getStorageStateForContext();
+  if (!storageState || storageState.cookies.length === 0) return "no_cookies";
 
   let browser;
 

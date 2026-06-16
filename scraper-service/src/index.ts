@@ -817,6 +817,10 @@ app.post("/api/auth/live/save", async (req, res) => {
   if (!checkAuth(req, res)) return;
   try {
     const result = await saveLiveLogin();
+    // Fresh login → clear any stale "expired" health so the status cards reflect
+    // the new session immediately instead of a leftover failed-validation flag.
+    resetHealth("Facebook");
+    resetHealth("LinkedIn");
     res.json({ ok: true, ...result });
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : String(err) });

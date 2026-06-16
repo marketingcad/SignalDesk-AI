@@ -78,6 +78,7 @@ import {
   getStorageState,
   saveStorageState,
   getAuthenticatedPlatforms,
+  getStorageStateForContext,
 } from "./browserAuth";
 
 const { STORAGE_STATE_PATH, PROFILE_DIR } = h;
@@ -225,7 +226,7 @@ describe("saveStorageState", () => {
 // getAuthenticatedPlatforms — per-platform login status from marker cookies
 // ---------------------------------------------------------------------------
 describe("getAuthenticatedPlatforms", () => {
-  const stateWith = (cookies: Array<{ name: string; value?: string; domain: string }>) =>
+  const stateWith = (cookies: Array<{ name: string; value?: string; domain?: string }>) =>
     JSON.stringify({ cookies });
 
   it("reports all false when no session exists", () => {
@@ -255,11 +256,12 @@ describe("getAuthenticatedPlatforms", () => {
     expect(getAuthenticatedPlatforms()).toEqual({ facebook: false, linkedin: true, x: true });
   });
 
-  it("detects Facebook from a minimally-seeded session (xs, no domain field)", () => {
-    // Real-world durable session shape: a single `xs` session cookie with no
-    // domain. FB is genuinely logged in; LinkedIn/X are not.
+  it("does NOT count a domain-less marker cookie as authenticated", () => {
+    // A bare `xs` with no domain can't be loaded into a browser context, so it
+    // is not a real session — reporting it as authenticated showed a green card
+    // while scrapes failed with "Session expired".
     h.files.set(STORAGE_STATE_PATH, stateWith([{ name: "xs", value: "abc1234" }]));
-    expect(getAuthenticatedPlatforms()).toEqual({ facebook: true, linkedin: false, x: false });
+    expect(getAuthenticatedPlatforms().facebook).toBe(false);
   });
 
   it("treats a marker cookie with an empty value as not authenticated", () => {
@@ -277,5 +279,45 @@ describe("getAuthenticatedPlatforms", () => {
   it("returns all false on malformed JSON instead of throwing", () => {
     h.files.set(STORAGE_STATE_PATH, "not json{");
     expect(getAuthenticatedPlatforms()).toEqual({ facebook: false, linkedin: false, x: false });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getStorageStateForContext — sanitises cookies so newContext can't crash
+// ---------------------------------------------------------------------------
+describe("getStorageStateForContext", () => {
+  it("returns undefined when there is no session", () => {
+    expect(getStorageStateForContext()).toBeUndefined();
+  });
+
+  it("drops cookies without a domain (the crash trigger) and keeps valid ones", () => {
+    h.files.set(
+      STORAGE_STATE_PATH,
+      JSON.stringify({
+        cookies: [
+          { name: "xs", value: "abc1234" }, // no domain → must be dropped
+          { name: "c_user", value: "1", domain: ".facebook.com", path: "/" },
+        ],
+      })
+    );
+    const state = getStorageStateForContext();
+    expect(state?.cookies.map((c) => c.name)).toEqual(["c_user"]);
+  });
+
+  it("normalises missing path/sameSite so Playwright accepts every cookie", () => {
+    h.files.set(
+      STORAGE_STATE_PATH,
+      JSON.stringify({ cookies: [{ name: "li_at", value: "t", domain: ".linkedin.com" }] })
+    );
+    const c = getStorageStateForContext()?.cookies[0];
+    expect(c?.path).toBe("/");
+    expect(["Strict", "Lax", "None"]).toContain(c?.sameSite);
+    expect(typeof c?.expires).toBe("number");
+  });
+
+  it("yields an empty (but valid) cookie list for a fully malformed session", () => {
+    h.files.set(STORAGE_STATE_PATH, JSON.stringify({ cookies: [{ name: "xs", value: "x" }] }));
+    const state = getStorageStateForContext();
+    expect(state).toEqual({ cookies: [], origins: [] });
   });
 });

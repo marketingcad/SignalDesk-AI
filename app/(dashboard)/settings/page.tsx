@@ -577,21 +577,25 @@ export default function SettingsPage() {
                     ] as const).map(({ key, label, validatable }) => {
                       const authed = authStatus.authenticated?.[key] ?? false;
                       const health = authStatus.health?.platforms?.find((p) => p.platform === label);
-                      const expired = authed && health?.status === "expired";
-                      const warning = authed && health?.status === "warning";
-                      const active = authed && !expired && !warning;
+                      // Only treat the session as expired when a real cookie
+                      // validation said so — NOT from the empty-runs heuristic,
+                      // which can flag an authenticated session that simply found
+                      // no new posts (the false "Session expired" bug).
+                      const expired =
+                        authed &&
+                        (health?.lastValidationResult === "expired" ||
+                          health?.lastValidationResult === "no_cookies");
+                      const active = authed && !expired;
 
                       const statusText = !authed
                         ? "Not authenticated"
                         : expired
                         ? "Session expired — re-login"
-                        : warning
-                        ? `${health?.consecutiveZeroRuns ?? 0} empty runs`
                         : "Session active";
 
-                      const showValidate = validatable && (active || warning);
+                      const showValidate = validatable && active;
                       const showLogin = !authed || expired;
-                      const showReset = authed && (warning || expired);
+                      const showReset = authed && expired;
 
                       return (
                         <div
@@ -599,7 +603,6 @@ export default function SettingsPage() {
                           className={cn(
                             "flex flex-col gap-3 rounded-lg border px-4 py-3 transition-colors",
                             active && "border-emerald-500/30 bg-emerald-500/5",
-                            warning && "border-amber-500/30 bg-amber-500/5",
                             (expired || !authed) && "border-rose-500/30 bg-rose-500/5",
                             !authed && "opacity-70"
                           )}
@@ -610,7 +613,6 @@ export default function SettingsPage() {
                                 className={cn(
                                   "h-2.5 w-2.5 rounded-full",
                                   active && "bg-emerald-400 shadow-[0_0_0_3px_rgba(52,211,153,0.2)]",
-                                  warning && "bg-amber-400",
                                   (expired || !authed) && "bg-rose-400"
                                 )}
                               />
@@ -619,7 +621,7 @@ export default function SettingsPage() {
                             {active ? (
                               <CheckCircle2 className="h-4 w-4 text-emerald-400" />
                             ) : (
-                              <XCircle className={cn("h-4 w-4", warning ? "text-amber-400" : "text-rose-400")} />
+                              <XCircle className="h-4 w-4 text-rose-400" />
                             )}
                           </div>
 
@@ -627,7 +629,6 @@ export default function SettingsPage() {
                             className={cn(
                               "text-xs font-medium",
                               active && "text-emerald-400",
-                              warning && "text-amber-400",
                               (expired || !authed) && "text-rose-400"
                             )}
                           >
