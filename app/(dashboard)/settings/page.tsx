@@ -562,11 +562,6 @@ export default function SettingsPage() {
                   ) : (
                     <XCircle className="h-4 w-4 text-rose-400 shrink-0" />
                   )}
-                  <p className="text-xs text-foreground">
-                    {authStatus.cookiesSaved
-                      ? "Browser cookies are saved. Authenticated scraping is available."
-                      : "No login session saved. Use Live Login (Cloud) below to authenticate."}
-                  </p>
                 </div>
 
                 {/* Per-platform authentication — green = logged in, red = needs login */}
