@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { openUrl } from "@/lib/open-url";
 import { isTauri } from "@/lib/tauri";
@@ -52,6 +53,16 @@ type FilterIntent = IntentLevel | "All";
 type FilterStatus = LeadStatus | "All";
 
 export default function LeadsPage() {
+  // useSearchParams (in LeadsContent) needs a Suspense boundary in the app router.
+  return (
+    <Suspense fallback={null}>
+      <LeadsContent />
+    </Suspense>
+  );
+}
+
+function LeadsContent() {
+  const searchParams = useSearchParams();
   const [searchQuery, setSearchQuery] = useState("");
   const [platformFilter, setPlatformFilter] = useState<FilterPlatform>("All");
   const [intentFilter, setIntentFilter] = useState<FilterIntent>("All");
@@ -62,6 +73,7 @@ export default function LeadsPage() {
   const [totalCount, setTotalCount] = useState(0);
   const perPage = 20;
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [highlightId, setHighlightId] = useState<string | null>(null);
   const [filteredLeads, setFilteredLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionOpen, setActionOpen] = useState(false);
@@ -287,6 +299,32 @@ export default function LeadsPage() {
     setSelectedIds(new Set());
     setSelectionMode(false);
   }, [platformFilter, intentFilter, statusFilter, searchQuery, dateFrom, dateTo]);
+
+  // Arriving from the header search (/leads?search=…&highlight=…): pre-fill the
+  // search so the lead is in the list, and remember which card to highlight.
+  // Reactive to searchParams so it also works when already on the Leads page.
+  useEffect(() => {
+    const s = searchParams.get("search");
+    const h = searchParams.get("highlight");
+    if (s) setSearchQuery(s);
+    if (h) setHighlightId(h);
+  }, [searchParams]);
+
+  // Once the highlighted lead is loaded, scroll to its card; clear the highlight
+  // after a few seconds so the blue border isn't permanent.
+  useEffect(() => {
+    if (!highlightId || !filteredLeads.some((l) => l.id === highlightId)) return;
+    const raf = requestAnimationFrame(() => {
+      document
+        .getElementById(`lead-card-${highlightId}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    const t = setTimeout(() => setHighlightId(null), 5000);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(t);
+    };
+  }, [highlightId, filteredLeads]);
 
   const fetchLeads = useCallback(() => {
     const params = new URLSearchParams();
@@ -613,6 +651,7 @@ export default function LeadsPage() {
                     isSelected={selectedLead?.id === lead.id}
                     isMarked={selectedIds.has(lead.id)}
                     selectionMode={selectionMode}
+                    highlighted={lead.id === highlightId}
                     onClick={() => setSelectedLead(selectedLead?.id === lead.id ? null : lead)}
                     onToggleMark={() => toggleSelect(lead.id)}
                   />
@@ -824,6 +863,7 @@ function LeadCard({
   isSelected,
   isMarked,
   selectionMode,
+  highlighted,
   onClick,
   onToggleMark,
 }: {
@@ -832,15 +872,18 @@ function LeadCard({
   isSelected: boolean;
   isMarked: boolean;
   selectionMode: boolean;
+  highlighted?: boolean;
   onClick: () => void;
   onToggleMark: () => void;
 }) {
   return (
     <Card
+      id={`lead-card-${lead.id}`}
       className={cn(
-        "border-border bg-card p-4 cursor-pointer transition-all duration-200 hover:shadow-md hover:border-primary/30 hover:-translate-y-0.5 animate-view-card-in relative",
+        "border-border bg-card p-4 cursor-pointer transition-all duration-200 hover:shadow-md hover:border-primary/30 hover:-translate-y-0.5 animate-view-card-in relative scroll-mt-24",
         isSelected && !selectionMode && "ring-1 ring-primary border-primary/40",
-        isMarked && "ring-1 ring-rose-500/40 border-rose-500/30 bg-rose-500/5"
+        isMarked && "ring-1 ring-rose-500/40 border-rose-500/30 bg-rose-500/5",
+        highlighted && "ring-2 ring-blue-500 border-blue-500 shadow-lg shadow-blue-500/20"
       )}
       style={{ animationDelay: `${Math.min(index * 30, 300)}ms` }}
       onClick={selectionMode ? onToggleMark : onClick}

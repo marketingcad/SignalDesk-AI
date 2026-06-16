@@ -142,7 +142,11 @@ export function Header({ title, subtitle, actions }: HeaderProps) {
 
   function navigateToLead(lead: Lead) {
     closeSearch();
-    router.push(`/leads?search=${encodeURIComponent(lead.username)}`);
+    // Filter the Leads page to this lead's author so the card is visible, and
+    // pass its id so the page can scroll to + highlight that exact card.
+    router.push(
+      `/leads?search=${encodeURIComponent(lead.username)}&highlight=${encodeURIComponent(lead.id)}`
+    );
   }
 
   // Realtime: update badge when new high-intent leads arrive or leads are deleted
