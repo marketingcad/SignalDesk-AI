@@ -1,6 +1,6 @@
 import { scrapeReddit, scrapeFacebook } from "../scrapers";
 import { sendLeadsBatch } from "../api/backendClient";
-import { sendRunSummary, sendNewLeadsAlert } from "../alerts/discord";
+import { sendNewLeadsAlert } from "../alerts/discord";
 import { filterPosts } from "../utils/postFilter";
 import { reportRunResult } from "../utils/sessionHealth";
 import type { Platform, ScrapeResult } from "../types";
@@ -116,8 +116,8 @@ export async function runAllPlatforms(): Promise<ScrapeResult[]> {
     const totalErrors = results.reduce((s, r) => s + r.errors.length, 0);
     console.log(`\n[crawler] ══════════ RUN COMPLETE ══════════`);
     console.log(`[crawler] Total: ${totalPosts} posts, ${totalErrors} errors`);
-
-    await sendRunSummary(results);
+    // Per-run "Scraper Run Complete" summary intentionally NOT sent to Discord —
+    // Discord notifications are leads-only (see sendNewLeadsAlert).
   } finally {
     runInProgress = false;
   }
