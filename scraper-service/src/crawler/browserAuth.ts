@@ -268,11 +268,21 @@ export async function saveSessionToSupabase(rawJson?: string): Promise<void> {
  *      into Supabase so future boots use the durable copy and you never re-paste.
  */
 export async function initSession(): Promise<void> {
-  if (await loadSessionFromSupabase()) return;
+  const loaded = await loadSessionFromSupabase();
+  // A loaded Supabase row can be DEGRADED — e.g. a partial save that dropped the
+  // real login cookies, leaving only a domain-less `xs`. If it carries no usable
+  // login for ANY platform, don't get stuck logged-out: fall back to the
+  // BROWSER_STORAGE_STATE bootstrap (which may still hold a full session) and
+  // re-persist it, so a bad row can't permanently shadow a good seed.
+  if (loaded && Object.values(getAuthenticatedPlatforms()).some(Boolean)) return;
   if (process.env.BROWSER_STORAGE_STATE) {
     fs.mkdirSync(path.dirname(STORAGE_STATE_PATH), { recursive: true });
     fs.writeFileSync(STORAGE_STATE_PATH, process.env.BROWSER_STORAGE_STATE, "utf-8");
-    console.log("[auth] Seeded session from BROWSER_STORAGE_STATE env → migrating to Supabase");
+    console.log(
+      loaded
+        ? "[auth] Supabase session had no usable login — re-seeding from BROWSER_STORAGE_STATE env"
+        : "[auth] Seeded session from BROWSER_STORAGE_STATE env → migrating to Supabase"
+    );
     await saveSessionToSupabase(process.env.BROWSER_STORAGE_STATE);
   }
 }
