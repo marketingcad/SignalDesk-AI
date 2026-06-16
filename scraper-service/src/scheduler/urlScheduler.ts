@@ -2,7 +2,7 @@ import * as cron from "node-cron";
 import { randomUUID } from "crypto";
 import { scrapeUrl, scrapeOneUrl, createBrowserContext } from "../scrapers";
 import { sendLeadsBatch, fetchKeywords } from "../api/backendClient";
-import { sendNewLeadsAlert, sendSessionHealthAlert } from "../alerts/discord";
+import { sendNewLeadsAlert } from "../alerts/discord";
 import { filterPosts } from "../utils/postFilter";
 import { checkRateLimit, recordScrapeStart } from "../utils/rateLimiter";
 import { isRunning } from "../crawler/crawlerManager";
@@ -219,17 +219,15 @@ async function runSchedule(id: string): Promise<void> {
       errorMessage = result.errors.join("; ");
     }
 
-    // ── Session health monitoring ──────────────────────────────────────
+    // ── Session health monitoring (log only) ───────────────────────────
+    // Tracked for the logs/health endpoint, but NOT pushed to Discord —
+    // Discord notifications are strictly leads-only (see sendNewLeadsAlert).
     if (postsFound === 0 && runStatus === "ok") {
-      const prev = consecutiveZeroPosts.get(id) ?? 0;
-      const count = prev + 1;
+      const count = (consecutiveZeroPosts.get(id) ?? 0) + 1;
       consecutiveZeroPosts.set(id, count);
       console.log(
         `[url-scheduler] "${schedule.name}" returned 0 posts (${count} consecutive)`
       );
-      if (count >= config.sessionHealthThreshold) {
-        await sendSessionHealthAlert(schedule.name, schedule.url, platform, count);
-      }
     } else {
       consecutiveZeroPosts.set(id, 0);
     }
