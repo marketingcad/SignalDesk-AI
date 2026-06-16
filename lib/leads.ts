@@ -94,12 +94,22 @@ export async function getLeads(filters?: {
   };
 }
 
-export async function getAlerts(limit = 20, offset = 0): Promise<{ leads: Lead[]; total: number }> {
-  const { data, error, count } = await supabase
+export async function getAlerts(
+  limit = 20,
+  offset = 0,
+  since?: string
+): Promise<{ leads: Lead[]; total: number }> {
+  let query = supabase
     .from("leads")
     .select("*", { count: "exact" })
     .gte("intent_score", ALERT_MIN_SCORE)
-    .neq("status", "Dismissed")
+    .neq("status", "Dismissed");
+
+  // Only count/return alerts created after `since` (used for the "new since
+  // last seen" badge in the sidebar).
+  if (since) query = query.gt("created_at", since);
+
+  const { data, error, count } = await query
     .order("created_at", { ascending: false })
     .range(offset, offset + limit - 1);
 

@@ -12,11 +12,12 @@ export async function GET(request: NextRequest) {
   const limit = Number(request.nextUrl.searchParams.get("limit")) || 20;
   const offset = Number(request.nextUrl.searchParams.get("offset")) || 0;
   const archived = request.nextUrl.searchParams.get("archived") === "true";
+  const since = request.nextUrl.searchParams.get("since") || undefined;
 
   try {
     const result = archived
       ? await getArchivedAlerts(limit, offset)
-      : await getAlerts(limit, offset);
+      : await getAlerts(limit, offset, since);
     return NextResponse.json(result);
   } catch (error) {
     console.error("[api/alerts] Error:", error);

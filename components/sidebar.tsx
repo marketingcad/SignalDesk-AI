@@ -22,7 +22,7 @@ import {
   Bookmark,
 } from "lucide-react";
 import { cn, timeAgo } from "@/lib/utils";
-import { ALERT_MIN_SCORE } from "@/lib/alerts-config";
+import { ALERT_MIN_SCORE, ALERTS_LAST_SEEN_KEY } from "@/lib/alerts-config";
 import type { Platform } from "@/lib/types";
 import { useRealtime } from "@/hooks/use-realtime";
 import { Button } from "@/components/ui/button";
@@ -63,11 +63,20 @@ export function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose, onMobi
   const [statusLoaded, setStatusLoaded] = useState(false);
 
   useEffect(() => {
-    // Fetch unread alert count
-    fetch("/api/alerts?limit=1")
-      .then((res) => (res.ok ? res.json() : { total: 0 }))
-      .then((data: { total?: number }) => setAlertCount(data.total ?? 0))
-      .catch(() => {});
+    // Show only alerts that are "new" since the user last opened the Alerts
+    // page. The baseline is stored in localStorage so the badge stays cleared
+    // across navigation/reloads until a fresher lead is scraped.
+    const lastSeen = localStorage.getItem(ALERTS_LAST_SEEN_KEY);
+    if (lastSeen) {
+      fetch(`/api/alerts?since=${encodeURIComponent(lastSeen)}&limit=1`)
+        .then((res) => (res.ok ? res.json() : { total: 0 }))
+        .then((data: { total?: number }) => setAlertCount(data.total ?? 0))
+        .catch(() => {});
+    } else {
+      // First run on this device: treat everything existing as already seen so
+      // we don't surface a backlog as "new".
+      localStorage.setItem(ALERTS_LAST_SEEN_KEY, new Date().toISOString());
+    }
 
     // Fetch platform toggles + last active times
     Promise.all([
@@ -93,7 +102,9 @@ export function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose, onMobi
     table: "leads",
     event: "INSERT",
     onInsert: (newLead) => {
-      if (newLead.intent_score >= ALERT_MIN_SCORE) {
+      // Don't accumulate a "new" count while the user is already on the Alerts
+      // page — those leads are being seen as they arrive.
+      if (newLead.intent_score >= ALERT_MIN_SCORE && !pathname.startsWith("/alerts")) {
         setAlertCount((prev) => prev + 1);
       }
       // Update platform lastActive
@@ -118,6 +129,15 @@ export function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose, onMobi
       }
     },
   });
+
+  // Opening the Alerts page clears the "new" badge and resets the baseline, so
+  // the count stays hidden on other pages until a fresher lead is scraped.
+  useEffect(() => {
+    if (pathname.startsWith("/alerts")) {
+      localStorage.setItem(ALERTS_LAST_SEEN_KEY, new Date().toISOString());
+      setAlertCount(0);
+    }
+  }, [pathname]);
 
   const handleLogoutComplete = useCallback(async () => {
     await fetch("/api/auth/logout", { method: "POST" });

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Bell, Search, Sparkles, X } from "lucide-react";
 import { cn, timeAgo } from "@/lib/utils";
-import { ALERT_MIN_SCORE } from "@/lib/alerts-config";
+import { ALERT_MIN_SCORE, ALERTS_LAST_SEEN_KEY } from "@/lib/alerts-config";
 import { useRealtime } from "@/hooks/use-realtime";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -39,11 +39,28 @@ export function Header({ title, subtitle, actions }: HeaderProps) {
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
-    fetch("/api/alerts?limit=1")
-      .then((res) => (res.ok ? res.json() : { total: 0 }))
-      .then((data: { total?: number }) => setAlertCount(data.total ?? 0))
-      .catch(() => {});
+    // Show only alerts that are "new" since the user last opened the Alerts
+    // page. Shares the localStorage baseline with the sidebar badge so both
+    // clear together and stay hidden until a fresher lead is scraped.
+    const lastSeen = localStorage.getItem(ALERTS_LAST_SEEN_KEY);
+    if (lastSeen) {
+      fetch(`/api/alerts?since=${encodeURIComponent(lastSeen)}&limit=1`)
+        .then((res) => (res.ok ? res.json() : { total: 0 }))
+        .then((data: { total?: number }) => setAlertCount(data.total ?? 0))
+        .catch(() => {});
+    } else {
+      // First run on this device: treat the existing backlog as already seen.
+      localStorage.setItem(ALERTS_LAST_SEEN_KEY, new Date().toISOString());
+    }
   }, []);
+
+  // Opening the Alerts page clears the bell badge and resets the baseline.
+  useEffect(() => {
+    if (onAlertsPage) {
+      localStorage.setItem(ALERTS_LAST_SEEN_KEY, new Date().toISOString());
+      setAlertCount(0);
+    }
+  }, [onAlertsPage]);
 
   // Global "/" shortcut to focus search
   useEffect(() => {
@@ -133,7 +150,8 @@ export function Header({ title, subtitle, actions }: HeaderProps) {
     table: "leads",
     event: "INSERT",
     onInsert: (row) => {
-      if (row.intent_score >= ALERT_MIN_SCORE) setAlertCount((prev) => prev + 1);
+      // Don't accumulate a "new" count while the user is already on the Alerts page.
+      if (row.intent_score >= ALERT_MIN_SCORE && !onAlertsPage) setAlertCount((prev) => prev + 1);
     },
   });
 
