@@ -592,7 +592,6 @@ export function RunHistoryTab({
                             ) : (
                               <span className="text-[11px] text-muted-foreground">{run.postsFound} posts found</span>
                             )}
-                            <span className="text-[11px] text-emerald-400 font-semibold">+{run.leadsInserted} leads</span>
                           </>
                         )}
                         {run.status === "error" && (
