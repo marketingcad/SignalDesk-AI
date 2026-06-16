@@ -35,6 +35,62 @@ export function getProfileDir(): string {
   return PROFILE_DIR;
 }
 
+export type AuthPlatformKey = "facebook" | "linkedin" | "x";
+
+/**
+ * Marker cookies that are only present (with a value) when the account is
+ * actually logged in. This is the source of truth for "is THIS platform
+ * authenticated", as opposed to the global hasSavedCookies()/health status —
+ * the rolling session file holds cookies for several domains at once, so one
+ * platform being logged in does not mean the others are.
+ */
+const AUTH_COOKIE_MARKERS: Record<AuthPlatformKey, { domain: string; name: string }[]> = {
+  facebook: [{ domain: "facebook.com", name: "c_user" }],
+  linkedin: [{ domain: "linkedin.com", name: "li_at" }],
+  x: [
+    { domain: "x.com", name: "auth_token" },
+    { domain: "twitter.com", name: "auth_token" },
+  ],
+};
+
+interface StoredCookie {
+  name: string;
+  value?: string;
+  domain: string;
+}
+
+/** Read the raw rolling session JSON (file first, env bootstrap fallback). */
+function readStorageStateRaw(): string | undefined {
+  if (fs.existsSync(STORAGE_STATE_PATH)) return fs.readFileSync(STORAGE_STATE_PATH, "utf-8");
+  if (process.env.BROWSER_STORAGE_STATE) return process.env.BROWSER_STORAGE_STATE;
+  return undefined;
+}
+
+/**
+ * Inspect the saved session and report which platforms are actually logged in,
+ * based on the presence of their auth marker cookie. Drives the per-platform
+ * status cards in Settings → Browser Login so an unauthenticated platform isn't
+ * shown as "active".
+ */
+export function getAuthenticatedPlatforms(): Record<AuthPlatformKey, boolean> {
+  const result: Record<AuthPlatformKey, boolean> = { facebook: false, linkedin: false, x: false };
+  try {
+    const raw = readStorageStateRaw();
+    if (!raw) return result;
+    const cookies = (JSON.parse(raw)?.cookies ?? []) as StoredCookie[];
+    for (const key of Object.keys(AUTH_COOKIE_MARKERS) as AuthPlatformKey[]) {
+      result[key] = AUTH_COOKIE_MARKERS[key].some((m) =>
+        cookies.some(
+          (c) => c.name === m.name && !!c.value && c.domain.includes(m.domain)
+        )
+      );
+    }
+  } catch {
+    // malformed/unreadable session → treat as not authenticated
+  }
+  return result;
+}
+
 /**
  * Get storageState for use with browser.newContext().
  *

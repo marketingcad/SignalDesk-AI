@@ -56,6 +56,16 @@ vi.mock("fs", async (importOriginal) => {
       h.files.set(String(target), String(data));
       h.dirs.add(path.dirname(String(target)));
     },
+    readFileSync: (target: unknown, ...rest: unknown[]) => {
+      if (!h.managed(target)) return (real.readFileSync as never as (...a: unknown[]) => unknown)(target, ...rest);
+      const v = h.files.get(String(target));
+      if (v === undefined) {
+        const err = new Error(`ENOENT: no such file '${String(target)}'`) as Error & { code: string };
+        err.code = "ENOENT";
+        throw err;
+      }
+      return v;
+    },
   };
 
   return { ...wrapped, default: wrapped };
@@ -67,6 +77,7 @@ import {
   shouldUseStorageState,
   getStorageState,
   saveStorageState,
+  getAuthenticatedPlatforms,
 } from "./browserAuth";
 
 const { STORAGE_STATE_PATH, PROFILE_DIR } = h;
@@ -207,5 +218,57 @@ describe("saveStorageState", () => {
     const ctx = fakeContext(() => Promise.reject(new Error("context closed")));
 
     await expect(saveStorageState(ctx as never)).resolves.toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getAuthenticatedPlatforms — per-platform login status from marker cookies
+// ---------------------------------------------------------------------------
+describe("getAuthenticatedPlatforms", () => {
+  const stateWith = (cookies: Array<{ name: string; value?: string; domain: string }>) =>
+    JSON.stringify({ cookies });
+
+  it("reports all false when no session exists", () => {
+    expect(getAuthenticatedPlatforms()).toEqual({ facebook: false, linkedin: false, x: false });
+  });
+
+  it("detects only the platforms whose marker cookie is present (the LinkedIn bug)", () => {
+    // Facebook logged in (c_user), LinkedIn NOT — must not show LinkedIn as active.
+    h.files.set(
+      STORAGE_STATE_PATH,
+      stateWith([
+        { name: "c_user", value: "100012345", domain: ".facebook.com" },
+        { name: "xs", value: "abc", domain: ".facebook.com" },
+      ])
+    );
+    expect(getAuthenticatedPlatforms()).toEqual({ facebook: true, linkedin: false, x: false });
+  });
+
+  it("detects LinkedIn via li_at and X via auth_token (x.com or twitter.com)", () => {
+    h.files.set(
+      STORAGE_STATE_PATH,
+      stateWith([
+        { name: "li_at", value: "tok", domain: ".linkedin.com" },
+        { name: "auth_token", value: "tok", domain: ".twitter.com" },
+      ])
+    );
+    expect(getAuthenticatedPlatforms()).toEqual({ facebook: false, linkedin: true, x: true });
+  });
+
+  it("treats a marker cookie with an empty value as not authenticated", () => {
+    h.files.set(STORAGE_STATE_PATH, stateWith([{ name: "c_user", value: "", domain: ".facebook.com" }]));
+    expect(getAuthenticatedPlatforms().facebook).toBe(false);
+  });
+
+  it("reads from the BROWSER_STORAGE_STATE env var when no file exists", () => {
+    process.env.BROWSER_STORAGE_STATE = stateWith([
+      { name: "c_user", value: "1", domain: ".facebook.com" },
+    ]);
+    expect(getAuthenticatedPlatforms().facebook).toBe(true);
+  });
+
+  it("returns all false on malformed JSON instead of throwing", () => {
+    h.files.set(STORAGE_STATE_PATH, "not json{");
+    expect(getAuthenticatedPlatforms()).toEqual({ facebook: false, linkedin: false, x: false });
   });
 });

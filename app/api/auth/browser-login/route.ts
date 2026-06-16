@@ -36,6 +36,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       cookiesSaved: statusRes.data?.cookiesSaved ?? false,
+      authenticated: statusRes.data?.authenticated ?? { facebook: false, linkedin: false, x: false },
       health: healthRes.data ?? null,
     });
   } catch (err) {

@@ -96,6 +96,7 @@ export default function SettingsPage() {
   // --- Browser Login state ---
   const [authStatus, setAuthStatus] = useState<{
     cookiesSaved: boolean;
+    authenticated?: { facebook: boolean; linkedin: boolean; x: boolean };
     health: {
       overall: "healthy" | "warning" | "expired";
       platforms: Array<{
@@ -568,82 +569,129 @@ export default function SettingsPage() {
                   </p>
                 </div>
 
-                {/* Per-platform health */}
-                {authStatus.health?.platforms && (
-                  <div className="space-y-2">
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                      Platform Sessions
-                    </p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {authStatus.health.platforms
-                        .filter((p) => p.platform === "Facebook" || p.platform === "LinkedIn")
-                        .map((p) => {
-                          const isHealthy = p.status === "healthy";
-                          const isWarning = p.status === "warning";
-                          const isExpired = p.status === "expired";
-                          return (
-                            <div
-                              key={p.platform}
-                              className={cn(
-                                "flex items-center justify-between rounded-lg border px-4 py-3",
-                                isHealthy && "border-border bg-secondary",
-                                isWarning && "border-amber-500/20 bg-amber-500/5",
-                                isExpired && "border-rose-500/20 bg-rose-500/5"
-                              )}
-                            >
-                              <div className="flex items-center gap-3">
-                                <CircleDot className={cn(
-                                  "h-4 w-4",
-                                  isHealthy && "text-emerald-400",
-                                  isWarning && "text-amber-400",
-                                  isExpired && "text-rose-400"
-                                )} />
-                                <div>
-                                  <p className="text-sm font-medium text-foreground">{p.platform}</p>
-                                  <p className="text-xs text-muted-foreground">
-                                    {isHealthy && "Session active"}
-                                    {isWarning && `${p.consecutiveZeroRuns} consecutive empty runs`}
-                                    {isExpired && (
-                                      p.lastValidationResult === "no_cookies"
-                                        ? "No cookies — login required"
-                                        : "Session expired — re-login required"
-                                    )}
-                                  </p>
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-1.5">
+                {/* Per-platform authentication — green = logged in, red = needs login */}
+                <div className="space-y-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Platform Sessions
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    {([
+                      { key: "facebook", label: "Facebook", validatable: true },
+                      { key: "linkedin", label: "LinkedIn", validatable: true },
+                      { key: "x", label: "X", validatable: false },
+                    ] as const).map(({ key, label, validatable }) => {
+                      const authed = authStatus.authenticated?.[key] ?? false;
+                      const health = authStatus.health?.platforms?.find((p) => p.platform === label);
+                      const expired = authed && health?.status === "expired";
+                      const warning = authed && health?.status === "warning";
+                      const active = authed && !expired && !warning;
+
+                      const statusText = !authed
+                        ? "Not authenticated"
+                        : expired
+                        ? "Session expired — re-login"
+                        : warning
+                        ? `${health?.consecutiveZeroRuns ?? 0} empty runs`
+                        : "Session active";
+
+                      const showValidate = validatable && (active || warning);
+                      const showLogin = !authed || expired;
+                      const showReset = authed && (warning || expired);
+
+                      return (
+                        <div
+                          key={key}
+                          className={cn(
+                            "flex flex-col gap-3 rounded-lg border px-4 py-3 transition-colors",
+                            active && "border-emerald-500/30 bg-emerald-500/5",
+                            warning && "border-amber-500/30 bg-amber-500/5",
+                            (expired || !authed) && "border-rose-500/30 bg-rose-500/5",
+                            !authed && "opacity-70"
+                          )}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2.5">
+                              <span
+                                className={cn(
+                                  "h-2.5 w-2.5 rounded-full",
+                                  active && "bg-emerald-400 shadow-[0_0_0_3px_rgba(52,211,153,0.2)]",
+                                  warning && "bg-amber-400",
+                                  (expired || !authed) && "bg-rose-400"
+                                )}
+                              />
+                              <span className="text-sm font-medium text-foreground">{label}</span>
+                            </div>
+                            {active ? (
+                              <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                            ) : (
+                              <XCircle className={cn("h-4 w-4", warning ? "text-amber-400" : "text-rose-400")} />
+                            )}
+                          </div>
+
+                          <p
+                            className={cn(
+                              "text-xs font-medium",
+                              active && "text-emerald-400",
+                              warning && "text-amber-400",
+                              (expired || !authed) && "text-rose-400"
+                            )}
+                          >
+                            {statusText}
+                          </p>
+
+                          {(showValidate || showLogin || showReset) && (
+                            <div className="flex items-center gap-1.5">
+                              {showLogin && (
                                 <Button
-                                  variant="ghost"
                                   size="sm"
-                                  className="h-7 w-7 p-0"
-                                  onClick={() => validatePlatform(p.platform)}
-                                  disabled={validating === p.platform}
-                                  title="Validate cookies"
+                                  variant="outline"
+                                  className="h-7 flex-1 gap-1.5 text-xs"
+                                  onClick={() => startLiveLogin(label)}
+                                  disabled={liveStarting !== null}
                                 >
-                                  {validating === p.platform ? (
+                                  {liveStarting === label ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  ) : (
+                                    <Globe className="h-3.5 w-3.5" />
+                                  )}
+                                  {expired ? "Re-login" : "Log in"}
+                                </Button>
+                              )}
+                              {showValidate && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 flex-1 gap-1.5 text-xs"
+                                  onClick={() => validatePlatform(label)}
+                                  disabled={validating === label}
+                                  title="Re-check this session"
+                                >
+                                  {validating === label ? (
                                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
                                   ) : (
                                     <RefreshCw className="h-3.5 w-3.5" />
                                   )}
+                                  Validate
                                 </Button>
-                                {(isWarning || isExpired) && (
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-7 text-xs px-2"
-                                    onClick={() => resetPlatformHealth(p.platform)}
-                                    title="Reset health tracking"
-                                  >
-                                    Reset
-                                  </Button>
-                                )}
-                              </div>
+                              )}
+                              {showReset && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 px-2 text-xs"
+                                  onClick={() => resetPlatformHealth(label)}
+                                  title="Reset health tracking"
+                                >
+                                  Reset
+                                </Button>
+                              )}
                             </div>
-                          );
-                        })}
-                    </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
-                )}
+                </div>
               </>
             )}
 

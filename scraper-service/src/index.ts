@@ -34,7 +34,7 @@ import {
 import { scrapeUrl, scrapeUrlsBatch } from "./scrapers";
 import { sendLeadsBatch, fetchKeywords } from "./api/backendClient";
 import { sendNewLeadsAlert } from "./alerts/discord";
-import { loginAndSave, hasSavedCookies, validateCookies, validateAllCookies, initSession } from "./crawler/browserAuth";
+import { loginAndSave, hasSavedCookies, validateCookies, validateAllCookies, initSession, getAuthenticatedPlatforms } from "./crawler/browserAuth";
 import { filterPosts } from "./utils/postFilter";
 import { checkRateLimit, recordScrapeStart } from "./utils/rateLimiter";
 import { getAllHealth, resetHealth, reportValidationResult } from "./utils/sessionHealth";
@@ -586,7 +586,7 @@ app.post("/api/auth/setup", async (req, res) => {
 });
 
 app.get("/api/auth/status", (_req, res) => {
-  res.json({ cookiesSaved: hasSavedCookies() });
+  res.json({ cookiesSaved: hasSavedCookies(), authenticated: getAuthenticatedPlatforms() });
 });
 
 // ---------------------------------------------------------------------------
@@ -604,6 +604,7 @@ app.get("/api/auth/health", (req, res) => {
     overall: hasExpired ? "expired" : hasWarning ? "warning" : "healthy",
     platforms: health,
     cookiesSaved: hasSavedCookies(),
+    authenticated: getAuthenticatedPlatforms(),
   });
 });
 
