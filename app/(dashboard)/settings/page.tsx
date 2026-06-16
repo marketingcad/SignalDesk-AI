@@ -550,20 +550,6 @@ export default function SettingsPage() {
               </div>
             ) : (
               <>
-                {/* Cookie status banner */}
-                <div className={cn(
-                  "flex items-center gap-3 rounded-lg border px-4 py-3",
-                  authStatus.cookiesSaved
-                    ? "border-emerald-500/20 bg-emerald-500/5"
-                    : "border-rose-500/20 bg-rose-500/5"
-                )}>
-                  {authStatus.cookiesSaved ? (
-                    <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
-                  ) : (
-                    <XCircle className="h-4 w-4 text-rose-400 shrink-0" />
-                  )}
-                </div>
-
                 {/* Per-platform authentication — green = logged in, red = needs login */}
                 <div className="space-y-2">
                   <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
