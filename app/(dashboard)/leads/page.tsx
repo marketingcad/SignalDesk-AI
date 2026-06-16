@@ -45,7 +45,6 @@ import {
   Loader2,
   CheckSquare,
   Square,
-  MinusSquare,
 } from "lucide-react";
 
 type FilterPlatform = Platform | "All";
@@ -53,7 +52,6 @@ type FilterIntent = IntentLevel | "All";
 type FilterStatus = LeadStatus | "All";
 
 export default function LeadsPage() {
-  const [viewMode, setViewMode] = useState<"table" | "card">("card");
   const [searchQuery, setSearchQuery] = useState("");
   const [platformFilter, setPlatformFilter] = useState<FilterPlatform>("All");
   const [intentFilter, setIntentFilter] = useState<FilterIntent>("All");
@@ -91,14 +89,13 @@ export default function LeadsPage() {
   // Resizable panels
   const [leftWidth, setLeftWidth] = useState(60); // percentage
   const isDragging = useRef(false);
-  const containerRef = useRef<HTMLDivElement>(null);
   const cardContainerRef = useRef<HTMLDivElement>(null);
 
   // Handles mouse move and mouse up for resizing panels
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isDragging.current) return;
-      const ref = viewMode === "card" ? cardContainerRef.current : containerRef.current;
+      const ref = cardContainerRef.current;
       if (!ref) return;
       const rect = ref.getBoundingClientRect();
       const pct = ((e.clientX - rect.left) / rect.width) * 100;
@@ -117,7 +114,7 @@ export default function LeadsPage() {
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [viewMode]);
+  }, []);
 
   const startDragging = () => {
     isDragging.current = true;
@@ -434,30 +431,19 @@ export default function LeadsPage() {
             </div>
             <div className="flex items-center gap-2 ml-auto">
               <div className="flex items-center rounded-md border border-border bg-secondary/50 p-0.5">
-                  <button
-                  onClick={() => setViewMode("card")}
-                  className={cn(
-                    "flex items-center justify-center rounded-[5px] p-1.5 transition-all duration-200",
-                    viewMode === "card"
-                      ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground"
-                  )}
+                <button
+                  className="flex items-center justify-center rounded-[5px] p-1.5 bg-background text-foreground shadow-sm transition-all duration-200"
                   title="Card view"
                 >
                   <LayoutGrid className="h-3.5 w-3.5" />
                 </button>
-                <button
-                  onClick={() => setViewMode("table")}
-                  className={cn(
-                    "flex items-center justify-center rounded-[5px] p-1.5 transition-all duration-200",
-                    viewMode === "table"
-                      ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground"
-                  )}
-                  title="Table view"
+                <Link
+                  href="/pipeline"
+                  className="flex items-center justify-center rounded-[5px] p-1.5 text-muted-foreground hover:text-foreground transition-all duration-200"
+                  title="Pipeline view"
                 >
                   <LayoutList className="h-3.5 w-3.5" />
-                </button>
+                </Link>
               </div>
               <Button
                 variant="outline"
@@ -607,8 +593,7 @@ export default function LeadsPage() {
         </Link>
 
         {/* Card View */}
-        {viewMode === "card" && (
-          <div ref={cardContainerRef} className="flex flex-col lg:flex-row gap-0 items-start animate-view-switch">
+        <div ref={cardContainerRef} className="flex flex-col lg:flex-row gap-0 items-start animate-view-switch">
             {/* Left Panel: Card Grid */}
             <Card className={cn(
               "border-border bg-card overflow-hidden p-0 w-full lg:rounded-r-none",
@@ -685,157 +670,6 @@ export default function LeadsPage() {
               )}
             </Card>
           </div>
-        )}
-
-        {/* Two-Panel Table Layout */}
-        <div ref={containerRef} className={cn(
-          "flex flex-col lg:flex-row gap-0 items-start transition-all duration-300",
-          viewMode === "card" && "hidden"
-        )}>
-          {/* Left Panel: Leads List */}
-          <Card className="border-border bg-card overflow-hidden p-0 w-full lg:rounded-r-none animate-view-switch" style={{ width: `${leftWidth}%`, flexShrink: 0 }}>
-            <div className={cn(
-              "grid gap-3 border-b border-border bg-muted/30 px-4 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground",
-              selectionMode ? "grid-cols-[32px_1fr_90px_80px_90px_70px]" : "grid-cols-[1fr_90px_80px_90px_70px]"
-            )}>
-              {selectionMode && (
-                <button
-                  onClick={() => {
-                    if (selectedIds.size === filteredLeads.length) setSelectedIds(new Set());
-                    else selectAll();
-                  }}
-                  className="flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
-                  title={selectedIds.size === filteredLeads.length ? "Unmark all" : "Mark all"}
-                >
-                  {selectedIds.size === 0
-                    ? <Square className="h-4 w-4" />
-                    : selectedIds.size === filteredLeads.length
-                      ? <CheckSquare className="h-4 w-4 text-primary" />
-                      : <MinusSquare className="h-4 w-4 text-primary" />}
-                </button>
-              )}
-              <span>Lead</span>
-              <span>Platform</span>
-              <span>Intent</span>
-              <span>Status</span>
-              <span className="text-right">Posted</span>
-            </div>
-
-            <div className="divide-y divide-border max-h-[calc(100vh-320px)] overflow-y-auto">
-              {filteredLeads.map((lead) => {
-                const isMarked = selectedIds.has(lead.id);
-                return (
-                <div
-                  key={lead.id}
-                  className={cn(
-                    "group grid gap-3 items-center px-4 py-3 transition-all cursor-pointer",
-                    selectionMode ? "grid-cols-[32px_1fr_90px_80px_90px_70px]" : "grid-cols-[1fr_90px_80px_90px_70px]",
-                    selectedLead?.id === lead.id
-                      ? "bg-primary/6 border-l-2 border-l-primary"
-                      : isMarked
-                        ? "bg-rose-500/5 border-l-2 border-l-rose-500"
-                        : "hover:bg-accent/30 border-l-2 border-l-transparent"
-                  )}
-                  onClick={selectionMode ? () => toggleSelect(lead.id) : () => setSelectedLead(lead)}
-                >
-                  {selectionMode && (
-                    <div className={cn(
-                      "flex items-center justify-center",
-                      isMarked ? "text-rose-400" : "text-muted-foreground"
-                    )}>
-                      {isMarked ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
-                    </div>
-                  )}
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-foreground/80">
-                        {lead.username.split(" ").map((n) => n[0]).join("").slice(0, 2)}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-foreground truncate">
-                          {lead.username}
-                        </p>
-                        {lead.matchedKeywords.length > 0 ? (
-                          <div className="flex items-center gap-1 mt-0.5 overflow-hidden">
-                            {lead.matchedKeywords.filter((kw) => !kw.startsWith("ai:") && !kw.startsWith("task:") && !kw.startsWith("tool:")).slice(0, 3).map((kw) => (
-                              <span
-                                key={kw}
-                                className="shrink-0 rounded bg-primary/10 border border-primary/20 px-1.5 py-0 text-[10px] font-medium text-primary truncate max-w-[120px]"
-                              >
-                                {kw}
-                              </span>
-                            ))}
-                            {lead.matchedKeywords.filter((kw) => !kw.startsWith("ai:") && !kw.startsWith("task:") && !kw.startsWith("tool:")).length > 3 && (
-                              <span className="text-[10px] text-muted-foreground shrink-0">
-                                +{lead.matchedKeywords.filter((kw) => !kw.startsWith("ai:") && !kw.startsWith("task:") && !kw.startsWith("tool:")).length - 3}
-                              </span>
-                            )}
-                          </div>
-                        ) : (
-                          <p className="text-xs text-muted-foreground truncate">
-                            {lead.source}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  <PlatformBadge platform={lead.platform} size="sm" />
-                  <IntentBadge score={lead.intentScore} size="sm" />
-                  <StatusBadge status={lead.status} />
-                  <span className="text-xs text-muted-foreground text-right" title={formatDate(new Date(lead.createdAt))}>
-                    {formatDate(new Date(lead.createdAt))}
-                  </span>
-                </div>
-              );
-              })}
-            </div>
-
-            {loading && (
-              <div className="flex flex-col items-center justify-center py-16">
-                <Search className="h-10 w-10 text-muted-foreground/50 mb-3 animate-pulse" />
-                <p className="text-sm font-medium text-foreground/70">Loading leads...</p>
-              </div>
-            )}
-
-            {!loading && filteredLeads.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-16">
-                <Search className="h-10 w-10 text-muted-foreground/50 mb-3" />
-                <p className="text-sm font-medium text-foreground/70">No leads found</p>
-                <p className="text-xs text-muted-foreground">Try adjusting your filters</p>
-              </div>
-            )}
-          </Card>
-
-          {/* Drag Handle */}
-          <div
-            onMouseDown={startDragging}
-            className="hidden lg:flex w-2 shrink-0 cursor-col-resize items-center justify-center self-stretch group hover:bg-primary/10 transition-colors"
-          >
-            <div className="h-8 w-0.5 rounded-full bg-border group-hover:bg-primary/40 transition-colors" />
-          </div>
-
-          {/* Right Panel: Lead Detail — inline on lg+, hidden on mobile (modal below) */}
-          <Card className="hidden lg:block border-border bg-card p-0 lg:sticky lg:top-6 overflow-hidden flex-1 min-w-0 w-full lg:rounded-l-none">
-            {selectedLead ? (
-              <LeadDetailContent
-                lead={selectedLead}
-                onClose={() => setSelectedLead(null)}
-                onUpdateStatus={updateStatus}
-                onDelete={handleDeleteLead}
-              />
-            ) : (
-              <div className="flex flex-col items-center justify-center py-20 px-6">
-                <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-muted/50 mb-4">
-                  <MousePointerClick className="h-7 w-7 text-muted-foreground/40" />
-                </div>
-                <p className="text-sm font-medium text-foreground/70 mb-1">No lead selected</p>
-                <p className="text-xs text-muted-foreground text-center">
-                  Click on a lead from the list to view its full post content and details
-                </p>
-              </div>
-            )}
-          </Card>
-        </div>
         {/* Pagination — leads only */}
         {totalPages > 1 && (
           <Card className="border-border bg-card px-4 py-3">

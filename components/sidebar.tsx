@@ -211,7 +211,7 @@ export function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose, onMobi
               {!collapsed && (
                 <span className="animate-fade-in">{item.label}</span>
               )}
-              {!collapsed && item.href === "/alerts" && alertCount > 0 && (
+              {!collapsed && item.href === "/alerts" && alertCount > 0 && !isActive && (
                 <Badge className="ml-auto h-5 min-w-5 justify-center rounded-full bg-primary px-1.5 text-[11px] font-semibold text-primary-foreground border-0">
                   {alertCount}
                 </Badge>

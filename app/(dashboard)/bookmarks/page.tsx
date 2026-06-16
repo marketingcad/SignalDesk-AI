@@ -319,7 +319,7 @@ export default function BookmarksPage() {
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter" && newUrl.trim()) handleCreate(); }}
-                className="h-9 text-sm bg-secondary/50 border-border sm:w-52"
+                className="h-9 text-sm bg-secondary/50 border-border w-1/2"
               />
             </div>
             <div className="flex flex-col sm:flex-row gap-3 sm:items-end">

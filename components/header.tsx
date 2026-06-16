@@ -14,7 +14,7 @@ import { IntentBadge } from "@/components/intent-badge";
 import { PlatformBadge } from "@/components/platform-badge";
 import type { Lead } from "@/lib/types";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useAskAi } from "@/components/ask-ai-context";
 
 interface HeaderProps {
@@ -25,6 +25,8 @@ interface HeaderProps {
 
 export function Header({ title, subtitle, actions }: HeaderProps) {
   const router = useRouter();
+  const pathname = usePathname();
+  const onAlertsPage = pathname?.startsWith("/alerts") ?? false;
   const { askAiOpen, toggleAskAi } = useAskAi();
   const [alertCount, setAlertCount] = useState(0);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -272,9 +274,9 @@ export function Header({ title, subtitle, actions }: HeaderProps) {
         </div>
         {/* Notifications */}
         <Link href="/alerts">
-         <Button variant="outline" size="icon" className="relative h-9 w-9" aria-label={alertCount > 0 ? `Notifications, ${alertCount} unread` : "Notifications"}>
+         <Button variant="outline" size="icon" className="relative h-9 w-9" aria-label={alertCount > 0 && !onAlertsPage ? `Notifications, ${alertCount} unread` : "Notifications"}>
           <Bell className="h-4 w-4" />
-          {alertCount > 0 && (
+          {alertCount > 0 && !onAlertsPage && (
             <Badge className="absolute -right-1 -top-1 h-4 min-w-4 justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground border-0">
               {alertCount}
             </Badge>
