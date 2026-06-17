@@ -301,23 +301,37 @@ function parseGraphQLResponseBody(body: string, baseUrl: string): GraphQLPost[] 
  * on what counts as a keyword match. The two live in separate packages and
  * cannot import from each other — keep them in sync by hand.
  */
+// Filler words that carry no matching signal on their own. The fuzzy fallback
+// drops THESE (rather than dropping short words) so distinctive short terms like
+// "va" survive while "a"/"for"/"the" are ignored. This is what stops
+// "looking for a va" from matching "Looking for a Trucking Dispatcher".
+const KEYWORD_STOPWORDS = new Set([
+  "a", "an", "the", "for", "to", "of", "in", "on", "at",
+  "and", "or", "my", "our", "your", "their", "with", "is", "are",
+]);
+
 export function matchKeywords(text: string, keywords: string[]): string[] {
   const lower = text.toLowerCase();
+  // Whole-word token set — avoids "va" matching inside "havana"/"savage".
+  const textWords = new Set(lower.split(/[^a-z0-9]+/).filter(Boolean));
   const matched: string[] = [];
   for (const kw of keywords) {
     const kwLower = kw.toLowerCase().trim();
     if (!kwLower) continue;
-    // Check both simple substring and word-boundary match
+    // Exact substring match (order-sensitive, most precise)
     if (lower.includes(kwLower)) {
       matched.push(kw.trim());
-    } else {
-      // Try individual significant words (2+ word keywords)
-      const words = kwLower.split(/\s+/).filter((w) => w.length > 2);
-      if (words.length >= 2) {
-        const wordMatches = words.filter((w) => lower.includes(w));
-        if (wordMatches.length >= Math.ceil(words.length * 0.7)) {
-          matched.push(kw.trim());
-        }
+      continue;
+    }
+    // Fuzzy fallback: ≥70% of the keyword's CONTENT words (non-stopwords,
+    // matched as whole words) must be present anywhere in the text. Content
+    // words keep distinctive short terms like "va", so generic filler alone
+    // ("looking for …") can no longer satisfy the match.
+    const content = kwLower.split(/\s+/).filter((w) => w && !KEYWORD_STOPWORDS.has(w));
+    if (content.length >= 2) {
+      const wordMatches = content.filter((w) => textWords.has(w));
+      if (wordMatches.length >= Math.ceil(content.length * 0.7)) {
+        matched.push(kw.trim());
       }
     }
   }
