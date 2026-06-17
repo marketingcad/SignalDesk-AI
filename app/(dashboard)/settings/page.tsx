@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { Header } from "@/components/header";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -1091,9 +1092,16 @@ export default function SettingsPage() {
 
       {/* Live Login viewer — embedded in-app so there's no popup to be blocked
           (Safari on macOS blocks the post-fetch window.open). Log in inside the
-          iframe and save the session without leaving the dashboard. */}
-      {liveSession && (
-        <div className="fixed inset-0 z-100 flex items-center justify-center bg-black/60 p-3 backdrop-blur-sm sm:p-4">
+          iframe and save the session without leaving the dashboard.
+
+          Portaled to <body>: the dashboard's .animate-page-enter wrapper keeps a
+          `transform: translateY(0)` (animation-fill-mode: forwards), which makes
+          it the containing block for position:fixed — so an inline modal would
+          anchor to the sidebar-offset content column instead of the viewport.
+          Rendering into <body> escapes that and centers it on the full screen. */}
+      {liveSession && typeof document !== "undefined" &&
+        createPortal(
+          <div className="fixed inset-0 z-100 flex items-center justify-center bg-black/60 p-3 backdrop-blur-sm sm:p-4">
           <div className="flex h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-border bg-card shadow-2xl">
             {/* Header / toolbar */}
             <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-5">
@@ -1162,8 +1170,9 @@ export default function SettingsPage() {
               allow="clipboard-read; clipboard-write"
             />
           </div>
-        </div>
-      )}
+        </div>,
+          document.body
+        )}
     </>
   );
 }
