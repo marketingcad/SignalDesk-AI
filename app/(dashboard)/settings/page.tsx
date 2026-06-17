@@ -29,6 +29,7 @@ import {
   CircleDot,
   CalendarRange,
   Trash2,
+  ExternalLink,
 } from "lucide-react";
 
 type KeywordCategory = "high_intent" | "medium_intent" | "negative";
@@ -189,9 +190,13 @@ export default function SettingsPage() {
         setLiveError(data.error || "Could not start the login browser.");
         return;
       }
+      // The viewer is embedded in an in-app modal (see LiveLoginModal). We no
+      // longer pop a new tab: a post-`await` window.open is blocked by Safari on
+      // macOS (the user gesture is already spent), which was the root cause of
+      // "Live Login doesn't work on Mac". The modal's iframe avoids popups
+      // entirely; an explicit "Open in new tab" button (a fresh click) remains
+      // as a fallback for anyone who prefers a full tab.
       setLiveSession({ platform, expiresAt: data.expiresAt, viewerUrl: data.viewerUrl });
-      // Open the streamed browser in a new tab so the user can log in.
-      window.open(data.viewerUrl, "_blank", "noopener,noreferrer");
     } catch {
       setLiveError("Scraper service unreachable.");
     } finally {
@@ -696,69 +701,25 @@ export default function SettingsPage() {
                 </div>
               )}
 
-              {!liveSession ? (
-                <div className="flex flex-wrap items-center gap-2">
-                  {["Facebook", "LinkedIn", "X"].map((p) => (
-                    <Button
-                      key={p}
-                      size="sm"
-                      variant="outline"
-                      className="gap-1.5"
-                      onClick={() => startLiveLogin(p)}
-                      disabled={liveStarting !== null}
-                    >
-                      {liveStarting === p ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Globe className="h-3.5 w-3.5" />
-                      )}
-                      Log in to {p}
-                    </Button>
-                  ))}
-                </div>
-              ) : (
-                <div className="space-y-2.5">
-                  <div className="rounded-md border border-amber-500/20 bg-amber-500/5 px-3 py-2">
-                    <p className="text-xs text-amber-300">
-                      Login browser open for <strong>{liveSession.platform}</strong> in a new tab.
-                      Finish logging in there, then Save Session. (Auto-closes ~15 min.)
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      size="sm"
-                      className="gap-1.5"
-                      onClick={saveLiveLogin}
-                      disabled={liveSaving}
-                    >
-                      {liveSaving ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Check className="h-3.5 w-3.5" />
-                      )}
-                      Save Session
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="gap-1.5"
-                      onClick={() => window.open(liveSession.viewerUrl, "_blank", "noopener,noreferrer")}
-                    >
-                      Reopen Tab
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="gap-1.5 text-rose-400"
-                      onClick={cancelLiveLogin}
-                      disabled={liveSaving}
-                    >
-                      <X className="h-3.5 w-3.5" />
-                      Cancel
-                    </Button>
-                  </div>
-                </div>
-              )}
+              <div className="flex flex-wrap items-center gap-2">
+                {["Facebook", "LinkedIn", "X"].map((p) => (
+                  <Button
+                    key={p}
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5"
+                    onClick={() => startLiveLogin(p)}
+                    disabled={liveStarting !== null || liveSession !== null}
+                  >
+                    {liveStarting === p ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Globe className="h-3.5 w-3.5" />
+                    )}
+                    Log in to {p}
+                  </Button>
+                ))}
+              </div>
             </div>
           </div>
         </SettingsSection>
@@ -1127,7 +1088,104 @@ export default function SettingsPage() {
         </div>
        </div>
       </div>
+
+      {/* Live Login viewer — embedded in-app so there's no popup to be blocked
+          (Safari on macOS blocks the post-fetch window.open). Log in inside the
+          iframe and save the session without leaving the dashboard. */}
+      {liveSession && (
+        <div className="fixed inset-0 z-100 flex items-center justify-center bg-black/60 p-3 backdrop-blur-sm sm:p-4">
+          <div className="flex h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-border bg-card shadow-2xl">
+            {/* Header / toolbar */}
+            <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-5">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <Globe className="h-4 w-4 shrink-0 text-primary" />
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-foreground">
+                    Live Login — {liveSession.platform}
+                  </p>
+                  <p className="hidden truncate text-xs text-muted-foreground sm:block">
+                    Log in below (solve any 2FA / CAPTCHA), then Save Session.
+                  </p>
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <LiveCountdown expiresAt={liveSession.expiresAt} />
+                <Button
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={saveLiveLogin}
+                  disabled={liveSaving}
+                >
+                  {liveSaving ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Check className="h-3.5 w-3.5" />
+                  )}
+                  Save Session
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="gap-1.5"
+                  title="Open the login window in a new browser tab"
+                  onClick={() =>
+                    window.open(liveSession.viewerUrl, "_blank", "noopener,noreferrer")
+                  }
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">New tab</span>
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="gap-1.5 text-rose-400"
+                  onClick={cancelLiveLogin}
+                  disabled={liveSaving}
+                >
+                  <X className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Cancel</span>
+                </Button>
+              </div>
+            </div>
+
+            {liveError && (
+              <div className="border-b border-rose-500/20 bg-rose-500/5 px-4 py-2 sm:px-5">
+                <p className="text-xs text-rose-400">{liveError}</p>
+              </div>
+            )}
+
+            {/* The streamed login browser */}
+            <iframe
+              src={liveSession.viewerUrl}
+              title={`Live login to ${liveSession.platform}`}
+              className="min-h-0 flex-1 border-0 bg-black"
+              allow="clipboard-read; clipboard-write"
+            />
+          </div>
+        </div>
+      )}
     </>
+  );
+}
+
+// Counts down to the live-login session's auto-teardown (15 min server TTL) so
+// the user knows how long the embedded login window stays open.
+function LiveCountdown({ expiresAt }: { expiresAt: number }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const msLeft = Math.max(0, expiresAt - now);
+  const mins = Math.floor(msLeft / 60000);
+  const secs = Math.floor((msLeft % 60000) / 1000);
+  return (
+    <span
+      className="hidden items-center rounded-md border border-border bg-secondary px-2 py-1 font-mono text-xs text-muted-foreground sm:inline-flex"
+      title="The login window auto-closes when this reaches zero"
+    >
+      {mins}:{String(secs).padStart(2, "0")}
+    </span>
   );
 }
 
