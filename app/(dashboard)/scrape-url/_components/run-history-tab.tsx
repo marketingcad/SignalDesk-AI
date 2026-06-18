@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -16,9 +17,10 @@ import {
   Loader2, CheckCircle2, Clock, Play, Pause, Trash2,
   Calendar, RefreshCw, Timer, XCircle, ChevronRight,
   ChevronDown, ChevronUp, ExternalLink, User, FileText,
-  AlertTriangle, Zap, Activity,
+  AlertTriangle, Zap, Activity, KeyRound,
 } from "lucide-react";
 import { openUrl } from "@/lib/open-url";
+import { isAuthFailureMessage } from "@/lib/scrape-auth";
 
 import { PlatformBadge } from "./platform-badge";
 import { ScheduleCountdown } from "./schedule-countdown";
@@ -58,6 +60,7 @@ export function RunHistoryTab({
   onDelete: (id: string) => Promise<void>;
   onRefreshSchedules: (silent?: boolean) => void;
 }) {
+  const router = useRouter();
   const [expandedRunGroup, setExpandedRunGroup] = useState<string | null>(null);
   const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
   const [manualRefresh, setManualRefresh] = useState(false);
@@ -110,8 +113,51 @@ export function RunHistoryTab({
     (r) => r.status === "error" && new Date(r.startedAt).getTime() > tenMinAgo
   );
 
+  // Login-related failures get their own prominent prompt — scraping can't
+  // resume on these platforms until the user re-authenticates.
+  const authFailedRuns = recentFailedRuns.filter((r) => isAuthFailureMessage(r.errorMessage));
+  const authFailedPlatforms = Array.from(
+    new Set(
+      authFailedRuns
+        .map((r) => schedules.find((s) => s.id === r.scheduleId)?.url)
+        .map((url) => (url ? detectPlatform(url) : null))
+        .filter((p): p is string => p === "Facebook" || p === "LinkedIn")
+    )
+  );
+  const authPlatformLabel =
+    authFailedPlatforms.length === 0
+      ? "LinkedIn and Facebook"
+      : authFailedPlatforms.length === 1
+      ? authFailedPlatforms[0]
+      : `${authFailedPlatforms.slice(0, -1).join(", ")} and ${authFailedPlatforms[authFailedPlatforms.length - 1]}`;
+
   return (
     <div className="space-y-4">
+      {/* Re-login required — login-related scrape failures */}
+      {authFailedRuns.length > 0 && (
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 flex items-start gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 border border-amber-500/20 mt-0.5">
+            <KeyRound className="h-4 w-4 text-amber-500" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[13px] font-semibold text-amber-500">Re-login required</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
+              Your <span className="font-medium text-foreground">{authPlatformLabel}</span> scraping
+              session has expired. New leads won&rsquo;t be collected from{" "}
+              {authFailedPlatforms.length > 1 ? "these platforms" : "this platform"} until you re-authenticate.
+            </p>
+          </div>
+          <Button
+            size="sm"
+            className="h-8 gap-1.5 shrink-0 bg-amber-500 text-white hover:bg-amber-600"
+            onClick={() => router.push("/settings#browser-login")}
+          >
+            <KeyRound className="h-3.5 w-3.5" />
+            Re-authenticate
+          </Button>
+        </div>
+      )}
+
       {/* Active group run progress banners */}
       {groupProgress.map((gp) => (
         <div key={gp.baseName} className="rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 flex items-center gap-3">
@@ -145,10 +191,10 @@ export function RunHistoryTab({
         </div>
       ))}
 
-      {/* Recent error alerts */}
-      {recentFailedRuns.length > 0 && groupProgress.length === 0 && (
+      {/* Recent error alerts (non-auth failures — auth ones use the banner above) */}
+      {recentFailedRuns.some((r) => !isAuthFailureMessage(r.errorMessage)) && groupProgress.length === 0 && (
         <div className="space-y-2">
-          {recentFailedRuns.slice(0, 5).map((run) => {
+          {recentFailedRuns.filter((r) => !isAuthFailureMessage(r.errorMessage)).slice(0, 5).map((run) => {
             const schedInfo = schedules.find((s) => s.id === run.scheduleId);
             return (
               <div key={run.id} className="rounded-lg border border-rose-500/30 bg-rose-500/5 px-4 py-3 flex items-start gap-3">
@@ -595,19 +641,41 @@ export function RunHistoryTab({
                           </>
                         )}
                         {run.status === "error" && (
-                          <span className="inline-flex items-center gap-1 text-[11px] text-rose-400 font-medium">
-                            <AlertTriangle className="h-3 w-3 shrink-0" />
-                            Scrape failed
-                          </span>
+                          isAuthFailureMessage(run.errorMessage) ? (
+                            <span className="inline-flex items-center gap-1 text-[11px] text-amber-500 font-medium">
+                              <KeyRound className="h-3 w-3 shrink-0" />
+                              Login required
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[11px] text-rose-400 font-medium">
+                              <AlertTriangle className="h-3 w-3 shrink-0" />
+                              Scrape failed
+                            </span>
+                          )
                         )}
                       </div>
                       {/* Error detail block */}
                       {run.status === "error" && run.errorMessage && (
-                        <div className="mt-2 ml-10.5 rounded-md bg-rose-500/10 border border-rose-500/20 px-3 py-2">
-                          <p className="text-[11px] text-rose-400 leading-relaxed wrap-break-word">
-                            {run.errorMessage}
-                          </p>
-                        </div>
+                        isAuthFailureMessage(run.errorMessage) ? (
+                          <div className="mt-2 ml-10.5 rounded-md bg-amber-500/10 border border-amber-500/20 px-3 py-2 flex items-center justify-between gap-3">
+                            <p className="text-[11px] text-amber-500/90 leading-relaxed wrap-break-word">
+                              {run.errorMessage}
+                            </p>
+                            <button
+                              onClick={() => router.push("/settings#browser-login")}
+                              className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-500 hover:text-amber-400 shrink-0"
+                            >
+                              <KeyRound className="h-3 w-3" />
+                              Re-authenticate
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="mt-2 ml-10.5 rounded-md bg-rose-500/10 border border-rose-500/20 px-3 py-2">
+                            <p className="text-[11px] text-rose-400 leading-relaxed wrap-break-word">
+                              {run.errorMessage}
+                            </p>
+                          </div>
+                        )
                       )}
                     </div>
 

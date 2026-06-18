@@ -12,6 +12,7 @@ import {
   AlertDialogDescription,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { isAuthFailureMessage } from "@/lib/scrape-auth";
 
 // Platforms that require a logged-in browser session (cookies) to scrape.
 const AUTH_PLATFORMS = ["Facebook", "LinkedIn"];
@@ -19,6 +20,9 @@ const AUTH_PLATFORMS = ["Facebook", "LinkedIn"];
 // shows ~once per login instead of on every page navigation.
 const DISMISS_KEY = "sd_session_expiry_dismissed";
 const RECHECK_MS = 5 * 60_000;
+// Only treat scraping failures from the recent past as a reason to prompt, so a
+// long-fixed failure in old run history can't keep re-popping the modal.
+const RUN_LOOKBACK_MS = 24 * 60 * 60_000;
 
 interface PlatformHealth {
   platform: string;
@@ -28,6 +32,14 @@ interface PlatformHealth {
 interface AuthStatus {
   cookiesSaved: boolean;
   health: { overall: string; platforms: PlatformHealth[] } | null;
+}
+
+// Minimal shape of a schedule run — enough to tell whether a recent scrape
+// actually ran and whether it failed for auth reasons.
+interface RecentRun {
+  startedAt: string;
+  status: "ok" | "error" | "running";
+  errorMessage: string | null;
 }
 
 /**
@@ -46,9 +58,10 @@ export function SessionExpiryModal() {
   const check = useCallback(async () => {
     if (typeof window !== "undefined" && sessionStorage.getItem(DISMISS_KEY) === "1") return;
     try {
-      const [authRes, settingsRes] = await Promise.all([
+      const [authRes, settingsRes, runsRes] = await Promise.all([
         fetch("/api/auth/browser-login"),
         fetch("/api/settings"),
+        fetch("/api/schedules/runs"),
       ]);
       if (!authRes.ok) return; // scraper unreachable / unauthorized — stay quiet
       const auth = (await authRes.json()) as AuthStatus;
@@ -63,15 +76,39 @@ export function SessionExpiryModal() {
         .filter((p) => p.status === "expired" && enabledAuth.includes(p.platform))
         .map((p) => p.platform);
 
-      // No saved session at all (e.g. wiped by a redeploy) → every enabled auth
-      // platform needs a fresh login.
-      if (auth.cookiesSaved === false) {
-        setNoSession(true);
-        setPlatforms(enabledAuth);
-        setOpen(true);
-      } else if (expired.length > 0) {
+      // This modal is a reaction to FAILED scraping, not an idle "you're logged
+      // out" nag — so we only prompt when a scrape has actually run recently and
+      // failed for a reason that re-authenticating would fix.
+      let recentRuns: RecentRun[] = [];
+      if (runsRes.ok) {
+        const runsData = await runsRes.json().catch(() => ({}));
+        recentRuns = (runsData?.runs ?? []) as RecentRun[];
+      }
+      const cutoff = Date.now() - RUN_LOOKBACK_MS;
+      const recent = recentRuns.filter(
+        (r) => Date.parse(r.startedAt) > cutoff
+      );
+      const hasRecentRun = recent.length > 0;
+      const hasAuthFailureRun = recent.some(
+        (r) => r.status === "error" && isAuthFailureMessage(r.errorMessage)
+      );
+
+      if (expired.length > 0) {
+        // Health flips to "expired" only after runs stop yielding leads / a cookie
+        // validation fails — i.e. scraping is already failing for these platforms.
         setNoSession(false);
         setPlatforms(expired);
+        setOpen(true);
+      } else if (hasAuthFailureRun) {
+        // A recent run errored with a login-related message.
+        setNoSession(false);
+        setPlatforms(enabledAuth);
+        setOpen(true);
+      } else if (auth.cookiesSaved === false && hasRecentRun) {
+        // No saved session at all (e.g. wiped by a redeploy), and a scrape has
+        // since run (and thus collected nothing) → fresh login needed.
+        setNoSession(true);
+        setPlatforms(enabledAuth);
         setOpen(true);
       }
     } catch {
