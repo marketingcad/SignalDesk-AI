@@ -229,6 +229,11 @@ export function AiAssistantPanel({ open, onClose, onWidthChange }: AiAssistantPa
     async (text: string) => {
       if (!text.trim() || loading) return;
 
+      // Capture the conversation so far as context for follow-up questions.
+      // (Read before appending the new turn so it's the prior history, not
+      // including the message we're about to send.)
+      const history = messages.map((m) => ({ role: m.role, content: m.content }));
+
       const userMsg: Message = {
         id: crypto.randomUUID(),
         role: "user",
@@ -244,7 +249,7 @@ export function AiAssistantPanel({ open, onClose, onWidthChange }: AiAssistantPa
         const res = await fetch("/api/ai-assistant", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: text.trim() }),
+          body: JSON.stringify({ message: text.trim(), history }),
         });
 
         const data = await res.json();
@@ -273,7 +278,7 @@ export function AiAssistantPanel({ open, onClose, onWidthChange }: AiAssistantPa
         setLoading(false);
       }
     },
-    [loading]
+    [loading, messages]
   );
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {

@@ -44,6 +44,9 @@ const FREE_MODELS = [
   "gemini-2.5-flash",
 ];
 
+// How many prior turns of conversation to send as context (bounds token usage).
+const MAX_HISTORY_TURNS = 12;
+
 let genAI: GoogleGenerativeAI | null = null;
 
 function getGenAI(): GoogleGenerativeAI | null {
@@ -61,7 +64,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { message } = await req.json();
+    const { message, history } = await req.json();
 
     if (!message || typeof message !== "string") {
       return NextResponse.json({ error: "Message is required" }, { status: 400 });
@@ -75,20 +78,46 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const prompt = `${SYSTEM_PROMPT}\n\n---\n\nUser question:\n${message}`;
+    // Build multi-turn context from the prior conversation so follow-ups keep
+    // context ("what about LinkedIn?", "only 10k+ members"). Cap to the last
+    // few turns to bound token usage.
+    const priorTurns: Array<{ role?: string; content?: string }> = Array.isArray(history)
+      ? history
+      : [];
+    const geminiHistory = priorTurns
+      .filter(
+        (t) =>
+          t &&
+          (t.role === "user" || t.role === "assistant") &&
+          typeof t.content === "string" &&
+          t.content.trim().length > 0
+      )
+      .slice(-MAX_HISTORY_TURNS)
+      .map((t) => ({
+        role: t.role === "assistant" ? ("model" as const) : ("user" as const),
+        parts: [{ text: t.content as string }],
+      }));
+
+    // Gemini requires the history to begin with a user turn — drop any leading
+    // model turns that could survive slicing.
+    while (geminiHistory.length > 0 && geminiHistory[0].role === "model") {
+      geminiHistory.shift();
+    }
 
     // Try models in order until one works
     for (const modelName of FREE_MODELS) {
       try {
         const model = ai.getGenerativeModel({
           model: modelName,
+          systemInstruction: SYSTEM_PROMPT,
           generationConfig: {
             temperature: 0.7,
             maxOutputTokens: 2048,
           },
         });
 
-        const result = await model.generateContent(prompt);
+        const chat = model.startChat({ history: geminiHistory });
+        const result = await chat.sendMessage(message.trim());
         const responseText = result.response.text();
 
         return NextResponse.json({ response: responseText, model: modelName });
