@@ -94,6 +94,17 @@ export async function getLeads(filters?: {
   };
 }
 
+export async function getLeadById(id: string): Promise<Lead | null> {
+  const { data, error } = await supabase
+    .from("leads")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data ? mapRow(data) : null;
+}
+
 export async function getAlerts(
   limit = 20,
   offset = 0,

@@ -8,6 +8,7 @@ import { PlatformBadge } from "@/components/platform-badge";
 import { Card } from "@/components/ui/card";
 import { cn, getPlatformColor } from "@/lib/utils";
 import { GeographyChart } from "@/components/geography-chart";
+import { OutreachAnalyticsSection } from "@/components/outreach-analytics-section";
 import type { Platform, DailyReport } from "@/lib/types";
 import {
   Calendar,
@@ -150,6 +151,9 @@ export default function ReportsPage() {
             color="#71717a"
           />
         </div>
+
+        {/* Outreach Performance — close the loop */}
+        <OutreachAnalyticsSection />
 
         {/* Geography Breakdown */}
         <Card className="border-border bg-card p-5">

@@ -1,4 +1,3 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import type {
   Platform,
   IntentLevel,
@@ -8,6 +7,7 @@ import type {
 import { scoreIntent, type ScoringResult, type DynamicScoringConfig } from "./intent-scoring";
 import { matchKeywords, HIRING_KEYWORDS, SEEKING_KEYWORDS } from "./keywords";
 import { qualifyLeadWithRules } from "./rule-qualifier";
+import { getGenAI, getAvailableModels, markModelExhausted } from "./gemini";
 
 // ---------------------------------------------------------------------------
 // Google Gemini AI Lead Qualification Agent
@@ -369,47 +369,11 @@ export function mapAIToScoringResult(ai: AIQualificationResult): ScoringResult {
 // Main qualification function
 // ---------------------------------------------------------------------------
 
-let genAI: GoogleGenerativeAI | null = null;
-
-function getGenAI(): GoogleGenerativeAI | null {
-  if (genAI) return genAI;
-  const apiKey = process.env.GOOGLE_AI_API_KEY;
-  if (!apiKey) return null;
-  genAI = new GoogleGenerativeAI(apiKey);
-  return genAI;
-}
-
 // ---------------------------------------------------------------------------
-// Free model rotation — each model has its own rate limit quota
-// When one model hits 429, we move to the next one automatically.
+// Free model rotation + Gemini client live in lib/gemini.ts (shared across
+// features). getGenAI / getAvailableModels / markModelExhausted are imported
+// at the top of this file.
 // ---------------------------------------------------------------------------
-
-// Live free-tier models (verified via ListModels). gemini-2.0-flash and
-// gemini-2.0-flash-lite were retired (404) and removed. These are "thinking"
-// models — see maxOutputTokens below, which must leave room for thinking tokens
-// or the JSON response gets truncated (finishReason: MAX_TOKENS → unparseable).
-const FREE_MODELS = [
-  "gemini-2.5-flash",
-  "gemini-2.5-flash-lite",
-  "gemini-flash-latest",
-];
-
-// Track which models are temporarily exhausted (cooldown per model)
-const modelCooldowns = new Map<string, number>(); // model → timestamp when cooldown expires
-const MODEL_COOLDOWN_MS = 60_000; // 60s cooldown after quota exhaustion
-
-function getAvailableModels(): string[] {
-  const now = Date.now();
-  return FREE_MODELS.filter((m) => {
-    const cooldownUntil = modelCooldowns.get(m) || 0;
-    return now >= cooldownUntil;
-  });
-}
-
-function markModelExhausted(model: string): void {
-  modelCooldowns.set(model, Date.now() + MODEL_COOLDOWN_MS);
-  console.warn(`[ai-lead-qualifier] 🚫 Model "${model}" exhausted — cooldown for ${MODEL_COOLDOWN_MS / 1000}s`);
-}
 
 // ---------------------------------------------------------------------------
 // Rate-limit helpers

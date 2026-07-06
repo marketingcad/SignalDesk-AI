@@ -9,6 +9,7 @@ import { Header } from "@/components/header";
 import { IntentBadge } from "@/components/intent-badge";
 import { PlatformBadge } from "@/components/platform-badge";
 import { StatusBadge } from "@/components/status-badge";
+import { OutreachDraftDrawer } from "@/components/outreach-draft-drawer";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,6 +31,7 @@ import {
   Clock,
   MousePointerClick,
   Quote,
+  Sparkles,
   AlertTriangle,
   X,
   LayoutGrid,
@@ -948,13 +950,7 @@ function LeadDetailContent({
   onDelete: (id: string) => void;
 }) {
 
-const [isShowActions, setIsShowActions] = useState(false);
-
-
-// Handle show actions
-  const toggleActions = () => {
-    setIsShowActions((prev) => (prev ? false : true));
-  };
+const [draftOpen, setDraftOpen] = useState(false);
 
 
 
@@ -1076,27 +1072,21 @@ const [isShowActions, setIsShowActions] = useState(false);
       </div>
 
       {/* Actions Footer */}
-      <div className="flex items-center border-t border-border bg-muted/10 px-5 py-3 overflow-hidden">
+      <div className="flex items-center border-t border-border bg-muted/10 px-5 py-3">
 
-          {/* Toggle button */}
-          <button onClick={() => toggleActions()}
-            className="flex items-center gap-2.5 rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
-            title={isShowActions ? "Hide actions" : "Show actions"}
-          >
-            <ArrowUpRight className={cn("h-4 w-4 transition-transform duration-300", isShowActions && "rotate-90")}/>
-          </button>
-
-          <div
-            className={cn(
-              "flex flex-wrap items-center gap-2 transition-all duration-300 ease-out ml-2",
-              isShowActions
-                ? "opacity-100 translate-x-0"
-                : "opacity-0 -translate-x-4 pointer-events-none"
-            )}
-          >
+          <div className="flex flex-wrap items-center gap-2">
           <Button
             size="sm"
             className="gap-1.5 shadow-sm shadow-primary/25 whitespace-nowrap"
+            onClick={() => setDraftOpen(true)}
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            Draft Reply
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5 whitespace-nowrap"
             onClick={() => {
               if (lead.url) openUrl(lead.url);
             }}
@@ -1151,6 +1141,14 @@ const [isShowActions, setIsShowActions] = useState(false);
           </Button>
         </div>
       </div>
+
+      {/* AI Outreach Draft drawer */}
+      <OutreachDraftDrawer
+        lead={lead}
+        open={draftOpen}
+        onOpenChange={setDraftOpen}
+        onEngaged={(id) => onUpdateStatus(id, "Engaged")}
+      />
     </div>
   );
 }
