@@ -690,8 +690,7 @@ export default function SettingsPage() {
                 <div>
                   <p className="text-sm font-medium text-foreground">Live Login (Cloud)</p>
                   <p className="text-xs text-muted-foreground">
-                    Opens the scraper&apos;s browser in a new tab so you can log in here —
-                    no local setup. Solve any 2FA/CAPTCHA, then click Save Session.
+                       Solve any 2FA/CAPTCHA, then click Save Session.
                   </p>
                 </div>
               </div>
