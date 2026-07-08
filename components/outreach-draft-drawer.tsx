@@ -36,11 +36,12 @@ const CHANNELS: { value: OutreachChannel; label: string }[] = [
 ];
 
 /**
- * Cap the auto-grown textarea (px). Drafts run ~400 chars once the VA pitch and
- * profile URL are appended; this fits them without scrolling, and anything
- * longer scrolls inside the box rather than pushing the buttons off-screen.
+ * The textarea grows to fit its content — no max height. A cap would re-create
+ * the original bug: the VA pitch and its profile URL land at the very bottom of
+ * the draft, so any inner scroll hides exactly the thing the message exists to
+ * deliver. Overflow is handled by the dialog (max-h-[85vh] overflow-y-auto), which
+ * scrolls visibly rather than silently clipping.
  */
-const MAX_TEXTAREA_PX = 384;
 const MIN_TEXTAREA_PX = 132;
 
 interface DraftResponse {
@@ -75,12 +76,33 @@ export function OutreachDraftDrawer({
   useLayoutEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
-    el.style.height = "auto"; // reset first, or it can only ever grow
-    // scrollHeight excludes borders, but box-sizing:border-box makes `height`
-    // include them — without this the content overflows by exactly 2px.
-    const borders = el.offsetHeight - el.clientHeight;
-    const fitted = el.scrollHeight + borders;
-    el.style.height = `${Math.min(Math.max(fitted, MIN_TEXTAREA_PX), MAX_TEXTAREA_PX)}px`;
+
+    const fit = () => {
+      el.style.height = "auto"; // reset first, or it can only ever grow
+      // scrollHeight excludes borders, but box-sizing:border-box makes `height`
+      // include them — without this the content overflows by exactly 2px.
+      const borders = el.offsetHeight - el.clientHeight;
+      el.style.height = `${Math.max(el.scrollHeight + borders, MIN_TEXTAREA_PX)}px`;
+    };
+    fit();
+
+    // Refit on any resize: a window resize, or the dialog's own scrollbar appearing
+    // and narrowing us (no window listener catches that). fit() converges — once
+    // height matches content it writes the same value, so this cannot loop.
+    const observer = new ResizeObserver(fit);
+    observer.observe(el);
+
+    // The web font swaps in after first paint and re-measures the text, growing it
+    // by a line without any resize. Nothing else would catch this.
+    let cancelled = false;
+    document.fonts?.ready.then(() => {
+      if (!cancelled) fit();
+    });
+
+    return () => {
+      cancelled = true;
+      observer.disconnect();
+    };
   }, [body, open, loading]);
 
   const generate = useCallback(
@@ -192,7 +214,13 @@ export function OutreachDraftDrawer({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
+      {/*
+        scrollbar-gutter:stable is load-bearing. Without it, measuring the textarea
+        at height:auto collapses the dialog, hides its scrollbar, and widens the
+        textarea — so we measure at a width the textarea never actually has, and
+        the fitted height comes up one wrapped line short.
+      */}
+      <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto [scrollbar-gutter:stable]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-primary" />
@@ -239,10 +267,10 @@ export function OutreachDraftDrawer({
             disabled={loading}
             placeholder={loading ? "" : "Your message…"}
             className={cn(
-              "w-full resize-none overflow-y-auto rounded-lg border border-border bg-secondary/40 p-3 text-sm text-foreground leading-relaxed outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/30",
+              "w-full resize-none overflow-hidden rounded-lg border border-border bg-secondary/40 p-3 text-sm text-foreground leading-relaxed outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/30",
               loading && "opacity-50"
             )}
-            style={{ minHeight: MIN_TEXTAREA_PX, maxHeight: MAX_TEXTAREA_PX }}
+            style={{ minHeight: MIN_TEXTAREA_PX }}
           />
           {loading && (
             <div className="absolute inset-0 flex items-center justify-center gap-2 text-sm text-muted-foreground">

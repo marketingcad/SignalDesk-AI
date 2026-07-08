@@ -79,14 +79,15 @@ export function isVaMatchingEnabled(): boolean {
 }
 
 /**
- * VA Hub home, carrying the same ?src/?lead attribution as a profileUrl. Used as
- * the outreach fallback when no individual VA clears MIN_MATCH_SCORE — a lead
- * should always have somewhere on-platform to go.
+ * VA Hub's browse-VAs directory, carrying the same ?src/?lead attribution as a
+ * profileUrl. Appended to every draft, and used as the sole call-to-action when
+ * no individual VA clears MIN_MATCH_SCORE — a lead should always have somewhere
+ * on-platform to go, and directory clicks stay attributable to their lead.
  */
-export function getVaHubHomeUrl(leadId: string): string | null {
+export function getVaHubDirectoryUrl(leadId: string): string | null {
   const config = getConfig();
   if (!config) return null;
-  return `${config.baseUrl}/?src=signaldesk&lead=${encodeURIComponent(leadId)}`;
+  return `${config.baseUrl}/directory?src=signaldesk&lead=${encodeURIComponent(leadId)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -362,13 +363,44 @@ const AVAILABILITY_SENTENCE: Record<string, string> = {
   "available-in-one-months": "They can start in about a month.",
 };
 
-/** Sentinels that identify an already-pitched draft. Exported so the check can't drift. */
+/** Sentinels that identify a pitch block. Exported so the checks can't drift. */
 export const VA_PITCH_MARKER = "Here's the profile:";
-export const HUB_PITCH_MARKER = "browse their profiles here:";
+export const HUB_PITCH_MARKER = "browse their profiles here:"; // legacy format
+export const DIRECTORY_MARKER = "For more VAs please visit:";
 
-/** True when a draft body already ends in a VA or VA Hub pitch. */
+/**
+ * Every current pitch ends with the directory line, so it alone identifies a
+ * body that is already in the current format. Drafts stored in an older format
+ * (VA pitch, no directory line) deliberately fail this check — attachPitch()
+ * then strips the stale block and rebuilds it.
+ */
 export function hasPitch(body: string): boolean {
-  return body.includes(VA_PITCH_MARKER) || body.includes(HUB_PITCH_MARKER);
+  return body.includes(DIRECTORY_MARKER);
+}
+
+/** True for a paragraph that belongs to a pitch block rather than the model's prose. */
+function isPitchParagraph(paragraph: string): boolean {
+  const p = paragraph.trim();
+  return (
+    p.includes(DIRECTORY_MARKER) ||
+    p.includes(VA_PITCH_MARKER) ||
+    p.includes(HUB_PITCH_MARKER) ||
+    // The blurb itself. Guarded on our own phrasing so a model opener that merely
+    // happens to start "We have …" is never mistaken for a pitch.
+    (p.startsWith("We have ") && /vetted VA|roster of vetted/.test(p))
+  );
+}
+
+/**
+ * Remove any pitch block (current or legacy) so a fresh one can be appended
+ * without duplicating the blurb or leaving a dangling "Here's the profile:".
+ */
+export function stripPitch(body: string): string {
+  return body
+    .split(/\n{2,}/)
+    .filter((p) => !isPitchParagraph(p))
+    .join("\n\n")
+    .trim();
 }
 
 /**
@@ -376,14 +408,18 @@ export function hasPitch(body: string): boolean {
  * LLM: a model that "tidies" the profileUrl silently destroys the ?src / ?lead
  * attribution the whole feature exists to measure.
  */
-export function formatVaPitch(m: StoredVaMatch): string {
+export function formatVaPitch(m: StoredVaMatch, directoryUrl: string | null): string {
   const skills = m.skills.slice(0, 3).join(", ");
   const skillClause = skills ? ` with ${skills}` : "";
   const years = m.yearsOfExperience ? ` and ${m.yearsOfExperience} years of experience` : "";
   const availability = m.availability ? AVAILABILITY_SENTENCE[m.availability] : undefined;
   const availabilityClause = availability ? ` ${availability}` : "";
 
-  return `We have ${m.displayName} — a vetted VA${skillClause}${years}.${availabilityClause}\n\n${VA_PITCH_MARKER} ${m.profileUrl}`;
+  const blurb = `We have ${m.displayName} — a vetted VA${skillClause}${years}.${availabilityClause}`;
+  const profile = `${VA_PITCH_MARKER} ${m.profileUrl}`;
+  const directory = directoryUrl ? `\n\n${DIRECTORY_MARKER} ${directoryUrl}` : "";
+
+  return `${blurb}\n\n${profile}${directory}`;
 }
 
 /**
@@ -391,6 +427,6 @@ export function formatVaPitch(m: StoredVaMatch): string {
  * rather than pitching a poor match. Same deterministic construction — the LLM
  * never renders this URL either.
  */
-export function formatVaHubPitch(hubUrl: string): string {
-  return `We have a roster of vetted, pre-screened VAs ready to start — you can ${HUB_PITCH_MARKER} ${hubUrl}`;
+export function formatVaHubPitch(directoryUrl: string): string {
+  return `We have a roster of vetted, pre-screened VAs ready to start.\n\n${DIRECTORY_MARKER} ${directoryUrl}`;
 }

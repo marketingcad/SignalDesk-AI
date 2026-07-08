@@ -4,8 +4,9 @@ import {
   ensureTopMatchForLead,
   formatVaHubPitch,
   formatVaPitch,
-  getVaHubHomeUrl,
+  getVaHubDirectoryUrl,
   hasPitch,
+  stripPitch,
 } from "./va-matching";
 import type { Lead } from "./types";
 
@@ -135,6 +136,25 @@ function stripUrls(s: string): string {
  * The LLM never renders either URL — it would silently mangle the ?src/?lead
  * attribution params that make the funnel measurable.
  */
+/**
+ * Resolve the pitch block for a lead: the matched VA plus a directory link, or
+ * the directory alone when nothing clears MIN_MATCH_SCORE. Single source of truth
+ * for both the write path and the read path, so they cannot diverge.
+ *
+ * Never throws — a VA Hub outage must not kill the draft.
+ */
+async function buildPitch(
+  leadId: string
+): Promise<{ mode: PitchMode; text: string | null }> {
+  const directoryUrl = getVaHubDirectoryUrl(leadId);
+  if (!directoryUrl) return { mode: "none", text: null }; // matching unconfigured
+
+  const vaMatch = await ensureTopMatchForLead(leadId);
+  return vaMatch
+    ? { mode: "va", text: formatVaPitch(vaMatch, directoryUrl) }
+    : { mode: "hub", text: formatVaHubPitch(directoryUrl) };
+}
+
 export async function generateOutreachDraft(
   lead: Lead,
   tone: OutreachTone,
@@ -142,12 +162,9 @@ export async function generateOutreachDraft(
   createdBy?: string
 ): Promise<OutreachDraft | null> {
   // Matches on demand when nothing is cached (leads predating this feature).
-  // Never throws — a VA Hub outage must not kill the draft.
-  const vaMatch = await ensureTopMatchForLead(lead.id);
-  const hubUrl = vaMatch ? null : getVaHubHomeUrl(lead.id);
-  const pitchMode: PitchMode = vaMatch ? "va" : hubUrl ? "hub" : "none";
+  const pitch = await buildPitch(lead.id);
 
-  const prompt = buildDraftPrompt(lead, tone, channel, pitchMode);
+  const prompt = buildDraftPrompt(lead, tone, channel, pitch.mode);
   const text = await generateText(prompt, {
     temperature: 0.7,
     // 2048, not 512: these are thinking models and the budget covers thinking +
@@ -158,8 +175,9 @@ export async function generateOutreachDraft(
 
   if (!text || !text.trim()) return null;
 
-  const pitch = vaMatch ? formatVaPitch(vaMatch) : hubUrl ? formatVaHubPitch(hubUrl) : null;
-  const body = pitch ? `${stripUrls(cleanDraft(text))}\n\n${pitch}` : cleanDraft(text);
+  const body = pitch.text
+    ? `${stripUrls(cleanDraft(text))}\n\n${pitch.text}`
+    : cleanDraft(text);
 
   const { data, error } = await supabase
     .from("outreach_drafts")
@@ -178,23 +196,27 @@ export async function generateOutreachDraft(
 }
 
 /**
- * Attach the VA pitch to a draft body that doesn't have one.
+ * Attach the pitch block to a draft body that doesn't already carry the current
+ * one.
  *
  * The pitch used to be baked in at write time only, which made every draft an
  * immutable snapshot of what the matcher knew back then: drafts written before a
  * lead was matched showed no profile URL forever, even after the match existed.
  * Composing at read time instead means a draft can never go stale. Deterministic
  * — no LLM call, no DB write.
+ *
+ * Bodies holding an older pitch format get it stripped and rebuilt, so adding the
+ * directory line doesn't duplicate the blurb on drafts already in the database.
  */
 async function attachPitch(leadId: string, body: string): Promise<string> {
   if (hasPitch(body)) return body;
 
-  const vaMatch = await ensureTopMatchForLead(leadId);
-  const hubUrl = vaMatch ? null : getVaHubHomeUrl(leadId);
-  const pitch = vaMatch ? formatVaPitch(vaMatch) : hubUrl ? formatVaHubPitch(hubUrl) : null;
+  const pitch = await buildPitch(leadId);
+  if (!pitch.text) return body;
 
-  // Old drafts may carry a model-written link; strip it so ours is the only URL.
-  return pitch ? `${stripUrls(body.trim())}\n\n${pitch}` : body;
+  // Drop any stale pitch block, then any model-written link left in the prose,
+  // so the URLs we append are the only ones in the message.
+  return `${stripUrls(stripPitch(body))}\n\n${pitch.text}`;
 }
 
 /** Most recent draft for a lead, or null if none exists yet. Pitch attached on read. */
