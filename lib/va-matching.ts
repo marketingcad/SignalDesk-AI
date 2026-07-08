@@ -78,6 +78,17 @@ export function isVaMatchingEnabled(): boolean {
   return getConfig() !== null;
 }
 
+/**
+ * VA Hub home, carrying the same ?src/?lead attribution as a profileUrl. Used as
+ * the outreach fallback when no individual VA clears MIN_MATCH_SCORE — a lead
+ * should always have somewhere on-platform to go.
+ */
+export function getVaHubHomeUrl(leadId: string): string | null {
+  const config = getConfig();
+  if (!config) return null;
+  return `${config.baseUrl}/?src=signaldesk&lead=${encodeURIComponent(leadId)}`;
+}
+
 // ---------------------------------------------------------------------------
 // Query text
 // ---------------------------------------------------------------------------
@@ -239,13 +250,20 @@ export async function storeLeadVaMatches(
   if (error) throw error;
 }
 
-/** Best-scoring cached match for a lead, or null if none. */
+/**
+ * Best-scoring cached match for a lead, or null if none.
+ *
+ * Scores tie often (VA Hub rounds to 2dp — a 3-way tie at 0.73 is routine), and
+ * Postgres breaks ties arbitrarily. Sort by va_slug as a tiebreaker so the same
+ * lead always pitches the same VA across draft regenerations.
+ */
 export async function getTopMatchForLead(leadId: string): Promise<StoredVaMatch | null> {
   const { data, error } = await supabase
     .from("lead_va_matches")
     .select("*")
     .eq("lead_id", leadId)
     .order("match_score", { ascending: false })
+    .order("va_slug", { ascending: true })
     .limit(1)
     .maybeSingle();
 
@@ -253,13 +271,14 @@ export async function getTopMatchForLead(leadId: string): Promise<StoredVaMatch 
   return data ? mapMatchRow(data) : null;
 }
 
-/** All cached matches for a lead, best first. */
+/** All cached matches for a lead, best first (deterministic on score ties). */
 export async function getMatchesForLead(leadId: string): Promise<StoredVaMatch[]> {
   const { data, error } = await supabase
     .from("lead_va_matches")
     .select("*")
     .eq("lead_id", leadId)
-    .order("match_score", { ascending: false });
+    .order("match_score", { ascending: false })
+    .order("va_slug", { ascending: true });
 
   if (error) throw error;
   return (data ?? []).map(mapMatchRow);
@@ -301,6 +320,38 @@ export async function matchAndStoreForLead(
   }
 }
 
+/**
+ * Top match for a lead, matching on demand if nothing is cached yet.
+ *
+ * The ingestion trigger only fires for newly scraped leads, so every lead that
+ * predates Smart VA Matching has an empty cache. This backfills lazily the first
+ * time a draft is generated. Never throws — a miss simply yields null.
+ */
+export async function ensureTopMatchForLead(leadId: string): Promise<StoredVaMatch | null> {
+  try {
+    const cached = await getTopMatchForLead(leadId);
+    if (cached) return cached;
+    if (!isVaMatchingEnabled()) return null;
+
+    // Pull the AI-extracted tasks/skills/tools — a far better query than raw post text.
+    const { data, error } = await supabase
+      .from("leads")
+      .select("text, ai_qualification")
+      .eq("id", leadId)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!data?.text) return null;
+
+    console.log(`[va-matching] lead ${leadId} — cache miss, matching on demand`);
+    await matchAndStoreForLead(leadId, data.text, data.ai_qualification ?? null);
+    return await getTopMatchForLead(leadId);
+  } catch (err) {
+    console.error(`[va-matching] lead ${leadId} — ensureTopMatchForLead failed:`, err);
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Outreach copy
 // ---------------------------------------------------------------------------
@@ -310,6 +361,15 @@ const AVAILABILITY_SENTENCE: Record<string, string> = {
   "available-in-two-weeks": "They can start in about two weeks.",
   "available-in-one-months": "They can start in about a month.",
 };
+
+/** Sentinels that identify an already-pitched draft. Exported so the check can't drift. */
+export const VA_PITCH_MARKER = "Here's the profile:";
+export const HUB_PITCH_MARKER = "browse their profiles here:";
+
+/** True when a draft body already ends in a VA or VA Hub pitch. */
+export function hasPitch(body: string): boolean {
+  return body.includes(VA_PITCH_MARKER) || body.includes(HUB_PITCH_MARKER);
+}
 
 /**
  * Deterministic pitch appended to an outreach draft. Built in code, never by the
@@ -323,5 +383,14 @@ export function formatVaPitch(m: StoredVaMatch): string {
   const availability = m.availability ? AVAILABILITY_SENTENCE[m.availability] : undefined;
   const availabilityClause = availability ? ` ${availability}` : "";
 
-  return `We have ${m.displayName} — a vetted VA${skillClause}${years}.${availabilityClause}\n\nHere's the profile: ${m.profileUrl}`;
+  return `We have ${m.displayName} — a vetted VA${skillClause}${years}.${availabilityClause}\n\n${VA_PITCH_MARKER} ${m.profileUrl}`;
+}
+
+/**
+ * Fallback when no individual VA clears MIN_MATCH_SCORE: promote the directory
+ * rather than pitching a poor match. Same deterministic construction — the LLM
+ * never renders this URL either.
+ */
+export function formatVaHubPitch(hubUrl: string): string {
+  return `We have a roster of vetted, pre-screened VAs ready to start — you can ${HUB_PITCH_MARKER} ${hubUrl}`;
 }

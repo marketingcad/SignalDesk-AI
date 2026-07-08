@@ -1,6 +1,12 @@
 import { supabase } from "./supabase";
 import { generateText } from "./gemini";
-import { formatVaPitch, getTopMatchForLead, type StoredVaMatch } from "./va-matching";
+import {
+  ensureTopMatchForLead,
+  formatVaHubPitch,
+  formatVaPitch,
+  getVaHubHomeUrl,
+  hasPitch,
+} from "./va-matching";
 import type { Lead } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -48,11 +54,14 @@ const TONE_GUIDANCE: Record<OutreachTone, string> = {
   direct: "Tone: concise and to the point — lead with the offer.",
 };
 
+/** What gets appended after the model's opener. */
+type PitchMode = "va" | "hub" | "none";
+
 function buildDraftPrompt(
   lead: Lead,
   tone: OutreachTone,
   channel: OutreachChannel,
-  vaMatch?: StoredVaMatch | null
+  pitchMode: PitchMode
 ): string {
   const sourceClause = lead.source ? `, in "${lead.source}"` : "";
   const keywords =
@@ -60,14 +69,15 @@ function buildDraftPrompt(
   const format =
     channel === "dm" ? "direct message" : "public comment reply";
 
-  // When a VA match exists we append the pitch + profile link ourselves, so the
-  // model must not write one. Its job is only the personalised opener.
-  const matchRules = vaMatch
-    ? `
+  // When we append a pitch + link ourselves the model must not write one. Its
+  // job is only the personalised opener.
+  const matchRules =
+    pitchMode === "none"
+      ? `
+- Exactly one soft call-to-action (offer to help / invite a DM).`
+      : `
 - Do NOT name a specific VA, and do NOT write any link or URL — one is appended for you.
-- End on their need, not on an offer; the closing line is added afterwards.`
-    : `
-- Exactly one soft call-to-action (offer to help / invite a DM).`;
+- End on their need, not on an offer; the closing line is added afterwards.`;
 
   return `You are helping a virtual-assistant agency owner write a SHORT, human reply to a social-media post from someone looking to hire help.
 
@@ -116,9 +126,14 @@ function stripUrls(s: string): string {
  * Generate an outreach draft for a lead and persist it. Returns null if AI is
  * unavailable (no key / all models exhausted) so the caller can surface a 503.
  *
- * When the lead has a cached VA match (see lib/va-matching.ts) the model writes
- * the opener and we append the VA pitch + profile URL deterministically. If
- * there is no match, the draft degrades to the original un-enriched copy.
+ * The model writes the opener; we append the call-to-action deterministically,
+ * in one of three modes:
+ *   "va"   — a VA cleared MIN_MATCH_SCORE: pitch them + their profile URL.
+ *   "hub"  — no good match: promote the VA Hub directory instead.
+ *   "none" — VA matching unconfigured: original un-enriched copy.
+ *
+ * The LLM never renders either URL — it would silently mangle the ?src/?lead
+ * attribution params that make the funnel measurable.
  */
 export async function generateOutreachDraft(
   lead: Lead,
@@ -126,23 +141,25 @@ export async function generateOutreachDraft(
   channel: OutreachChannel,
   createdBy?: string
 ): Promise<OutreachDraft | null> {
-  // A missing lead_va_matches table or a DB hiccup must not kill the draft.
-  const vaMatch = await getTopMatchForLead(lead.id).catch((err) => {
-    console.error(`[outreach] top VA match lookup failed for ${lead.id}:`, err);
-    return null;
-  });
+  // Matches on demand when nothing is cached (leads predating this feature).
+  // Never throws — a VA Hub outage must not kill the draft.
+  const vaMatch = await ensureTopMatchForLead(lead.id);
+  const hubUrl = vaMatch ? null : getVaHubHomeUrl(lead.id);
+  const pitchMode: PitchMode = vaMatch ? "va" : hubUrl ? "hub" : "none";
 
-  const prompt = buildDraftPrompt(lead, tone, channel, vaMatch);
+  const prompt = buildDraftPrompt(lead, tone, channel, pitchMode);
   const text = await generateText(prompt, {
     temperature: 0.7,
-    maxOutputTokens: 512,
+    // 2048, not 512: these are thinking models and the budget covers thinking +
+    // visible text. Measured ~480 thinking tokens for this prompt, so 512 left
+    // ~30 for the reply and truncated it mid-word 5 times out of 6.
+    maxOutputTokens: 2048,
   });
 
   if (!text || !text.trim()) return null;
 
-  const body = vaMatch
-    ? `${stripUrls(cleanDraft(text))}\n\n${formatVaPitch(vaMatch)}`
-    : cleanDraft(text);
+  const pitch = vaMatch ? formatVaPitch(vaMatch) : hubUrl ? formatVaHubPitch(hubUrl) : null;
+  const body = pitch ? `${stripUrls(cleanDraft(text))}\n\n${pitch}` : cleanDraft(text);
 
   const { data, error } = await supabase
     .from("outreach_drafts")
@@ -160,7 +177,27 @@ export async function generateOutreachDraft(
   return mapDraftRow(data);
 }
 
-/** Most recent draft for a lead, or null if none exists yet. */
+/**
+ * Attach the VA pitch to a draft body that doesn't have one.
+ *
+ * The pitch used to be baked in at write time only, which made every draft an
+ * immutable snapshot of what the matcher knew back then: drafts written before a
+ * lead was matched showed no profile URL forever, even after the match existed.
+ * Composing at read time instead means a draft can never go stale. Deterministic
+ * — no LLM call, no DB write.
+ */
+async function attachPitch(leadId: string, body: string): Promise<string> {
+  if (hasPitch(body)) return body;
+
+  const vaMatch = await ensureTopMatchForLead(leadId);
+  const hubUrl = vaMatch ? null : getVaHubHomeUrl(leadId);
+  const pitch = vaMatch ? formatVaPitch(vaMatch) : hubUrl ? formatVaHubPitch(hubUrl) : null;
+
+  // Old drafts may carry a model-written link; strip it so ours is the only URL.
+  return pitch ? `${stripUrls(body.trim())}\n\n${pitch}` : body;
+}
+
+/** Most recent draft for a lead, or null if none exists yet. Pitch attached on read. */
 export async function getLatestDraft(
   leadId: string
 ): Promise<OutreachDraft | null> {
@@ -173,7 +210,10 @@ export async function getLatestDraft(
     .maybeSingle();
 
   if (error) throw error;
-  return data ? mapDraftRow(data) : null;
+  if (!data) return null;
+
+  const draft = mapDraftRow(data);
+  return { ...draft, body: await attachPitch(leadId, draft.body) };
 }
 
 /** Stamp copied_at when the user copies a draft. */

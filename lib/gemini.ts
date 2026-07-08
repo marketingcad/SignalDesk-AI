@@ -86,6 +86,20 @@ export async function generateText(
       });
 
       const result = await model.generateContent(prompt);
+
+      // Thinking tokens share the maxOutputTokens budget. When they eat it all,
+      // finishReason is MAX_TOKENS and .text() silently returns a reply cut
+      // mid-word. Never let that pass unnoticed — raise the caller's budget.
+      const finishReason = result.response.candidates?.[0]?.finishReason;
+      if (finishReason === "MAX_TOKENS") {
+        const thoughts = (result.response.usageMetadata as { thoughtsTokenCount?: number } | undefined)
+          ?.thoughtsTokenCount;
+        console.warn(
+          `[gemini] ⚠️  ${modelName} hit MAX_TOKENS (thinking used ${thoughts ?? "?"} tok of ` +
+            `${opts?.maxOutputTokens ?? 1024}) — output is TRUNCATED. Increase maxOutputTokens.`
+        );
+      }
+
       return result.response.text();
     } catch (err: unknown) {
       const status = (err as { status?: number })?.status;

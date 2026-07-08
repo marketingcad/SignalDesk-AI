@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useLayoutEffect, useRef } from "react";
 import {
   Dialog,
   DialogContent,
@@ -35,6 +35,14 @@ const CHANNELS: { value: OutreachChannel; label: string }[] = [
   { value: "dm", label: "DM" },
 ];
 
+/**
+ * Cap the auto-grown textarea (px). Drafts run ~400 chars once the VA pitch and
+ * profile URL are appended; this fits them without scrolling, and anything
+ * longer scrolls inside the box rather than pushing the buttons off-screen.
+ */
+const MAX_TEXTAREA_PX = 384;
+const MIN_TEXTAREA_PX = 132;
+
 interface DraftResponse {
   id: string;
   tone: OutreachTone;
@@ -60,6 +68,20 @@ export function OutreachDraftDrawer({
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Grow the textarea to fit the draft. Without this the VA pitch and profile URL
+  // sit below the fold of a fixed 6-row box and read as missing entirely.
+  useLayoutEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto"; // reset first, or it can only ever grow
+    // scrollHeight excludes borders, but box-sizing:border-box makes `height`
+    // include them — without this the content overflows by exactly 2px.
+    const borders = el.offsetHeight - el.clientHeight;
+    const fitted = el.scrollHeight + borders;
+    el.style.height = `${Math.min(Math.max(fitted, MIN_TEXTAREA_PX), MAX_TEXTAREA_PX)}px`;
+  }, [body, open, loading]);
 
   const generate = useCallback(
     async (t: OutreachTone, c: OutreachChannel) => {
@@ -170,7 +192,7 @@ export function OutreachDraftDrawer({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-primary" />
@@ -211,15 +233,16 @@ export function OutreachDraftDrawer({
         {/* Draft body */}
         <div className="relative">
           <textarea
+            ref={textareaRef}
             value={body}
             onChange={(e) => setBody(e.target.value)}
             disabled={loading}
-            rows={6}
             placeholder={loading ? "" : "Your message…"}
             className={cn(
-              "w-full resize-y rounded-lg border border-border bg-secondary/40 p-3 text-sm text-foreground leading-relaxed outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/30",
+              "w-full resize-none overflow-y-auto rounded-lg border border-border bg-secondary/40 p-3 text-sm text-foreground leading-relaxed outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/30",
               loading && "opacity-50"
             )}
+            style={{ minHeight: MIN_TEXTAREA_PX, maxHeight: MAX_TEXTAREA_PX }}
           />
           {loading && (
             <div className="absolute inset-0 flex items-center justify-center gap-2 text-sm text-muted-foreground">
