@@ -22,7 +22,35 @@ import {
   ExternalLink,
   Loader2,
   AlertTriangle,
+  Pencil,
 } from "lucide-react";
+
+const URL_SPLIT_RE = /(https?:\/\/[^\s]+)/g;
+const isUrl = (s: string) => /^https?:\/\/[^\s]+$/.test(s); // stateless — not the global one
+
+/**
+ * Render a draft body with its URLs as blue, clickable links. Links go through
+ * openUrl() (Tauri shell in desktop, window.open in web) — a raw <a> would not
+ * open the system browser in the packaged app. Whitespace/newlines are preserved
+ * by the container's `whitespace-pre-wrap`.
+ */
+function renderDraft(body: string) {
+  return body.split(URL_SPLIT_RE).map((part, i) =>
+    isUrl(part) ? (
+      <button
+        key={i}
+        type="button"
+        onClick={() => openUrl(part)}
+        title={part}
+        className="inline break-all text-left text-primary underline underline-offset-2 decoration-primary/40 transition-colors hover:decoration-primary"
+      >
+        {part}
+      </button>
+    ) : (
+      <span key={i}>{part}</span>
+    )
+  );
+}
 
 const TONES: { value: OutreachTone; label: string }[] = [
   { value: "friendly", label: "Friendly" },
@@ -69,6 +97,9 @@ export function OutreachDraftDrawer({
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The field shows a rendered preview (blue clickable links) by default, and
+  // swaps to the raw textarea for editing. A textarea can't style or link text.
+  const [editing, setEditing] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Grow the textarea to fit the draft. Without this the VA pitch and profile URL
@@ -103,7 +134,7 @@ export function OutreachDraftDrawer({
       cancelled = true;
       observer.disconnect();
     };
-  }, [body, open, loading]);
+  }, [body, open, loading, editing]);
 
   const generate = useCallback(
     async (t: OutreachTone, c: OutreachChannel) => {
@@ -124,6 +155,7 @@ export function OutreachDraftDrawer({
         setDraftId(draft.id);
         setTone(draft.tone);
         setChannel(draft.channel);
+        setEditing(false); // show the rendered, clickable version of the new draft
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to generate draft");
       } finally {
@@ -142,6 +174,7 @@ export function OutreachDraftDrawer({
       setLoading(true);
       setError(null);
       setCopied(false);
+      setEditing(false);
       try {
         const res = await fetch(`/api/leads/${lead.id}/draft`);
         if (!res.ok) throw new Error("Failed to load draft");
@@ -197,13 +230,13 @@ export function OutreachDraftDrawer({
     return true;
   }, [body, draftId, lead.id]);
 
-  const handleCopy = async () => {
-    const ok = await copyToClipboard();
-    if (ok) {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
-  };
+  // const handleCopy = async () => {
+  //   const ok = await copyToClipboard();
+  //   if (ok) {
+  //     setCopied(true);
+  //     setTimeout(() => setCopied(false), 2000);
+  //   }
+  // };
 
   const handleCopyAndOpen = async () => {
     await copyToClipboard();
@@ -259,25 +292,66 @@ export function OutreachDraftDrawer({
         </div>
 
         {/* Draft body */}
-        <div className="relative">
-          <textarea
-            ref={textareaRef}
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            disabled={loading}
-            placeholder={loading ? "" : "Your message…"}
-            className={cn(
-              "w-full resize-none overflow-hidden rounded-lg border border-border bg-secondary/40 p-3 text-sm text-foreground leading-relaxed outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/30",
-              loading && "opacity-50"
+        <div>
+          <div className="mb-1.5 flex items-center justify-between">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Message
+            </span>
+            {!loading && body.trim() && (
+              <button
+                type="button"
+                onClick={() => setEditing((e) => !e)}
+                className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+              >
+                {editing ? (
+                  <>
+                    <Check className="h-3 w-3" />
+                    Done
+                  </>
+                ) : (
+                  <>
+                    <Pencil className="h-3 w-3" />
+                    Edit
+                  </>
+                )}
+              </button>
             )}
-            style={{ minHeight: MIN_TEXTAREA_PX }}
-          />
-          {loading && (
-            <div className="absolute inset-0 flex items-center justify-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Drafting…
-            </div>
-          )}
+          </div>
+
+          <div className="relative">
+            {loading ? (
+              <div
+                className="flex items-center justify-center gap-2 rounded-lg border border-border bg-secondary/40 text-sm text-muted-foreground"
+                style={{ minHeight: MIN_TEXTAREA_PX }}
+              >
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Drafting…
+              </div>
+            ) : editing ? (
+              <textarea
+                ref={textareaRef}
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                onBlur={() => setEditing(false)}
+                autoFocus
+                placeholder="Your message…"
+                className="w-full resize-none overflow-hidden rounded-lg border border-border bg-secondary/40 p-3 text-sm text-foreground leading-relaxed outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/30"
+                style={{ minHeight: MIN_TEXTAREA_PX }}
+              />
+            ) : (
+              <div
+                onDoubleClick={() => setEditing(true)}
+                className="w-full whitespace-pre-wrap wrap-break-word rounded-lg border border-border bg-secondary/40 p-3 text-sm leading-relaxed text-foreground"
+                style={{ minHeight: MIN_TEXTAREA_PX }}
+              >
+                {body ? (
+                  renderDraft(body)
+                ) : (
+                  <span className="text-muted-foreground">Your message…</span>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         {error && (
@@ -300,20 +374,6 @@ export function OutreachDraftDrawer({
             Regenerate
           </Button>
           <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1.5"
-              disabled={loading || !body.trim()}
-              onClick={handleCopy}
-            >
-              {copied ? (
-                <Check className="h-3.5 w-3.5 text-emerald-400" />
-              ) : (
-                <Copy className="h-3.5 w-3.5" />
-              )}
-              {copied ? "Copied" : "Copy"}
-            </Button>
             <Button
               size="sm"
               className="gap-1.5 shadow-sm shadow-primary/25"
