@@ -90,7 +90,8 @@ async function runAllPlatforms() {
         const totalErrors = results.reduce((s, r) => s + r.errors.length, 0);
         console.log(`\n[crawler] ══════════ RUN COMPLETE ══════════`);
         console.log(`[crawler] Total: ${totalPosts} posts, ${totalErrors} errors`);
-        await (0, discord_1.sendRunSummary)(results);
+        // Per-run "Scraper Run Complete" summary intentionally NOT sent to Discord —
+        // Discord notifications are leads-only (see sendNewLeadsAlert).
     }
     finally {
         runInProgress = false;

@@ -6,6 +6,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.STORAGE_STATE_PATH = void 0;
 exports.hasSavedCookies = hasSavedCookies;
 exports.getProfileDir = getProfileDir;
+exports.getAuthenticatedPlatforms = getAuthenticatedPlatforms;
+exports.getStorageStateForContext = getStorageStateForContext;
 exports.getStorageState = getStorageState;
 exports.saveStorageState = saveStorageState;
 exports.loadSessionFromSupabase = loadSessionFromSupabase;
@@ -47,6 +49,101 @@ function hasSavedCookies() {
  */
 function getProfileDir() {
     return PROFILE_DIR;
+}
+/**
+ * Marker cookies that are only present (with a value) when the account is
+ * actually logged in. This is the source of truth for "is THIS platform
+ * authenticated", as opposed to the global hasSavedCookies()/health status —
+ * the rolling session file holds cookies for several domains at once, so one
+ * platform being logged in does not mean the others are.
+ */
+const AUTH_COOKIE_MARKERS = {
+    // c_user (user id) and xs (session secret) are both Facebook login cookies;
+    // either one present means there's an active FB session.
+    facebook: [
+        { domain: "facebook.com", name: "c_user" },
+        { domain: "facebook.com", name: "xs" },
+    ],
+    linkedin: [{ domain: "linkedin.com", name: "li_at" }],
+    x: [
+        { domain: "x.com", name: "auth_token" },
+        { domain: "twitter.com", name: "auth_token" },
+    ],
+};
+/** Read the raw rolling session JSON (file first, env bootstrap fallback). */
+function readStorageStateRaw() {
+    if (fs_1.default.existsSync(exports.STORAGE_STATE_PATH))
+        return fs_1.default.readFileSync(exports.STORAGE_STATE_PATH, "utf-8");
+    if (process.env.BROWSER_STORAGE_STATE)
+        return process.env.BROWSER_STORAGE_STATE;
+    return undefined;
+}
+/**
+ * Inspect the saved session and report which platforms are actually logged in,
+ * based on the presence of their auth marker cookie. Drives the per-platform
+ * status cards in Settings → Browser Login so an unauthenticated platform isn't
+ * shown as "active".
+ */
+function getAuthenticatedPlatforms() {
+    const result = { facebook: false, linkedin: false, x: false };
+    try {
+        const raw = readStorageStateRaw();
+        if (!raw)
+            return result;
+        const cookies = (JSON.parse(raw)?.cookies ?? []);
+        for (const key of Object.keys(AUTH_COOKIE_MARKERS)) {
+            result[key] = AUTH_COOKIE_MARKERS[key].some((m) => cookies.some(
+            // A usable login cookie must have a value AND a matching domain.
+            // A domain-less marker cookie (e.g. a minimally-seeded `xs`) cannot be
+            // loaded into a browser context, so it is NOT a real session — don't
+            // report it as authenticated (it would show green while scrapes fail).
+            (c) => c.name === m.name &&
+                !!c.value &&
+                typeof c.domain === "string" &&
+                c.domain.includes(m.domain)));
+        }
+    }
+    catch {
+        // malformed/unreadable session → treat as not authenticated
+    }
+    return result;
+}
+/**
+ * Build a storageState OBJECT safe to pass to browser.newContext().
+ *
+ * Playwright rejects the entire context if ANY cookie lacks a `url` or a
+ * `domain`+`path` pair ("Cookie should have a url or a domain/path pair"),
+ * which crashes the scrape outright. A minimally-seeded session can contain
+ * exactly such a cookie (a bare `xs`). Drop those unusable cookies and
+ * normalise the rest so the context always builds — logged-out at worst, never
+ * a crash. Returns undefined when there is no session data at all.
+ */
+function getStorageStateForContext() {
+    const raw = readStorageStateRaw();
+    if (!raw)
+        return undefined;
+    let parsed;
+    try {
+        parsed = JSON.parse(raw);
+    }
+    catch {
+        return undefined;
+    }
+    const validSameSite = new Set(["Strict", "Lax", "None"]);
+    const cookies = (parsed.cookies ?? [])
+        // storageState cookies must carry a domain — drop any that don't.
+        .filter((c) => c && typeof c.name === "string" && typeof c.domain === "string" && c.domain)
+        .map((c) => ({
+        name: c.name,
+        value: String(c.value ?? ""),
+        domain: c.domain,
+        path: c.path || "/",
+        expires: typeof c.expires === "number" ? c.expires : -1,
+        httpOnly: !!c.httpOnly,
+        secure: !!c.secure,
+        sameSite: validSameSite.has(c.sameSite) ? c.sameSite : "Lax",
+    }));
+    return { cookies, origins: Array.isArray(parsed.origins) ? parsed.origins : [] };
 }
 /**
  * Get storageState for use with browser.newContext().
@@ -158,12 +255,20 @@ async function saveSessionToSupabase(rawJson) {
  *      into Supabase so future boots use the durable copy and you never re-paste.
  */
 async function initSession() {
-    if (await loadSessionFromSupabase())
+    const loaded = await loadSessionFromSupabase();
+    // A loaded Supabase row can be DEGRADED — e.g. a partial save that dropped the
+    // real login cookies, leaving only a domain-less `xs`. If it carries no usable
+    // login for ANY platform, don't get stuck logged-out: fall back to the
+    // BROWSER_STORAGE_STATE bootstrap (which may still hold a full session) and
+    // re-persist it, so a bad row can't permanently shadow a good seed.
+    if (loaded && Object.values(getAuthenticatedPlatforms()).some(Boolean))
         return;
     if (process.env.BROWSER_STORAGE_STATE) {
         fs_1.default.mkdirSync(path_1.default.dirname(exports.STORAGE_STATE_PATH), { recursive: true });
         fs_1.default.writeFileSync(exports.STORAGE_STATE_PATH, process.env.BROWSER_STORAGE_STATE, "utf-8");
-        console.log("[auth] Seeded session from BROWSER_STORAGE_STATE env → migrating to Supabase");
+        console.log(loaded
+            ? "[auth] Supabase session had no usable login — re-seeding from BROWSER_STORAGE_STATE env"
+            : "[auth] Seeded session from BROWSER_STORAGE_STATE env → migrating to Supabase");
         await saveSessionToSupabase(process.env.BROWSER_STORAGE_STATE);
     }
 }
@@ -265,8 +370,6 @@ const VALIDATION_TARGETS = {
         loginIndicators: [
             /\/login/i,
             /\/checkpoint/i,
-            /id="loginform"/i,
-            /id="email"/i,
         ],
     },
     linkedin: {
@@ -275,7 +378,6 @@ const VALIDATION_TARGETS = {
             /\/login/i,
             /\/uas\/login/i,
             /\/authwall/i,
-            /class="sign-in-form"/i,
         ],
     },
 };
@@ -292,8 +394,10 @@ async function validateCookies(platform) {
     // Check if we even have cookies to validate
     if (!hasSavedCookies())
         return "no_cookies";
-    const storageState = getStorageState();
-    if (!storageState)
+    // Use the sanitised object so a malformed cookie can't crash newContext.
+    // If sanitising leaves no usable cookies, there's effectively no session.
+    const storageState = getStorageStateForContext();
+    if (!storageState || storageState.cookies.length === 0)
         return "no_cookies";
     let browser;
     try {
@@ -320,16 +424,18 @@ async function validateCookies(platform) {
             return "error";
         }
         const finalUrl = page.url();
-        const bodyHtml = await page.content().catch(() => "");
         await context.close();
-        // Check if the final URL or page content indicates a login wall
+        // Trust ONLY the final redirect URL: a logged-out session bounces /me (or
+        // /feed) to a /login or /checkpoint URL. The page HTML of a logged-IN profile
+        // still contains strings like "/login" or id="email" (hidden forms), which
+        // produced false "expired" results — so we no longer scan the body.
         for (const indicator of target.loginIndicators) {
-            if (indicator.test(finalUrl) || indicator.test(bodyHtml)) {
-                console.log(`[auth] ${platform} cookie validation: EXPIRED (matched: ${indicator.source})`);
+            if (indicator.test(finalUrl)) {
+                console.log(`[auth] ${platform} cookie validation: EXPIRED (redirected to ${finalUrl})`);
                 return "expired";
             }
         }
-        console.log(`[auth] ${platform} cookie validation: VALID`);
+        console.log(`[auth] ${platform} cookie validation: VALID (${finalUrl})`);
         return "valid";
     }
     catch (err) {

@@ -21,6 +21,7 @@ export declare const config: {
     maxResultsPerRun: number;
     scrollDelayMs: number;
     requestTimeoutMs: number;
+    batchRequestTimeoutMs: number;
     headless: boolean;
     scrapeRetryAttempts: number;
     scrapeRetryDelayMs: number;

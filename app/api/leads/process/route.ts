@@ -5,6 +5,7 @@ import { inferLocationFromText } from "@/lib/geo-fallback";
 import { supabase } from "@/lib/supabase";
 import { alertEngine } from "@/lib/alert-engine";
 import { HIRING_KEYWORDS } from "@/lib/keywords";
+import { matchAndStoreForLead } from "@/lib/va-matching";
 import type { Platform } from "@/lib/types";
 
 interface IncomingPayload {
@@ -208,6 +209,11 @@ export async function POST(request: NextRequest) {
 
   // --- Smart alert for High + Medium intent leads (skip Low) ---
   if (scoringResult.level === "High" || scoringResult.level === "Medium") {
+    // Smart VA Matching — gate on `level`, not `intent_score`: the AI path derives
+    // score = leadScore * 10, so a HIGH_INTENT lead can sit at 70 and miss an
+    // `intent_score >= 80` check. Fire-and-forget; never blocks the response.
+    void matchAndStoreForLead(lead.id, text, aiResult);
+
     console.log(`[leads/process] ${scoringResult.level} intent (${scoringResult.score}) — enqueuing alert`);
     alertEngine.enqueue({
       author_name: username,

@@ -5,6 +5,7 @@ import { inferLocationFromText } from "@/lib/geo-fallback";
 import { supabase } from "@/lib/supabase";
 import { alertEngine } from "@/lib/alert-engine";
 import { HIRING_KEYWORDS, matchKeywords } from "@/lib/keywords";
+import { matchAndStoreForLead } from "@/lib/va-matching";
 import { looksLikeEmployerHiring } from "@/lib/rule-qualifier";
 import { resolveDateWindow, classifyPostDate, type DateRangeFilter } from "@/lib/date-window";
 import type { DynamicScoringConfig, WeightedKeyword, NegativeSignal } from "@/lib/intent-scoring";
@@ -351,6 +352,10 @@ export async function POST(request: NextRequest) {
       insertedMap.set(row.url, row);
     }
 
+    // Smart VA Matching queue — gate on `level`, not `intent_score` (the AI path
+    // derives score = leadScore * 10, so a HIGH_INTENT lead can sit at 70).
+    const vaMatchQueue: { leadId: string; text: string; ai: typeof scoredLeads[number]["aiResult"] }[] = [];
+
     for (const scored of scoredLeads) {
       const row = insertedMap.get(scored.post.url);
       if (row) {
@@ -364,6 +369,8 @@ export async function POST(request: NextRequest) {
 
         // Enqueue High + Medium intent leads for alerting (skip Low)
         if (scored.level === "High" || scored.level === "Medium") {
+          vaMatchQueue.push({ leadId: row.id, text: scored.post.text, ai: scored.aiResult });
+
           alertEngine.enqueue({
             author_name: scored.post.username,
             message: scored.post.text.slice(0, 500),
@@ -378,6 +385,19 @@ export async function POST(request: NextRequest) {
           });
         }
       }
+    }
+
+    // Run serially, not Promise.all: a 50-lead batch fired concurrently would trip
+    // VA Hub's rate limiter. matchAndStoreForLead never throws, so this cannot
+    // reject. Fire-and-forget — the web service is long-lived (DO App Platform),
+    // so this survives the response.
+    if (vaMatchQueue.length > 0) {
+      void (async () => {
+        for (const item of vaMatchQueue) {
+          await matchAndStoreForLead(item.leadId, item.text, item.ai);
+        }
+        console.log(`[leads/batch] VA matching finished for ${vaMatchQueue.length} lead(s)`);
+      })();
     }
   }
 

@@ -12,6 +12,45 @@ export declare function hasSavedCookies(): boolean;
  * Get the path to the persistent browser profile directory.
  */
 export declare function getProfileDir(): string;
+export type AuthPlatformKey = "facebook" | "linkedin" | "x";
+/**
+ * Inspect the saved session and report which platforms are actually logged in,
+ * based on the presence of their auth marker cookie. Drives the per-platform
+ * status cards in Settings → Browser Login so an unauthenticated platform isn't
+ * shown as "active".
+ */
+export declare function getAuthenticatedPlatforms(): Record<AuthPlatformKey, boolean>;
+type PWCookie = {
+    name: string;
+    value: string;
+    domain: string;
+    path: string;
+    expires: number;
+    httpOnly: boolean;
+    secure: boolean;
+    sameSite: "Strict" | "Lax" | "None";
+};
+type PWOrigin = {
+    origin: string;
+    localStorage: {
+        name: string;
+        value: string;
+    }[];
+};
+/**
+ * Build a storageState OBJECT safe to pass to browser.newContext().
+ *
+ * Playwright rejects the entire context if ANY cookie lacks a `url` or a
+ * `domain`+`path` pair ("Cookie should have a url or a domain/path pair"),
+ * which crashes the scrape outright. A minimally-seeded session can contain
+ * exactly such a cookie (a bare `xs`). Drop those unusable cookies and
+ * normalise the rest so the context always builds — logged-out at worst, never
+ * a crash. Returns undefined when there is no session data at all.
+ */
+export declare function getStorageStateForContext(): {
+    cookies: PWCookie[];
+    origins: PWOrigin[];
+} | undefined;
 /**
  * Get storageState for use with browser.newContext().
  *
@@ -87,3 +126,4 @@ export declare function validateCookies(platform: "facebook" | "linkedin"): Prom
  * Returns a map of platform → validation result.
  */
 export declare function validateAllCookies(): Promise<Record<string, CookieValidationResult>>;
+export {};

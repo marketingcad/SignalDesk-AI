@@ -217,15 +217,13 @@ async function runSchedule(id) {
             runStatus = "error";
             errorMessage = result.errors.join("; ");
         }
-        // ── Session health monitoring ──────────────────────────────────────
+        // ── Session health monitoring (log only) ───────────────────────────
+        // Tracked for the logs/health endpoint, but NOT pushed to Discord —
+        // Discord notifications are strictly leads-only (see sendNewLeadsAlert).
         if (postsFound === 0 && runStatus === "ok") {
-            const prev = consecutiveZeroPosts.get(id) ?? 0;
-            const count = prev + 1;
+            const count = (consecutiveZeroPosts.get(id) ?? 0) + 1;
             consecutiveZeroPosts.set(id, count);
             console.log(`[url-scheduler] "${schedule.name}" returned 0 posts (${count} consecutive)`);
-            if (count >= config_1.config.sessionHealthThreshold) {
-                await (0, discord_1.sendSessionHealthAlert)(schedule.name, schedule.url, platform, count);
-            }
         }
         else {
             consecutiveZeroPosts.set(id, 0);

@@ -551,7 +551,7 @@ app.post("/api/auth/setup", async (req, res) => {
     (0, browserAuth_1.loginAndSave)().catch((err) => console.error("[api] Browser login failed:", err));
 });
 app.get("/api/auth/status", (_req, res) => {
-    res.json({ cookiesSaved: (0, browserAuth_1.hasSavedCookies)() });
+    res.json({ cookiesSaved: (0, browserAuth_1.hasSavedCookies)(), authenticated: (0, browserAuth_1.getAuthenticatedPlatforms)() });
 });
 // ---------------------------------------------------------------------------
 // Auth health — session health status + on-demand cookie validation
@@ -567,6 +567,7 @@ app.get("/api/auth/health", (req, res) => {
         overall: hasExpired ? "expired" : hasWarning ? "warning" : "healthy",
         platforms: health,
         cookiesSaved: (0, browserAuth_1.hasSavedCookies)(),
+        authenticated: (0, browserAuth_1.getAuthenticatedPlatforms)(),
     });
 });
 /** POST /api/auth/validate — trigger on-demand cookie validation for a platform */
@@ -759,6 +760,10 @@ app.post("/api/auth/live/save", async (req, res) => {
         return;
     try {
         const result = await (0, liveLogin_1.saveLiveLogin)();
+        // Fresh login → clear any stale "expired" health so the status cards reflect
+        // the new session immediately instead of a leftover failed-validation flag.
+        (0, sessionHealth_1.resetHealth)("Facebook");
+        (0, sessionHealth_1.resetHealth)("LinkedIn");
         res.json({ ok: true, ...result });
     }
     catch (err) {
