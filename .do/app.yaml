@@ -37,6 +37,9 @@ services:
       # ${scraper.PRIVATE_URL} is injected by DO at deploy time.
       - key: SCRAPER_SERVICE_URL
         value: ${scraper.PRIVATE_URL}
+      # Linkage VA Hub — Smart VA Matching. Public host, safe to commit.
+      - key: VAHUB_BASE_URL
+        value: https://vahub.esystemsmanagement.com
       - { key: NEXT_PUBLIC_SUPABASE_URL,      scope: RUN_AND_BUILD_TIME, type: SECRET }
       - { key: NEXT_PUBLIC_SUPABASE_ANON_KEY, scope: RUN_AND_BUILD_TIME, type: SECRET }
       - { key: SUPABASE_SERVICE_ROLE_KEY,     scope: RUN_TIME,           type: SECRET }
@@ -45,6 +48,8 @@ services:
       - { key: DISCORD_WEBHOOK_URL,           scope: RUN_TIME,           type: SECRET }
       - { key: FB_VERIFY_TOKEN,               scope: RUN_TIME,           type: SECRET }
       - { key: FB_APP_SECRET,                 scope: RUN_TIME,           type: SECRET }
+      # Must match VA Hub's MATCH_API_SECRET on Vercel, or /api/match-vas returns 401.
+      - { key: MATCH_API_SECRET,              scope: RUN_TIME,           type: SECRET }
 
   # ---------------------------------------------------------------------------
   # 2) Scraper service — Playwright/Chromium, RAM-heavy, internal only

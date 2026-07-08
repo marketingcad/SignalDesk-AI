@@ -4,8 +4,6 @@ Lead intelligence dashboard for **Virtual Assistant hiring detection**. Scrapes 
 
 ---
 
-
-
 ---
 
 
@@ -839,3 +837,492 @@ This only needs to be done **once per device**. After that, the app and auto-upd
 | **Windows** | [Visual Studio Build Tools 2022](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with "Desktop development with C++". Disable Smart App Control for local builds. |
 | **macOS** | Xcode Command Line Tools: `xcode-select --install` |
 | **Linux** | `sudo apt install libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libgtk-3-dev libsoup-3.0-dev` |
+
+
+
+
+## Planned: Smart VA Matching (Linkage VA Hub × SignalDesk AI)
+
+> **Status:** Planned — not yet implemented.
+> **Goal:** Automatically match leads found by SignalDesk AI to the best-fit VAs in the Linkage directory, and route those leads back into VA Hub to protect revenue, leads require to register in the VA Hub to request a VA as client based on the leads matching.
+
+### The two systems
+
+| | **SignalDesk AI** | **Linkage VA Hub** |
+|---|---|---|
+| **Role** | Demand — finds businesses needing a VA | Supply — the vetted VA directory |
+| **Hosting** | DigitalOcean | Vercel |
+| **Database** | Supabase (`us-west-2`) | Supabase (`us-east-1`) |
+| **Key data** | `leads` (text, intent_score, location, matched_keywords), `outreach_drafts` | `vas` (skills, tools, bio, availability, slug), `va_service_requests` |
+| **Already has** | Scraping, intent scoring, draft generation | pgvector, Gemini embeddings, Claude, rate-limiting |
+
+### Core principle: connect via API, not a shared database
+
+The apps live in **separate Supabase projects in different regions**. Do **not** merge them.
+
+> **VA Hub owns the VA data and exposes matching as a secure service. SignalDesk consumes it.**
+
+Each app keeps its own source of truth, there is no cross-project coupling, there is one securable and rate-limited surface, and the same engine can later power VA Hub's own hiring-request matching and directory search.
+
+### Architecture
+
+```
+┌──── SignalDesk AI (DigitalOcean) ──────────────────────┐
+│  scraper → lead (text, intent_score, location)          │
+│                     │ qualified?                        │
+│                     ▼                                   │
+│   POST https://vahub…/api/match-vas                     │
+│   Authorization: Bearer MATCH_API_SECRET                │
+│   { text, location, intentCategory, limit }             │
+└─────────────────────┼───────────────────────────────────┘
+                      ▼
+┌──── Linkage VA Hub (Vercel) ───────────────────────────┐
+│  /api/match-vas   [secret auth + rate limit]            │
+│    1. embed(text)          → Gemini 768-dim             │
+│    2. match_vas() RPC      → pgvector cosine search     │
+│    3. hard filters         → active, available, not hired│
+│    4. (opt) Claude re-rank → "why this VA fits"         │
+│    5. return SAFE fields only  ⚠ no email/phone         │
+└─────────────────────┼───────────────────────────────────┘
+                      ▼
+┌──── SignalDesk AI ─────────────────────────────────────┐
+│  store in `lead_va_matches`                             │
+│  inject top match into `outreach_drafts.body`:          │
+│  "…we have Maria S. (CRM, GHL). Profile: {profileUrl}"  │
+└─────────────────────┼───────────────────────────────────┘
+                      ▼
+        Lead opens profile (no contact shown)
+        → "Request this VA" → must REGISTER
+        → hiring request on-platform → revenue captured
+```
+
+### What to build — VA Hub side
+
+**1. VA embedding index** (new table; leaves `vas` untouched)
+
+```
+va_embeddings (va_id PK → vas.id, embedding vector(768), profile_text, updated_at)
+```
+
+`profile_text` = skills + software_tools + short_bio + work_experience + years_of_experience + availability + location.
+
+**2. Keep it fresh** — backfill all published VAs once, then re-embed whenever a VA profile is created, updated, or published (hook into the existing VA publish/update actions). *Stale embeddings produce bad matches.*
+
+**3. `match_vas()` RPC** — same shape as the existing `match_kb_documents`: cosine similarity plus **hard filters in SQL** (`is_active`, not Hired, availability vs urgency, engagement type, location).
+
+**4. `POST /api/match-vas`** — the contact point between the apps.
+
+```jsonc
+// Request
+{ "text": "need a VA to manage my CRM and social media",
+  "location": "US", "intentCategory": "hiring", "limit": 3 }
+
+// Response — SAFE FIELDS ONLY
+{ "matches": [{
+    "slug": "maria-s",
+    "firstName": "Maria",
+    "headshotUrl": "https://…",
+    "skills": ["CRM", "GoHighLevel", "Social Media"],
+    "yearsOfExperience": 5,
+    "availability": "available-now",
+    "profileUrl": "https://vahub…/va/maria-s?src=signaldesk&lead=<id>",
+    "matchScore": 0.92,
+    "rationale": "Strong CRM + GHL automation background"   // optional (Claude)
+}]}
+```
+
+> **Never return `email`, `phone`, or `portfolio`.** The `profileUrl` is the only way forward — that is what protects revenue.
+
+### What to build — SignalDesk side
+
+1. **Trigger** — when a lead is qualified (intent score above threshold / VA-related category), call `/api/match-vas` server-side with `lead.text`.
+2. **Store** — new table `lead_va_matches (lead_id, va_slug, first_name, profile_url, match_score, rationale)`.
+3. **Enrich outreach** — inject the top match and its **profile URL** into `outreach_drafts.body`.
+
+### Security model
+
+| Concern | Control |
+|---------|---------|
+| Who can call the API | Shared secret `MATCH_API_SECRET` (Bearer), server-to-server only — reject browser origins |
+| Abuse / cost | Reuse the existing Upstash rate-limiter on the endpoint |
+| VA PII leakage | Response whitelist: slug, first name, headshot, skills, availability, profileUrl |
+| **Bypass** | Public profile hides email/phone; "Request this VA" requires client registration |
+| **SignalDesk `leads`** | **RLS is currently disabled** — anyone with the anon key can read/modify all leads. Must be fixed. |
+
+### Attribution (proves the ROI)
+
+Append `?src=signaldesk&lead={leadId}` to every `profileUrl`. VA Hub stores it on the resulting client registration / hiring request, making the full funnel measurable:
+
+> **lead → profile click → registration → hiring request → placement → revenue**
+
+### Build phases
+
+| Phase | What | Why |
+|-------|------|-----|
+| **0** | Hide email/phone on public VA profiles + gate "Request this VA" behind registration. Fix SignalDesk `leads` RLS. | **Blocker — without this the funnel leaks; bypass is trivial today** |
+| **1** | `va_embeddings` table + backfill + keep-in-sync | The engine's foundation |
+| **2** | `match_vas()` RPC + internal matching function | Ranking logic |
+| **3** | `POST /api/match-vas` (secret auth + rate limit + safe fields) | The contact point |
+| **4** | SignalDesk: call it, store `lead_va_matches` | Consumer |
+| **5** | SignalDesk: inject profile URL into outreach drafts | Revenue path |
+| **6** | *(optional)* Claude re-rank + rationale; funnel analytics | Polish + proof |
+
+### Key risks
+
+- **Embedding freshness** — re-embed on profile change, or matches go stale.
+- **Hard filters must gate the vector score** — never pitch an inactive, hired, or unavailable VA, no matter how semantically similar.
+- **Cross-region latency** — `us-west-2` → `us-east-1` is fine for server-to-server (~50–80ms).
+- **Human-in-the-loop** — matches are *suggestions* for the team's outreach, not auto-placement. This fits the managed model.
+
+> **Phase 0 is the blocker.** Everything else builds a funnel that leaks revenue if the public profile keeps exposing VAs' email addresses.
+
+---
+
+Linkage VA Hub - Connecting businesses with vetted Virtual Assistant talent.
+
+
+
+
+
+
+# Smart VA Matching — Integration Spec for SignalDesk AI
+
+> **Audience:** developers (or an AI coding agent) working on **SignalDesk AI**.
+> **Purpose:** everything needed to call Linkage VA Hub's matching API and use the results.
+> **Status:** VA Hub side is **implemented**. SignalDesk side is **not yet built** — this document specifies it.
+
+---
+
+## 1. What this is
+
+**SignalDesk AI** finds businesses that need a Virtual Assistant (*demand*).
+**Linkage VA Hub** owns the directory of vetted VAs (*supply*).
+
+Smart VA Matching connects them: SignalDesk sends a lead's text to VA Hub, VA Hub returns the
+**best-matching VAs** (ranked semantically), and SignalDesk drops the VA's **public profile link**
+into the outreach draft.
+
+The lead can only act on that link by **registering on VA Hub and submitting a hiring request** —
+which is how the placement fee is protected.
+
+```
+SignalDesk lead (text)
+      │  POST /api/match-vas
+      ▼
+VA Hub: embed text → vector search over VA directory → hard filters → ranked VAs
+      │  { matches: [...] }
+      ▼
+SignalDesk: store matches → inject profileUrl into outreach draft
+      ▼
+Lead clicks profile → no contact info shown → "Request This VA" → must register
+      ▼
+Hiring request on-platform → revenue captured
+```
+
+---
+
+## 2. How VA Hub matches (so you know what you're getting)
+
+1. Every **active, non-Hired** VA has a "profile text" (skills, software tools, bio, work
+   experience, years, availability, location) embedded into a **768-dimension vector**
+   (Google Gemini `text-embedding-004`) and stored in `va_embeddings`.
+2. On each request, VA Hub embeds your `text` and runs a **cosine-similarity** search
+   (Postgres `pgvector`) via the `match_vas()` function.
+3. **Hard business filters are applied in SQL**, not by the AI:
+   - `is_active = true`
+   - `interview_status <> 'Hired'`
+
+   A VA who is inactive or already hired is **never returned**, no matter how similar.
+4. Results below a similarity floor (`0.30`) are dropped. You also receive `matchScore` so you
+   can filter more strictly on your side.
+
+---
+
+## 3. The API
+
+### Endpoint
+```
+POST https://vahub.esystemsmanagement.com/api/match-vas
+```
+
+### Authentication
+Server-to-server only, via a shared secret:
+```
+Authorization: Bearer <MATCH_API_SECRET>
+Content-Type: application/json
+```
+> ⚠️ **Never put this secret in browser/client code.** Call this endpoint from SignalDesk's
+> **backend only**. The comparison is constant-time, so the secret cannot be probed by timing.
+
+### Request body
+
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `text` | string | ✅ | The lead's requirement text (e.g. `leads.text`). Max **4000** characters. |
+| `limit` | number | — | How many matches to return. **1–10**, default **3**. |
+| `leadId` | string | — | Your `leads.id`. Embedded into `profileUrl` for attribution. |
+| `source` | string | — | Attribution source. Defaults to `"signaldesk"`. |
+
+```jsonc
+{
+  "text": "Looking for a virtual assistant to manage my CRM and social media posting",
+  "limit": 3,
+  "leadId": "8f3c1b0e-...",
+  "source": "signaldesk"
+}
+```
+
+### Success response — `200 OK`
+
+```jsonc
+{
+  "matches": [
+    {
+      "slug": "maria-santos",
+      "firstName": "Maria",
+      "displayName": "Maria S.",
+      "headshotUrl": "https://<project>.supabase.co/storage/v1/object/public/va-files/headshots/maria.jpg",
+      "skills": ["CRM", "GoHighLevel", "Social Media"],
+      "yearsOfExperience": 5,
+      "availability": "available-now",
+      "profileUrl": "https://vahub.esystemsmanagement.com/va/maria-santos?src=signaldesk&lead=8f3c1b0e-...",
+      "matchScore": 0.91
+    }
+  ]
+}
+```
+
+`matches` may be an **empty array** — that's a valid result (nothing cleared the floor, or the
+directory has no index yet). Handle it gracefully; don't treat it as an error.
+
+#### Field reference
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `slug` | string | VA's public profile slug |
+| `firstName` | string | First name only |
+| `displayName` | string | `"Maria S."` — use this in outreach copy |
+| `headshotUrl` | string \| null | Absolute, public image URL |
+| `skills` | string[] | VA's skills |
+| `yearsOfExperience` | number \| null | Years of experience |
+| `availability` | string \| null | `available-now` \| `available-in-two-weeks` \| `available-in-one-months` |
+| `profileUrl` | string | **The only call-to-action link. Always use this.** |
+| `matchScore` | number | Cosine similarity `0..1`, 2 decimal places |
+
+### 🔒 What the API will never return
+`email`, `phone`, `portfolio`, or the VA's **full last name**.
+
+This is deliberate and enforced server-side. The `profileUrl` is the only way for a lead to reach
+a VA — that's what prevents clients and VAs from connecting directly and bypassing the platform.
+**Do not attempt to obtain or include VA contact details in outreach.**
+
+### Error responses
+
+| Status | Meaning | What to do |
+|--------|---------|------------|
+| `400` | Invalid JSON, missing/empty `text`, or `text` > 4000 chars | Fix the request; don't retry as-is |
+| `401` | Missing or wrong bearer token | Check `MATCH_API_SECRET` |
+| `429` | Rate limited | Honor the **`Retry-After`** header (seconds), then retry |
+| `502` | Matching failed upstream | Retry with backoff |
+| `503` | Matching disabled (`MATCH_API_SECRET` not set on VA Hub) | Contact VA Hub admin |
+
+Error shape: `{ "error": "human readable message" }`
+
+---
+
+## 4. Examples
+
+### cURL
+```bash
+curl -X POST https://vahub.esystemsmanagement.com/api/match-vas \
+  -H "Authorization: Bearer $MATCH_API_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{"text":"need a VA to manage my CRM and social media","limit":3,"leadId":"8f3c1b0e"}'
+```
+
+### TypeScript (SignalDesk backend)
+```ts
+export interface VaMatch {
+  slug: string;
+  firstName: string;
+  displayName: string;
+  headshotUrl: string | null;
+  skills: string[];
+  yearsOfExperience: number | null;
+  availability: string | null;
+  profileUrl: string;
+  matchScore: number;
+}
+
+export async function matchVAsForLead(
+  leadText: string,
+  leadId: string,
+  limit = 3,
+): Promise<VaMatch[]> {
+  const res = await fetch(`${process.env.VAHUB_BASE_URL}/api/match-vas`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${process.env.MATCH_API_SECRET}`, // server-side only
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ text: leadText, leadId, limit, source: 'signaldesk' }),
+  });
+
+  if (res.status === 429) {
+    const retryAfter = Number(res.headers.get('Retry-After') ?? 60);
+    throw new Error(`Rate limited; retry in ${retryAfter}s`);
+  }
+  if (!res.ok) {
+    const { error } = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(`match-vas failed (${res.status}): ${error}`);
+  }
+
+  const { matches } = (await res.json()) as { matches: VaMatch[] };
+  return matches;
+}
+```
+
+---
+
+## 5. What to build in SignalDesk
+
+### Step 1 — When to call
+Call `matchVAsForLead()` **from the backend** when a lead is qualified — e.g. when
+`leads.intent_score` clears your threshold, or `leads.intent_category` indicates VA hiring intent.
+
+Trigger options (pick one):
+- Automatically after a lead is inserted/qualified by the scraper pipeline, **or**
+- On demand from the lead detail UI ("Find matching VAs").
+
+Use `leads.text` as the `text` field and `leads.id` as `leadId`.
+
+### Step 2 — Store the matches
+
+```sql
+create table if not exists lead_va_matches (
+  id            uuid primary key default gen_random_uuid(),
+  lead_id       uuid not null references leads(id) on delete cascade,
+  va_slug       text not null,
+  display_name  text not null,
+  headshot_url  text,
+  skills        text[],
+  availability  text,
+  profile_url   text not null,
+  match_score   double precision not null,
+  created_at    timestamptz not null default now(),
+  unique (lead_id, va_slug)
+);
+
+alter table lead_va_matches enable row level security;
+-- Add policies matching how SignalDesk reads/writes (service-role only is simplest).
+```
+
+Re-running a match for the same lead should **upsert** on `(lead_id, va_slug)`.
+
+### Step 3 — Enrich the outreach draft
+
+When generating `outreach_drafts.body`, inject the **top match**. Always include `profileUrl`;
+never include VA contact details.
+
+Template:
+```
+Hi {lead.username},
+
+Saw your post about needing help with {short summary of lead.text}.
+
+We have {match.displayName} — a vetted VA with {match.skills.slice(0,3).join(', ')}
+and {match.yearsOfExperience} years of experience. {availability sentence}
+
+Here's the profile: {match.profileUrl}
+
+— The Linkage VA Hub team
+```
+
+Availability sentence mapping:
+- `available-now` → "They're available to start now."
+- `available-in-two-weeks` → "They can start in about two weeks."
+- `available-in-one-months` → "They can start in about a month."
+
+### Step 4 — Attribution
+`profileUrl` already carries `?src=signaldesk&lead=<leadId>`. **Preserve those params** — do not
+strip or shorten the URL through a redirector that drops the query string. VA Hub uses them to
+attribute registrations and hiring requests back to the originating lead, which is how the funnel
+is measured:
+
+> lead → profile click → registration → hiring request → placement → revenue
+
+---
+
+## 6. Configuration
+
+### VA Hub side (already done, except the secret + backfill)
+| Item | Status |
+|------|--------|
+| `va_embeddings` table + `match_vas()` function | ✅ Applied to production |
+| `POST /api/match-vas` | ✅ Implemented |
+| `POST /api/admin/va-index/reindex` | ✅ Implemented |
+| `MATCH_API_SECRET` env var (Vercel) | ⬜ **Must be set** |
+| Backfill the VA index | ⬜ **Must be run once** |
+
+### SignalDesk side
+| Env var | Purpose |
+|---------|---------|
+| `VAHUB_BASE_URL` | `https://vahub.esystemsmanagement.com` |
+| `MATCH_API_SECRET` | Same value as VA Hub's. **Server-side only.** |
+
+---
+
+## 7. Operating the VA index (VA Hub admins)
+
+The index must stay fresh, or matches go stale.
+
+**Backfill the whole directory** (run once, and after bulk changes):
+```bash
+curl -X POST https://vahub.esystemsmanagement.com/api/admin/va-index/reindex \
+  -H "Content-Type: application/json" -d '{}'
+# → { "success": true, "indexed": 33, "skipped": 0 }
+```
+
+**Reindex a single VA** (call after a VA profile is published or updated):
+```bash
+curl -X POST https://vahub.esystemsmanagement.com/api/admin/va-index/reindex \
+  -H "Content-Type: application/json" -d '{"vaId":"<uuid>"}'
+```
+
+> Both require an authenticated **admin session** (the `linkage_admin_session` cookie), so call
+> them from the admin dashboard or a logged-in admin context — not with a bare token.
+
+**Recommended follow-up:** call the single-VA reindex from VA Hub's VA publish/update flow so the
+index self-maintains.
+
+---
+
+## 8. Rules & constraints (summary for an AI agent)
+
+1. Call `POST /api/match-vas` **from the server only**, with `Authorization: Bearer <MATCH_API_SECRET>`.
+2. `text` is required, non-empty, ≤ 4000 chars. `limit` is 1–10 (default 3).
+3. Always pass `leadId` so attribution works.
+4. An **empty `matches` array is normal** — handle it, don't error.
+5. Respect `429` + `Retry-After`; back off on `502`.
+6. The response contains **no VA email, phone, or portfolio** — by design. Never try to work around this.
+7. Put **`profileUrl` verbatim** into outreach; keep its `src`/`lead` query params intact.
+8. Use `displayName` (e.g. "Maria S.") in copy — never a full last name.
+9. Only active, non-Hired VAs are ever returned; you do not need to filter for availability yourself
+   (though `availability` is provided for copywriting).
+
+---
+
+## 9. Reference — VA Hub implementation
+
+| Concern | File |
+|---------|------|
+| Migration (table + `match_vas()` RPC) | `migrations/add_va_matching.sql` |
+| Data access (index/list/match, headshot URL) | `lib/data/va-matching.ts` |
+| Service (profile text, reindex, safe DTO, profile URL) | `lib/va-matching.ts` |
+| Public matching API | `app/api/match-vas/route.ts` |
+| Admin reindex/backfill API | `app/api/admin/va-index/reindex/route.ts` |
+| Embeddings (Gemini `text-embedding-004`) | `lib/chat/embeddings.ts` |
+| Rate limiting (Upstash/Vercel KV) | `lib/rate-limit.ts` |
+
+Tests: `lib/va-matching.test.ts`, `app/api/match-vas/route.test.ts`,
+`app/api/admin/va-index/reindex/route.test.ts`.
