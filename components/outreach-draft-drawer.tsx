@@ -230,14 +230,6 @@ export function OutreachDraftDrawer({
     return true;
   }, [body, draftId, lead.id]);
 
-  // const handleCopy = async () => {
-  //   const ok = await copyToClipboard();
-  //   if (ok) {
-  //     setCopied(true);
-  //     setTimeout(() => setCopied(false), 2000);
-  //   }
-  // };
-
   const handleCopyAndOpen = async () => {
     await copyToClipboard();
     await openUrl(outreachLink(lead, channel));
